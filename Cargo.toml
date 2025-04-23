@@ -1,0 +1,57 @@
+[package]
+name = "gitcodes-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Rust Documentation MCP Server for LLM crate assistance"
+authors = ["Claude <noreply@anthropic.com>"]
+license = "MIT"
+repository = "https://github.com/d6e/gitcodes-mcp"
+
+[workspace]
+members = ["."]
+
+[dependencies]
+rmcp = { version = "0.1", features = [
+    "server",
+    "transport-sse-server",
+    "transport-io",
+] }
+
+
+# MCP dependencies from GitHub
+# HTTP and networking
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+axum = { version = "0.8", features = ["macros"] }
+tokio-util = { version = "0.7", features = ["io", "codec"] }
+tower = { version = "0.4", features = ["util"] }
+tower-service = "0.3"
+hyper = "0.14"
+
+# Serialization and data formats
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Utilities
+anyhow = "1.0"
+futures = "0.3"
+rand = "0.8"
+clap = { version = "4.4", features = ["derive"] }
+html2md = "0.2.14"
+temp-dir = { git = "https://gitlab.com/leonhard-llc/ops.git", branch = "main" }
+lumin = "0.1.2"
+gitoxide = "0.42.0"
+
+[dev-dependencies]
+# Testing utilities
+mockito = "1.2"
+
+# Main binary with subcommands
+[[bin]]
+name = "gitcodes-mcp"
+path = "src/bin/gitcodes.rs"
