@@ -4,17 +4,22 @@
 
 ## model context protocolとして下記の機能を提供します
 
-- github/
+### github のコードをgrep
 
-  https://github.com/{user_name}/{repo}
-  git@github.com:{user_name}/{repo}.git
+https://github.com/{user_name}/{repo}
+git@github.com:{user_name}/{repo}.git
+
+### github のレポジトリのfile名検索
+
+### repository 検索
 
 - github repository search
   `https://api.github.com/search/repositories?q={query}` urlでrepository searchを行う
   doc: https://docs.github.com/en/rest/search/search
 
 - git lab repospository search
-  https://docs.gitlab.com/api/repositories/
+
+  doc: https://docs.gitlab.com/api/search/
 
 # hint to implementation
 
