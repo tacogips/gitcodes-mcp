@@ -1,34 +1,34 @@
 # Model Context Protocol (MCP) - Library Specification
 
-## 目的と概要
+## Purpose and Overview
 
-このMCP（Model Context Protocol）は、AI assistantが外部ソースコードを効率的に検索、分析、参照するためのツールセットを提供します。このプロトコルにより、AIは以下のことが可能になります：
+This MCP (Model Context Protocol) provides a set of tools for AI assistants to efficiently search, analyze, and reference external source code. The protocol enables AI to:
 
 ### https://modelcontextprotocol.io/introduction
 
-- GitHub上の関連リポジトリの検索
-- 特定リポジトリのコードグレップによる詳細分析
-- リポジトリのブランチとタグの閲覧
+- Search for relevant repositories on GitHub
+- Perform detailed analysis of specific repositories using code grep
+- Browse repository branches and tags
 
-主なユースケース：
+Main use cases:
 
-- コード例やパターンの検索
-- 特定の実装方法の調査
-- ライブラリやフレームワークの使用方法の理解
-- バージョン間の違いの分析
+- Searching for code examples and patterns
+- Investigating specific implementation methods
+- Understanding how to use libraries and frameworks
+- Analyzing differences between versions
 
-## 基本設計と共通機能
+## Basic Design and Common Features
 
-### プロセスシード
+### Process Seed
 
-MCPはstartしたときにランダムなseed値をオンメモリに保持します。このseed値は並行してこのMCPが実行された際にlocal directory pathがコンフリクトを避けるために使用されます。
-このseedを`process seed`と呼びます。
+When MCP starts, it stores a random seed value in memory. This seed value is used to avoid conflicts in local directory paths when the MCP is executed concurrently.
+This seed is called the `process seed`.
 
 ```rust
 use rand::{thread_rng, Rng};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// プロセス全体で共有されるシード値
+// Seed value shared across the entire process
 static PROCESS_SEED: AtomicU64 = AtomicU64::new(0);
 
 fn initialize_process_seed() {
@@ -47,19 +47,19 @@ fn get_process_seed() -> u64 {
 }
 ```
 
-### 標準レスポンス形式
+### Standard Response Format
 
-すべてのツールは統一されたレスポンス形式に従います：
+All tools follow a unified response format:
 
 ```rust
 pub struct ToolResponse<T> {
-    // 操作が成功したかどうか
+    // Whether the operation was successful
     pub success: bool,
-    // 結果データ（ツール固有の型）
+    // Result data (tool-specific type)
     pub data: Option<T>,
-    // エラー情報（失敗した場合）
+    // Error information (if failed)
     pub error: Option<ErrorInfo>,
-    // メタデータ（実行時間、使用したリソースなど）
+    // Metadata (execution time, resources used, etc.)
     pub metadata: ResponseMetadata,
 }
 
@@ -76,9 +76,9 @@ pub struct ResponseMetadata {
 }
 ```
 
-### CallToolResult型
+### CallToolResult Type
 
-`CallToolResult`は、ツール呼び出しの結果をラップする標準型です：
+`CallToolResult` is a standard type that wraps the results of tool calls:
 
 ```rust
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -105,29 +105,29 @@ impl CallToolResult {
 }
 ```
 
-この型は以前の実装から変更されており、現在は `enum` ではなく `struct` として実装されています。エラー状態は `is_error` フィールドで表現され、エラーの詳細は `content` フィールドに含まれます。
+This type has changed from previous implementations and is now implemented as a `struct` rather than an `enum`. The error state is represented by the `is_error` field, and error details are included in the `content` field.
 
 ````
 
-## 提供するツール
+## Provided Tools
 
-### 1. GitHub リポジトリ検索ツール
+### 1. GitHub Repository Search Tool
 
-GitHub APIを使用してリポジトリを検索します。
+Uses the GitHub API to search for repositories.
 
-#### 入力パラメータ
+#### Input Parameters
 
 ```rust
 pub struct SearchRepositoriesRequest {
-    // 検索クエリ（必須）
+    // Search query (required)
     pub query: String,
-    // 結果の並べ替え方法（オプション、デフォルトは「関連性」）
+    // How to sort results (optional, default is "relevance")
     pub sort_by: Option<SortBy>,
-    // 並べ替えの順序（オプション、デフォルトは「降順」）
+    // Sort order (optional, default is "descending")
     pub order: Option<SortOrder>,
-    // 1ページあたりの結果数（オプション、デフォルトは30、最大100）
+    // Results per page (optional, default is 30, max 100)
     pub per_page: Option<u8>,
-    // 結果のページ番号（オプション、デフォルトは1）
+    // Result page number (optional, default is 1)
     pub page: Option<u32>,
 }
 
@@ -144,31 +144,31 @@ pub enum SortOrder {
 }
 ````
 
-#### 実装詳細
+#### Implementation Details
 
-- API エンドポイント: `https://api.github.com/search/repositories?q={query}`
-- リファレンスドキュメント: https://docs.github.com/en/rest/search/search
+- API endpoint: `https://api.github.com/search/repositories?q={query}`
+- Reference documentation: https://docs.github.com/en/rest/search/search
 
-#### API認証
+#### API Authentication
 
-- 環境変数 `GITCODE_MCP_GITHUB_TOKEN` で個人アクセストークンを提供。このトークンはMCP起動時にonmemoryに保存され、それ以降は環境変数から参照されない
-- トークンが提供されない場合は、非認証リクエストを使用（レート制限あり）
-- 非認証リクエスト: 60リクエスト/時
-- 認証済みリクエスト: 5,000リクエスト/時
+- Personal access token provided via the `GITCODE_MCP_GITHUB_TOKEN` environment variable. This token is stored in memory when MCP starts and is not referenced from the environment variable thereafter
+- If no token is provided, unauthenticated requests are used (with rate limits)
+- Unauthenticated requests: 60 requests/hour
+- Authenticated requests: 5,000 requests/hour
 
-> **注意**: プライベートリポジトリへのアクセスには、適切な権限を持つアクセストークンが必要です。トークンには最低限、`repo` スコープ（プライベートリポジトリにアクセスする権限）が必要です。
+> **Note**: Access to private repositories requires an access token with appropriate permissions. The token needs at least the `repo` scope (permission to access private repositories).
 
-#### 戻り値
+#### Return Value
 
 ```rust
 pub struct SearchRepositoriesResult {
-    // 検索結果のリポジトリリスト
+    // List of repositories in search results
     pub repositories: Vec<Repository>,
-    // 検索結果の総数
+    // Total number of search results
     pub total_count: u32,
-    // 現在のページ番号
+    // Current page number
     pub page: u32,
-    // 1ページあたりの結果数
+    // Results per page
     pub per_page: u8,
 }
 
@@ -202,7 +202,7 @@ pub struct License {
 }
 ```
 
-#### レスポンス例
+#### Response Example
 
 ```json
 {
@@ -248,101 +248,101 @@ pub struct License {
 }
 ```
 
-### 2. GitHub リポジトリコードGrep ツール
+### 2. GitHub Repository Code Grep Tool
 
-指定されたGitHubリポジトリをローカルにクローンし、コードをGrepします。パブリックおよびプライベートリポジトリの両方をサポートします。
+Clones the specified GitHub repository locally and greps the code. Supports both public and private repositories.
 
-#### 入力パラメータ
+#### Input Parameters
 
 ```rust
 pub struct GrepRequest {
-    // リポジトリURL（必須）- 以下の形式をサポート
+    // Repository URL (required) - supports the following formats:
     // - https://github.com/{user_name}/{repo}
     // - git@github.com:{user_name}/{repo}.git
     // - github:{user_name}/{repo}
     pub repository: String,
-    // ブランチまたはタグ（オプション、デフォルトはmainまたはmaster）
+    // Branch or tag (optional, default is main or master)
     pub ref_name: Option<String>,
-    // 検索パターン（必須）
+    // Search pattern (required)
     pub pattern: String,
-    // 大文字小文字を区別するかどうか（オプション、デフォルトはfalse）
+    // Whether to be case-sensitive (optional, default is false)
     pub case_sensitive: Option<bool>,
-    // 正規表現を使用するかどうか（オプション、デフォルトはtrue）
+    // Whether to use regex (optional, default is true)
     pub use_regex: Option<bool>,
-    // 検索するファイルの拡張子（オプション、例: ["rs", "toml"]）
+    // File extensions to search (optional, e.g., ["rs", "toml"])
     pub file_extensions: Option<Vec<String>>,
-    // 検索から除外するディレクトリ（オプション、例: ["target", "node_modules"]）
+    // Directories to exclude from search (optional, e.g., ["target", "node_modules"])
     pub exclude_dirs: Option<Vec<String>>,
 }
 ```
 
-#### 実装詳細
+#### Implementation Details
 
-1. リポジトリURLを解析し、ユーザー名とリポジトリ名を抽出
-2. 一時ディレクトリを生成: `{system_temp_dir}/mcp_https__github_com__{user_name}__{repo}_{hash}`
-   - ここで `hash` は `hash(user_name + repo + process_seed.to_string())` で生成
-3. リポジトリが既にクローン済みかチェック
-   - クローン済み:
-     - `{system_temp_dir}/mcp_https__github_com__{user_name}__{repo}_{hash}` ディレクトリが存在する場合
-     - `git fetch origin` を実行
-     - 指定されたブランチが存在しない場合は、デフォルトで `master` または `main` ブランチを使用
-     - `git checkout <branch_or_tag>` を実行
-     - `git pull origin <branch>` を実行（タグの場合はこの操作をスキップ）
-   - 未クローン:
-     - gitoxide crateを使用して浅いクローンを実行 (`--depth=1`)
-     - 指定されたブランチ/タグをチェックアウト
-4. lumin crateを使用してコード検索を実行
-5. 結果を標準レスポンス形式で返す
+1. Parse the repository URL and extract the username and repository name
+2. Generate a temporary directory: `{system_temp_dir}/mcp_https__github_com__{user_name}__{repo}_{hash}`
+   - Where `hash` is generated by `hash(user_name + repo + process_seed.to_string())`
+3. Check if the repository is already cloned
+   - If cloned:
+     - Directory `{system_temp_dir}/mcp_https__github_com__{user_name}__{repo}_{hash}` exists
+     - Execute `git fetch origin`
+     - If the specified branch doesn't exist, use `master` or `main` branch by default
+     - Execute `git checkout <branch_or_tag>`
+     - Execute `git pull origin <branch>` (skip this operation for tags)
+   - If not cloned:
+     - Use the gitoxide crate to perform a shallow clone (`--depth=1`)
+     - Checkout the specified branch/tag
+4. Use the lumin crate to perform code search
+5. Return results in the standard response format
 
-#### 一時ディレクトリ管理
+#### Temporary Directory Management
 
-- 既存のディレクトリが存在する場合は再利用
-- ディレクトリは以下の場合に更新:
-  - 最後の更新から24時間以上経過
-  - 要求されたブランチ/タグが現在のものと異なる
-- MCPシャットダウン時に自動クリーンアップ
-- 7日以上アクセスされていないディレクトリは自動削除
-- 総容量制限（デフォルト: 10GB）に達した場合、最も古いリポジトリから削除
+- Reuse existing directories if they exist
+- Update directories in the following cases:
+  - More than 24 hours since the last update
+  - The requested branch/tag is different from the current one
+- Automatic cleanup when MCP shuts down
+- Automatic deletion of directories not accessed for more than 7 days
+- Delete oldest repositories when total capacity limit (default: 10GB) is reached
 
-#### 戻り値
+#### Return Value
 
 ```rust
 pub struct GrepResult {
-    // 一致したファイルのリスト
+    // List of matched files
     pub matches: Vec<FileMatch>,
-    // 検索に関する統計情報
+    // Search statistics
     pub stats: SearchStats,
 }
 
 pub struct FileMatch {
-    // ファイルのパス（リポジトリルートからの相対パス）
+    // File path (relative to repository root)
     pub path: String,
-    // 一致した行とその内容
+    // Matched lines and their content
     pub line_matches: Vec<LineMatch>,
 }
 
 pub struct LineMatch {
-    // 行番号
+    // Line number
     pub line_number: u32,
-    // 行の内容
+    // Line content
     pub line: String,
-    // 行内の一致した範囲（開始位置と長さ）
+    // Matched ranges within the line (start position and length)
     pub ranges: Vec<(usize, usize)>,
 }
 
 pub struct SearchStats {
-    // 検索されたファイルの総数
+    // Total number of files searched
     pub files_searched: u32,
-    // 見つかった一致の総数
+    // Total number of matches found
     pub total_matches: u32,
-    // 少なくとも1つの一致があったファイルの数
+    // Number of files with at least one match
     pub files_with_matches: u32,
-    // 検索にかかった時間（ミリ秒）
+    // Time taken for search (milliseconds)
     pub execution_time_ms: u64,
 }
 ```
 
-#### レスポンス例
+#### Response Example
 
 ```json
 {
@@ -373,15 +373,15 @@ pub struct SearchStats {
 }
 ```
 
-### 3. GitHub リポジトリのブランチ/タグ一覧ツール
+### 3. GitHub Repository Branches/Tags List Tool
 
-指定されたGitHubリポジトリのブランチとタグの一覧を取得します。
+Retrieves a list of branches and tags for the specified GitHub repository.
 
-#### 入力パラメータ
+#### Input Parameters
 
 ```rust
 pub struct ListRefsRequest {
-    // リポジトリURL（必須）- 以下の形式をサポート
+    // Repository URL (required) - supports the following formats:
     // - https://github.com/{user_name}/{repo}
     // - git@github.com:{user_name}/{repo}.git
     // - github:{user_name}/{repo}
@@ -389,23 +389,23 @@ pub struct ListRefsRequest {
 }
 ```
 
-#### 実装詳細
+#### Implementation Details
 
-- Grepツールと同じ方法でリポジトリのローカルチェックアウトを作成または再利用
-- gitoxide crateを使用してブランチとタグ情報を抽出
+- Create or reuse a local checkout of the repository using the same method as the Grep tool
+- Use the gitoxide crate to extract branch and tag information
 
-#### 戻り値
+#### Return Value
 
 ```rust
 pub struct RefsResult {
-    // ブランチの一覧
+    // List of branches
     pub branches: Vec<String>,
-    // タグの一覧
+    // List of tags
     pub tags: Vec<String>,
 }
 ```
 
-#### レスポンス例
+#### Response Example
 
 ```json
 {
@@ -420,30 +420,30 @@ pub struct RefsResult {
 }
 ```
 
-## エラー処理
+## Error Handling
 
-MCPは以下のエラー状況を適切に処理します：
+MCP appropriately handles the following error situations:
 
-### API関連エラー
+### API-Related Errors
 
-- ネットワークエラー: 自動再試行（指数バックオフ）
-- 認証エラー: トークン検証を試み、ユーザーに通知
-- レート制限エラー: 待機時間を計算し、次の可能なリクエスト時間を返す
+- Network errors: Automatic retry (exponential backoff)
+- Authentication errors: Attempt to validate the token and notify the user
+- Rate limit errors: Calculate wait time and return the next possible request time
 
-### Git操作エラー
+### Git Operation Errors
 
-- クローン失敗: 詳細なエラーメッセージとリポジトリ情報の検証
-- チェックアウト失敗: 存在しないブランチ/タグについての情報提供
-- 権限エラー: アクセス権の問題を明確に説明
+- Clone failure: Detailed error message and repository information validation
+- Checkout failure: Information about non-existent branches/tags
+- Permission errors: Clear explanation of access rights problems
 
-### 一時ファイルエラー
+### Temporary File Errors
 
-- ディスク容量不足: クリーンアップを試み、必要なスペースを通知
-- 書き込み権限エラー: 代替ディレクトリを試行
+- Insufficient disk space: Attempt cleanup and notify required space
+- Write permission errors: Try alternative directories
 
-すべてのエラーは標準的なRust Result型を通じて処理され、意味のあるエラーメッセージとともに返されます。
+All errors are handled through standard Rust Result types and returned with meaningful error messages.
 
-### エラーレスポンス例
+### Error Response Example
 
 ```json
 {
@@ -463,128 +463,90 @@ MCPは以下のエラー状況を適切に処理します：
 }
 ```
 
-## 入力検証
+## Input Validation
 
-すべての入力は使用前に検証され、無効な入力は早期にエラーとして報告されます：
+All inputs are validated before use, and invalid inputs are reported as errors early:
 
-### リポジトリURL検証
+### Repository URL Validation
 
-- 形式チェック: 有効なGitHubリポジトリURLであることを確認
-- 存在チェック: リポジトリが存在することを確認（オプション）
+- Format check: Verify it's a valid GitHub repository URL
+- Existence check: Verify the repository exists (optional)
 
-### 検索クエリ検証
+### Search Query Validation
 
-- 空文字列は許可されない
-- 安全でない文字またはパターンはエスケープまたは拒否
+- Empty strings are not allowed
+- Unsafe characters or patterns are escaped or rejected
 
-### ブランチ/タグ検証
+### Branch/Tag Validation
 
-- 存在するブランチ/タグであることを確認
-- 無効な文字を含まないことを確認
+- Verify it's an existing branch/tag
+- Verify it doesn't contain invalid characters
 
-### Grep検索パターン検証
+### Grep Search Pattern Validation
 
-- 正規表現として有効であることを確認（use_regex=trueの場合）
-- パターンの複雑さをチェック（過度に複雑なパターンはパフォーマンスに影響する可能性がある）
+- Verify it's valid as a regular expression (if use_regex=true)
+- Check pattern complexity (overly complex patterns may impact performance)
 
-## インターフェース
+## Performance Considerations
 
-MCPは以下のインターフェースを通じてアクセスできます：
+MCP maintains high performance through the following strategies:
 
-### Rustライブラリとして
+### Repository Operation Optimization
 
-```rust
-// ライブラリを初期化
-let mcp = GitCodeMcp::new(Config::default());
+- Use shallow clones instead of full clones (--depth=1)
+- Support for sparse checkout (only specific directories)
+- Reuse and efficiently update existing clones (git pull)
 
-// GitHubリポジトリを検索
-let results = mcp.search_repositories("rust http client").await?;
+### Search Optimization
 
-// リポジトリコードをグレップ
-let grep_results = mcp.grep_repository(
-    "https://github.com/simonw/llm",
-    Some("main"),
-    "async fn",
-    Default::default()
-).await?;
+- Index-based search (where possible)
+- Parallel search execution
+- Streaming results for large repositories
 
-// ブランチとタグを取得
-let refs = mcp.list_repository_refs("github:simonw/llm").await?;
-```
+### Memory Usage
 
-### コマンドラインツールとして
+- Limit memory consumption when searching large repositories
+- Result buffering and paging
 
-```bash
-# リポジトリを検索
-mcp search "rust http client"
+## Security Considerations
 
-# コードをグレップ
-mcp grep github:simonw/llm "async fn" --branch=main
+MCP implements the following security measures:
 
-# ブランチとタグを表示
-mcp refs github:simonw/llm
-```
+### Credential Protection
 
-## パフォーマンス考慮事項
+- GitHub API tokens are securely stored and processed
+- Tokens are not logged
+- Read only from environment variables or secure storage
 
-MCPは以下の戦略を通じて高性能を維持します：
+### Prevention of Code Execution
 
-### リポジトリ操作の最適化
+- Downloaded code is only analyzed, not executed
+- Execution of scripts or executable files is prevented
 
-- 完全なクローンではなく浅いクローンを使用（--depth=1）
-- スパースチェックアウトのサポート（特定のディレクトリのみ）
-- 既存クローンの再利用と効率的な更新（git pull）
+### Sandboxing
 
-### 検索最適化
+- All operations are limited to temporary directories
+- Access to parent directories is prevented
 
-- インデックスベースの検索（可能な場合）
-- 並列検索の実行
-- 大規模リポジトリでのストリーミング結果
+### Input Sanitization
 
-### メモリ使用量
+- All user input is validated and sanitized before use
+- Command injection attacks are prevented
 
-- 大きなリポジトリの検索時のメモリ消費を制限
-- 結果のバッファリングとページング
+## Implementation Requirements
 
-## セキュリティ考慮事項
+### Dependent Crates
 
-MCPは以下のセキュリティ対策を実装しています：
+- Use the `lumin` crate for grepping local files
+- Use the `tempfile` crate for temporary directory management
+- Use the `gitoxide` crate for git checkout
 
-### 認証情報の保護
+### Reference Implementation
 
-- GitHub APIトークンは安全に保存・処理
-- トークンはログに記録されない
-- 環境変数または安全なストレージからのみ読み取り
+- Reference sources under `gitcodes-mcp/rust-sdk`
+- MCP tool responses use the `CallToolResult` type rather than strings
 
-### コード実行の防止
+### Concurrent Execution Management
 
-- ダウンロードしたコードは解析のみで実行しない
-- スクリプトや実行可能ファイルの実行は防止
-
-### サンドボックス化
-
-- すべての操作は一時ディレクトリに限定
-- 親ディレクトリへのアクセスは防止
-
-### 入力サニタイズ
-
-- すべてのユーザー入力は使用前に検証・サニタイズ
-- コマンドインジェクション攻撃を防止
-
-## 実装要件
-
-### 依存クレート
-
-- local fileのgrepには`lumin`クレートを使用
-- 一時ディレクトリの管理には`tempfile`クレートを使用
-- gitのcheckoutには`gitoxide`クレートを使用
-
-### 参考実装
-
-- `gitcodes-mcp/rust-sdk`以下のソースを参考にする
-- MCPのツールのレスポンスは文字列ではなく`CallToolResult`型を使用
-
-### 同時実行の管理
-
-- 同じリポジトリへの複数のリクエストは一時ディレクトリを共有
-- 共有リソースへのアクセスはRustの標準的な同期メカニズムで保護
+- Multiple requests to the same repository share temporary directories
+- Access to shared resources is protected by Rust's standard synchronization mechanisms
