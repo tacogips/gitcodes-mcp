@@ -1,4 +1,4 @@
-use crate::tools::cargo_docs::CargoDocRouter;
+use crate::tools::CargoDocRouter;
 use anyhow::Result;
 use rmcp::transport::sse_server::SseServer;
 use std::net::SocketAddr;

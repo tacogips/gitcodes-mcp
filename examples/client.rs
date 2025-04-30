@@ -108,6 +108,21 @@ async fn stdio_client() -> Result<()> {
         },
         "id": 2
     });
+    
+    // Also prepare a GitHub repository search request
+    let github_request = json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "search_repositories",
+            "arguments": {
+                "query": "rust web framework",
+                "sort_by": "stars",
+                "per_page": 3
+            }
+        },
+        "id": 3
+    });
 
     println!("Sending request to look up tokio crate...");
     stdin.write_all(request.to_string().as_bytes()).await?;
@@ -123,6 +138,23 @@ async fn stdio_client() -> Result<()> {
     println!(
         "Received response: {}",
         serde_json::to_string_pretty(&parsed)?
+    );
+    
+    // Now send the GitHub repository search request
+    println!("Sending request to search GitHub repositories...");
+    stdin.write_all(github_request.to_string().as_bytes()).await?;
+    stdin.write_all(b"\n").await?;
+    stdin.flush().await?;
+    
+    // Read the response
+    let mut github_response = String::new();
+    stdout.read_line(&mut github_response).await?;
+    
+    println!("GitHub search response: {:?}", github_response);
+    let github_parsed: Value = serde_json::from_str(&github_response)?;
+    println!(
+        "Received GitHub response: {}",
+        serde_json::to_string_pretty(&github_parsed)?
     );
 
     // Terminate the child process
@@ -329,22 +361,23 @@ async fn http_sse_client() -> Result<()> {
         }
     }
 
-    // Send a request to search for crates
+    // Send a request to search for GitHub repositories
     let request_url = format!("{}?sessionId={}", sse_url, session_id);
     let request_body = json!({
         "jsonrpc": "2.0",
         "method": "tools/call",
         "params": {
-            "name": "search_crates",
+            "name": "search_repositories",
             "arguments": {
                 "query": "async runtime",
-                "limit": 5
+                "sort_by": "stars",
+                "per_page": 5
             }
         },
         "id": 2
     });
 
-    println!("Sending request to search for crates...");
+    println!("Sending request to search for GitHub repositories...");
     let response = client.post(&request_url).json(&request_body).send().await?;
 
     if response.status().is_success() {
