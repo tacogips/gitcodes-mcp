@@ -1,0 +1,79 @@
+# Development Log
+
+This file documents the development process, architectural decisions, and implementation details for the GitCodes MCP project.
+
+## Structure
+
+- Each major change or feature should be documented with a date
+- Include design decisions, implementation challenges, and solutions
+- Document any significant refactorings or architecture changes
+- Note any dependencies added or removed with rationale
+
+## Recent Changes
+
+### 2024-05-01: Initial Implementation of Model Context Protocol for GitHub
+
+Implemented the core functionality specified in `spec.md`:
+
+1. **GitHub Repository Search Tool**
+   - Created a tool to search for repositories using the GitHub API
+   - Implemented sorting, pagination, and proper error handling
+   - Added authentication support via GitHub token
+
+2. **GitHub Repository Code Grep Tool**
+   - Implemented code search functionality using git clone and git grep
+   - Added support for regex search, case sensitivity options
+   - Created repository cloning and update logic with proper state management
+
+3. **GitHub Repository Branches/Tags List Tool**
+   - Added ability to list all branches and tags for a repository
+   - Implemented proper formatting for branch/tag display
+
+### Implementation Challenges
+
+#### Dependency Management Issues
+
+- Initially attempted to use `git2` and `gitoxide` libraries, but encountered dependency conflicts with `libgit2-sys` and `lumin` 
+- Switched to using direct git command execution via `std::process::Command` for simplicity and to avoid dependency issues
+- Removed `git2` and `gitoxide` from direct dependencies to resolve build errors
+
+#### Concurrent Task Management
+
+- Had to handle moved values in async closures carefully, using cloning for strings passed to `tokio::task::spawn_blocking`
+- Implemented proper error handling for CLI git commands with context-aware error messages
+- Created a repository manager to handle temporary directory management and repository state
+
+#### Building without OpenSSL and Other Native Dependencies
+
+- Encountered OpenSSL dependency issues during build
+- Modified `reqwest` configuration to use `default-features = false` to avoid requiring OpenSSL
+
+### Architecture Decisions 
+
+1. **Repository Management**
+   - Created a `RepositoryManager` class to handle git repository operations
+   - Used a unique naming scheme for temporary directories to prevent conflicts
+   - Added proper cleanup and error handling for repository operations
+
+2. **Response Format**
+   - Simplified return values to use strings instead of complex JSON structures
+   - Added formatted output for search results and repository information
+
+3. **Error Handling Strategy**
+   - Used context-aware error messages to help users understand issues
+   - Implemented graceful fallbacks for commands that might fail
+   - Added proper resource cleanup in error cases
+
+### Future Improvements
+
+1. **Security Enhancements**
+   - Add credential management for authenticated git operations
+   - Implement proper token handling and security for GitHub API requests
+   
+2. **Performance Optimizations**
+   - Add caching for repository operations to reduce git command calls
+   - Implement smarter code search algorithms to handle large repositories
+
+3. **Features**
+   - Add support for additional GitHub operations like pull requests
+   - Implement diff visualization for comparing branches/commits

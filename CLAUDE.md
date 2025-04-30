@@ -88,3 +88,8 @@ The devlog update should include:
 - Any design decisions that were made
 - Implementation challenges and solutions
 - Tests that were added or modified
+- Details of errors encountered during development and their solutions
+- Explanations for dependency changes (additions/removals) in Cargo.toml
+- Rationale for major architectural decisions
+
+In all cases, you may omit trivial or minor implementation details to keep the devlog focused on significant aspects of the development process.
