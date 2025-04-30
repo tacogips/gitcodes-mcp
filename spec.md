@@ -148,7 +148,7 @@ pub enum SortOrder {
 
 #### API認証
 
-- 環境変数 `GITHUB_TOKEN` で個人アクセストークンを提供
+- 環境変数 `GITCODE_MCP_GITHUB_TOKEN` で個人アクセストークンを提供。
 - トークンが提供されない場合は、非認証リクエストを使用（レート制限あり）
 - 非認証リクエスト: 60リクエスト/時
 - 認証済みリクエスト: 5,000リクエスト/時
@@ -277,11 +277,17 @@ pub struct GrepRequest {
 2. 一時ディレクトリを生成: `{system_temp_dir}/mcp_https__github_com__{user_name}__{repo}_{hash}`
    - ここで `hash` は `hash(user_name + repo + process_seed.to_string())` で生成
 3. リポジトリが既にクローン済みかチェック
-   - クローン済み: git pullで更新
-   - 未クローン: gitoxide crateを使用して浅いクローンを実行
-4. 指定されたブランチ/タグをチェックアウト
-5. lumin crateを使用してコード検索を実行
-6. 結果を標準レスポンス形式で返す
+   - クローン済み:
+     - `{system_temp_dir}/mcp_https__github_com__{user_name}__{repo}_{hash}` ディレクトリが存在する場合
+     - `git fetch origin` を実行
+     - 指定されたブランチが存在しない場合は、デフォルトで `master` または `main` ブランチを使用
+     - `git checkout <branch_or_tag>` を実行
+     - `git pull origin <branch>` を実行（タグの場合はこの操作をスキップ）
+   - 未クローン:
+     - gitoxide crateを使用して浅いクローンを実行 (`--depth=1`)
+     - 指定されたブランチ/タグをチェックアウト
+4. lumin crateを使用してコード検索を実行
+5. 結果を標準レスポンス形式で返す
 
 #### 一時ディレクトリ管理
 
