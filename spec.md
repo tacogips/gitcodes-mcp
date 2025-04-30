@@ -79,31 +79,31 @@ pub struct ResponseMetadata {
 `CallToolResult`は、ツール呼び出しの結果をラップする標準型です：
 
 ```rust
-pub enum CallToolResult {
-    // 成功したツール呼び出し
-    Success(ToolResponse<serde_json::Value>),
-    // エラーが発生したツール呼び出し
-    Failure {
-        error_type: ErrorType,
-        message: String,
-        details: Option<serde_json::Value>,
-    },
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CallToolResult {
+    pub content: Vec<Content>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_error: Option<bool>,
 }
 
-pub enum ErrorType {
-    // リクエスト形式に問題がある
-    InvalidRequest,
-    // API連携の問題
-    ApiError,
-    // リソースが見つからない
-    NotFound,
-    // 権限不足
-    Forbidden,
-    // レート制限到達
-    RateLimited,
-    // 内部サーバーエラー
-    InternalError,
+impl CallToolResult {
+    pub fn success(content: Vec<Content>) -> Self {
+        CallToolResult {
+            content,
+            is_error: Some(false),
+        }
+    }
+    pub fn error(content: Vec<Content>) -> Self {
+        CallToolResult {
+            content,
+            is_error: Some(true),
+        }
+    }
 }
+```
+
+この型は以前の実装から変更されており、現在は `enum` ではなく `struct` として実装されています。エラー状態は `is_error` フィールドで表現され、エラーの詳細は `content` フィールドに含まれます。
 ```
 
 ## 提供するツール
