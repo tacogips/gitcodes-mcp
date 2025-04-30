@@ -26,7 +26,7 @@ output_tests
 **/.npmrc
 **/.direnv
 
-**.private
+**.private.**
 
 result
 rust-sdk

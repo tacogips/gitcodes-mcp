@@ -50,7 +50,7 @@ In this project, the term "documentation" or "project documentation" refers to t
 
 When asked to update "documentation", you should check and update all of these documentation sources for consistency.
 
-### Rule of Thumbs
+### Rule of Thumb
 
 You should think and output in English
 
