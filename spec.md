@@ -2,7 +2,9 @@
 
 ## 目的と概要
 
-MCP（Model Context Protocol）は、AI assistantが外部ソースコードを効率的に検索、分析、参照するためのツールセットを提供します。このプロトコルにより、AIは以下のことが可能になります：
+このMCP（Model Context Protocol）は、AI assistantが外部ソースコードを効率的に検索、分析、参照するためのツールセットを提供します。このプロトコルにより、AIは以下のことが可能になります：
+
+### https://modelcontextprotocol.io/introduction
 
 - GitHub上の関連リポジトリの検索
 - 特定リポジトリのコードグレップによる詳細分析
@@ -104,7 +106,8 @@ impl CallToolResult {
 ```
 
 この型は以前の実装から変更されており、現在は `enum` ではなく `struct` として実装されています。エラー状態は `is_error` フィールドで表現され、エラーの詳細は `content` フィールドに含まれます。
-```
+
+````
 
 ## 提供するツール
 
@@ -139,7 +142,7 @@ pub enum SortOrder {
     Ascending,
     Descending,
 }
-```
+````
 
 #### 実装詳細
 
@@ -148,7 +151,7 @@ pub enum SortOrder {
 
 #### API認証
 
-- 環境変数 `GITCODE_MCP_GITHUB_TOKEN` で個人アクセストークンを提供。
+- 環境変数 `GITCODE_MCP_GITHUB_TOKEN` で個人アクセストークンを提供。このトークンはMCP起動時にonmemoryに保存され、それ以降は環境変数から参照されない
 - トークンが提供されない場合は、非認証リクエストを使用（レート制限あり）
 - 非認証リクエスト: 60リクエスト/時
 - 認証済みリクエスト: 5,000リクエスト/時
@@ -492,7 +495,7 @@ MCPは以下のインターフェースを通じてアクセスできます：
 
 ```rust
 // ライブラリを初期化
-let mcp = ModelContextProtocol::new(Config::default());
+let mcp = GitCodeMcp::new(Config::default());
 
 // GitHubリポジトリを検索
 let results = mcp.search_repositories("rust http client").await?;
