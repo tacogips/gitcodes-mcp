@@ -447,6 +447,141 @@ impl CargoDocRouter {
         }
     }
 
+    // Function to fetch repository refs (branches and tags)
+    async fn fetch_repository_refs(
+        &self,
+        repo_dir: &str,
+        user: &str,
+        repo: &str,
+    ) -> Result<String, String> {
+        // Get branches and tags
+        let repo_dir_clone = repo_dir.to_string();
+        let user_clone = user.to_string();
+        let repo_clone = repo.to_string();
+
+        // Change to the repository directory
+        let current_dir = match std::env::current_dir() {
+            Ok(dir) => dir,
+            Err(e) => return Err(format!("Failed to get current directory: {}", e)),
+        };
+
+        if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
+            return Err(format!("Failed to change directory: {}", e));
+        }
+
+        // First run git fetch to make sure we have all refs
+        let fetch_status = std::process::Command::new("git")
+            .args(["fetch", "--all"])
+            .status();
+
+        if let Err(e) = fetch_status {
+            let _ = std::env::set_current_dir(current_dir);
+            return Err(format!("Git fetch failed: {}", e));
+        }
+
+        if !fetch_status.unwrap().success() {
+            let _ = std::env::set_current_dir(current_dir);
+            return Err("Git fetch failed".to_string());
+        }
+
+        // Get branches
+        let branches_output = std::process::Command::new("git")
+            .args(["branch", "-r"])
+            .output();
+
+        let branches_output = match branches_output {
+            Ok(output) => output,
+            Err(e) => {
+                let _ = std::env::set_current_dir(current_dir);
+                return Err(format!("Failed to list branches: {}", e));
+            }
+        };
+
+        let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
+
+        // Get tags
+        let tags_output = std::process::Command::new("git").args(["tag"]).output();
+
+        let tags_output = match tags_output {
+            Ok(output) => output,
+            Err(e) => {
+                let _ = std::env::set_current_dir(current_dir);
+                return Err(format!("Failed to list tags: {}", e));
+            }
+        };
+
+        let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
+
+        // Change back to the original directory
+        if let Err(e) = std::env::set_current_dir(current_dir) {
+            return Err(format!("Failed to restore directory: {}", e));
+        }
+
+        // Format the output
+        let mut result = String::new();
+        result.push_str(&format!(
+            "Repository: {}/{}
+
+",
+            user_clone, repo_clone
+        ));
+
+        // Extract and format branches
+        let branches: Vec<String> = branches_str
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.starts_with("origin/") && !line.contains("HEAD") {
+                    Some(line.trim_start_matches("origin/").to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Extract and format tags
+        let tags: Vec<String> = tags_str
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect();
+
+        // Add branches section
+        result.push_str(
+            "## Branches
+",
+        );
+        if branches.is_empty() {
+            result.push_str(
+                "No branches found
+",
+            );
+        } else {
+            for branch in branches {
+                result.push_str(&format!("- {}\n", branch));
+            }
+        }
+
+        // Add tags section
+        result.push_str(
+            "
+## Tags
+",
+        );
+        if tags.is_empty() {
+            result.push_str(
+                "No tags found
+",
+            );
+        } else {
+            for tag in tags {
+                result.push_str(&format!("- {}\n", tag));
+            }
+        }
+
+        Ok(result)
+    }
+
     // GitHub Repository Branches/Tags List Tool
     #[tool(description = "List branches and tags for a GitHub repository")]
     async fn list_repository_refs(
@@ -504,123 +639,8 @@ impl CargoDocRouter {
             }
         }
 
-        // Get branches and tags
-        let repo_dir_clone = repo_dir.clone();
-        let user_clone = user.clone();
-        let repo_clone = repo.clone();
-        let refs_result = tokio::task::spawn_blocking(move || {
-            // Change to the repository directory
-            let current_dir = match std::env::current_dir() {
-                Ok(dir) => dir,
-                Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-            };
-
-            if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
-                return Err(format!("Failed to change directory: {}", e));
-            }
-
-            // First run git fetch to make sure we have all refs
-            let fetch_status = std::process::Command::new("git")
-                .args(["fetch", "--all"])
-                .status();
-
-            if let Err(e) = fetch_status {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Git fetch failed: {}", e));
-            }
-
-            if !fetch_status.unwrap().success() {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err("Git fetch failed".to_string());
-            }
-
-            // Get branches
-            let branches_output = std::process::Command::new("git")
-                .args(["branch", "-r"])
-                .output();
-
-            let branches_output = match branches_output {
-                Ok(output) => output,
-                Err(e) => {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Failed to list branches: {}", e));
-                }
-            };
-
-            let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
-
-            // Get tags
-            let tags_output = std::process::Command::new("git").args(["tag"]).output();
-
-            let tags_output = match tags_output {
-                Ok(output) => output,
-                Err(e) => {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Failed to list tags: {}", e));
-                }
-            };
-
-            let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
-
-            // Change back to the original directory
-            if let Err(e) = std::env::set_current_dir(current_dir) {
-                return Err(format!("Failed to restore directory: {}", e));
-            }
-
-            // Format the output
-            let mut result = String::new();
-            result.push_str(&format!("Repository: {}/{}\n\n", user_clone, repo_clone));
-
-            // Extract and format branches
-            let branches: Vec<String> = branches_str
-                .lines()
-                .filter_map(|line| {
-                    let line = line.trim();
-                    if line.starts_with("origin/") && !line.contains("HEAD") {
-                        Some(line.trim_start_matches("origin/").to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // Extract and format tags
-            let tags: Vec<String> = tags_str
-                .lines()
-                .map(|line| line.trim().to_string())
-                .filter(|line| !line.is_empty())
-                .collect();
-
-            // Add branches section
-            result.push_str("## Branches\n");
-            if branches.is_empty() {
-                result.push_str("No branches found\n");
-            } else {
-                for branch in branches {
-                    result.push_str(&format!("- {}\n", branch));
-                }
-            }
-
-            // Add tags section
-            result.push_str("\n## Tags\n");
-            if tags.is_empty() {
-                result.push_str("No tags found\n");
-            } else {
-                for tag in tags {
-                    result.push_str(&format!("- {}\n", tag));
-                }
-            }
-
-            Ok(result)
-        })
-        .await;
-
-        // Handle errors in fetching refs
-        if let Err(e) = refs_result {
-            return format!("Failed to fetch refs: {}", e);
-        }
-
-        match refs_result.unwrap() {
+        // Fetch repository refs using the extracted function
+        match self.fetch_repository_refs(&repo_dir, &user, &repo).await {
             Ok(result) => result,
             Err(e) => format!("Failed to list refs: {}", e),
         }
@@ -640,7 +660,7 @@ impl CargoDocRouter {
     //    ) -> String {
     //        // Check cache first
     //        let cache_key = if let Some(ver) = &version {
-    //            format!("{}:{}", crate_name, ver)
+    //            format!("{}}:{}", crate_name, ver)
     //        } else {
     //            crate_name.clone()
     //        };
