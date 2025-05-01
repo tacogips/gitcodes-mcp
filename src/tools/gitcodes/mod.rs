@@ -109,7 +109,7 @@ impl CargoDocRouter {
 
         #[tool(param)]
         #[schemars(description = "Sort order (optional, default is 'descending')")]
-        order: Option<String>,
+        order: Option<OrderOption>,
 
         #[tool(param)]
         #[schemars(description = "Results per page (optional, default is 30, max 100)")]
@@ -126,9 +126,10 @@ impl CargoDocRouter {
             Some(SortOption::Updated) => "updated",
             None => "", // Default is relevance
         };
-        let order_param = match order.as_deref() {
-            Some("asc") => "asc",
-            _ => "desc", // Default is descending
+        let order_param = match order {
+            Some(OrderOption::Ascending) => "asc",
+            Some(OrderOption::Descending) => "desc",
+            None => "desc", // Default is descending
         };
         // Ensure per_page is within limits
         let per_page = per_page.unwrap_or(30).min(100);
@@ -703,9 +704,16 @@ impl ServerHandler for CargoDocRouter {
 }
 
 // Define the SortOption enum for GitHub repository sorting
-#[derive(Debug, schemars::JsonSchema)]
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub enum SortOption {
     Stars,
     Forks,
     Updated,
+}
+
+// Define the OrderOption enum for GitHub repository sort order
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub enum OrderOption {
+    Ascending,
+    Descending,
 }
