@@ -1,43 +1,13 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use html2md::parse_html;
 
+use rand::Rng;
 use reqwest::Client;
 use tokio::sync::Mutex;
-use rand::Rng;
 
 use rmcp::{model::*, schemars, tool, ServerHandler};
-
-// Cache for documentation lookups to avoid repeated requests
-#[derive(Clone)]
-pub struct DocCache {
-    cache: Arc<Mutex<HashMap<String, String>>>,
-}
-
-impl Default for DocCache {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DocCache {
-    pub fn new() -> Self {
-        Self {
-            cache: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    pub async fn get(&self, key: &str) -> Option<String> {
-        let cache = self.cache.lock().await;
-        cache.get(key).cloned()
-    }
-
-    pub async fn set(&self, key: String, value: String) {
-        let mut cache = self.cache.lock().await;
-        cache.insert(key, value);
-    }
-}
 
 // Repository manager for clone operations
 #[derive(Clone)]
@@ -103,7 +73,6 @@ impl RepositoryManager {
 #[derive(Clone)]
 pub struct CargoDocRouter {
     pub client: Client,
-    pub cache: DocCache,
     pub repo_manager: RepositoryManager,
     pub github_token: Option<String>,
 }
@@ -118,10 +87,9 @@ impl Default for CargoDocRouter {
 impl CargoDocRouter {
     pub fn new() -> Self {
         let github_token = std::env::var("GITCODE_MCP_GITHUB_TOKEN").ok();
-        
+
         Self {
             client: Client::new(),
-            cache: DocCache::new(),
             repo_manager: RepositoryManager::new(),
             github_token,
         }
@@ -137,7 +105,7 @@ impl CargoDocRouter {
 
         #[tool(param)]
         #[schemars(description = "How to sort results (optional, default is 'relevance')")]
-        sort_by: Option<String>,
+        sort_by: Option<SortOption>,
 
         #[tool(param)]
         #[schemars(description = "Sort order (optional, default is 'descending')")]
@@ -152,50 +120,50 @@ impl CargoDocRouter {
         page: Option<u32>,
     ) -> String {
         // Set up request parameters
-        let sort = match sort_by.as_deref() {
-            Some("stars") => "stars",
-            Some("forks") => "forks",
-            Some("updated") => "updated",
-            _ => "",  // Default is relevance
+        let sort = match sort_by {
+            Some(SortOption::Stars) => "stars",
+            Some(SortOption::Forks) => "forks",
+            Some(SortOption::Updated) => "updated",
+            None => "", // Default is relevance
         };
-        
         let order_param = match order.as_deref() {
             Some("asc") => "asc",
-            _ => "desc",  // Default is descending
+            _ => "desc", // Default is descending
         };
-        
         // Ensure per_page is within limits
         let per_page = per_page.unwrap_or(30).min(100);
         let page = page.unwrap_or(1);
-        
+
         // Construct the API URL
         let mut url = format!(
             "https://api.github.com/search/repositories?q={}",
             urlencoding::encode(&query)
         );
-        
+
         if !sort.is_empty() {
             url.push_str(&format!("&sort={}", sort));
         }
-        
+
         url.push_str(&format!("&order={}", order_param));
         url.push_str(&format!("&per_page={}&page={}", per_page, page));
-        
+
         // Set up the API request
-        let mut req_builder = self.client.get(&url)
-            .header("User-Agent", "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)");
-        
+        let mut req_builder = self.client.get(&url).header(
+            "User-Agent",
+            "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
+        );
+
         // Add authentication token if available
         if let Some(token) = &self.github_token {
             req_builder = req_builder.header("Authorization", format!("token {}", token));
         }
-        
+
         // Execute API request
         let response = match req_builder.send().await {
             Ok(resp) => resp,
             Err(e) => return format!("Failed to search repositories: {}", e),
         };
-        
+
         // Check if the request was successful
         let status = response.status();
         if !status.is_success() {
@@ -203,10 +171,10 @@ impl CargoDocRouter {
                 Ok(text) => text,
                 Err(_) => "Unknown error".to_string(),
             };
-            
+
             return format!("GitHub API error {}: {}", status, error_text);
         }
-        
+
         // Return the raw JSON response
         match response.text().await {
             Ok(text) => text,
@@ -243,7 +211,9 @@ impl CargoDocRouter {
         file_extensions: Option<Vec<String>>,
 
         #[tool(param)]
-        #[schemars(description = "Directories to exclude from search (optional, e.g., [\"target\", \"node_modules\"])")]
+        #[schemars(
+            description = "Directories to exclude from search (optional, e.g., [\"target\", \"node_modules\"])"
+        )]
         _exclude_dirs: Option<Vec<String>>,
     ) -> String {
         // Parse repository URL
@@ -251,26 +221,26 @@ impl CargoDocRouter {
             Ok(result) => result,
             Err(e) => return format!("Error: {}", e),
         };
-        
+
         // Default branch if not specified
         let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
-        
+
         // Get a temporary directory for the repository
         let repo_dir = self.repo_manager.get_repo_dir(&user, &repo);
-        
+
         // Check if repo is already cloned
         let is_cloned = self.repo_manager.is_repo_cloned(&repo_dir).await;
-        
+
         // If repo is not cloned, clone it
         if !is_cloned {
             // Create directory if it doesn't exist
             if let Err(e) = tokio::fs::create_dir_all(&repo_dir).await {
                 return format!("Failed to create directory: {}", e);
             }
-            
+
             // Clone repository
             let clone_url = format!("https://github.com/{}/{}.git", user, repo);
-            
+
             // Clone with git command
             let repo_dir_clone = repo_dir.clone();
             let ref_name_clone = ref_name.clone();
@@ -285,19 +255,22 @@ impl CargoDocRouter {
                         &repo_dir_clone,
                     ])
                     .status();
-                
+
                 match status {
                     Ok(exit_status) if exit_status.success() => Ok(()),
-                    Ok(exit_status) => Err(format!("Git clone failed with status: {}", exit_status)),
+                    Ok(exit_status) => {
+                        Err(format!("Git clone failed with status: {}", exit_status))
+                    }
                     Err(e) => Err(format!("Failed to execute git clone: {}", e)),
                 }
-            }).await;
-            
+            })
+            .await;
+
             // Handle errors during cloning
             if let Err(e) = clone_result {
                 return format!("Failed to run git clone: {}", e);
             }
-            
+
             if let Err(e) = clone_result.unwrap() {
                 return format!("Git clone failed: {}", e);
             }
@@ -311,71 +284,72 @@ impl CargoDocRouter {
                     Ok(dir) => dir,
                     Err(e) => return Err(format!("Failed to get current directory: {}", e)),
                 };
-                
+
                 if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
                     return Err(format!("Failed to change directory: {}", e));
                 }
-                
+
                 // Fetch updates
                 let fetch_status = std::process::Command::new("git")
                     .args(["fetch", "--depth=1", "origin"])
                     .status();
-                
+
                 if let Err(e) = fetch_status {
                     let _ = std::env::set_current_dir(current_dir);
                     return Err(format!("Git fetch failed: {}", e));
                 }
-                
+
                 if !fetch_status.unwrap().success() {
                     let _ = std::env::set_current_dir(current_dir);
                     return Err("Git fetch failed".to_string());
                 }
-                
+
                 // Try to checkout the requested branch
                 let checkout_status = std::process::Command::new("git")
                     .args(["checkout", &ref_name_clone])
                     .status();
-                
+
                 if let Err(e) = checkout_status {
                     let _ = std::env::set_current_dir(current_dir);
                     return Err(format!("Git checkout failed: {}", e));
                 }
-                
+
                 if !checkout_status.unwrap().success() {
                     // Try origin/branch_name
                     let origin_checkout = std::process::Command::new("git")
                         .args(["checkout", &format!("origin/{}", ref_name_clone)])
                         .status();
-                    
+
                     if let Err(e) = origin_checkout {
                         let _ = std::env::set_current_dir(current_dir);
                         return Err(format!("Git checkout failed: {}", e));
                     }
-                    
+
                     if !origin_checkout.unwrap().success() {
                         let _ = std::env::set_current_dir(current_dir);
                         return Err(format!("Branch/tag not found: {}", ref_name_clone));
                     }
                 }
-                
+
                 // Change back to the original directory
                 if let Err(e) = std::env::set_current_dir(current_dir) {
                     return Err(format!("Failed to restore directory: {}", e));
                 }
-                
+
                 Ok(())
-            }).await;
-            
+            })
+            .await;
+
             // Handle update errors
             if let Err(e) = update_result {
                 return format!("Failed to update repository: {}", e);
             }
-            
+
             if let Err(e) = update_result.unwrap() {
                 return format!("Git update failed: {}", e);
             }
         }
-        
+
         // Use git grep for search
         let repo_dir_clone = repo_dir.clone();
         let pattern_clone = pattern.clone();
@@ -385,42 +359,42 @@ impl CargoDocRouter {
                 Ok(dir) => dir,
                 Err(e) => return Err(format!("Failed to get current directory: {}", e)),
             };
-            
+
             if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
                 return Err(format!("Failed to change directory: {}", e));
             }
-            
+
             // Build the git grep command
             let mut cmd = std::process::Command::new("git");
             cmd.arg("grep");
-            
+
             // Add case-sensitivity flag
             if case_sensitive.unwrap_or(false) {
                 // Default is case-sensitive in git grep
             } else {
                 cmd.arg("-i"); // Case-insensitive
             }
-            
+
             // Add regex flag
             if use_regex.unwrap_or(true) {
                 cmd.arg("-E"); // Extended regex
             } else {
                 cmd.arg("-F"); // Fixed strings
             }
-            
+
             // Add line number flag
             cmd.arg("-n");
-            
+
             // Add pattern
             cmd.arg(&pattern_clone);
-            
+
             // Add file extensions if specified
             if let Some(extensions) = &file_extensions {
                 for ext in extensions {
                     cmd.arg(format!("*.{}", ext));
                 }
             }
-            
+
             // Run the grep command
             let output = match cmd.output() {
                 Ok(output) => output,
@@ -429,15 +403,15 @@ impl CargoDocRouter {
                     return Err(format!("Failed to execute git grep: {}", e));
                 }
             };
-            
+
             // Change back to the original directory
             if let Err(e) = std::env::set_current_dir(current_dir) {
                 return Err(format!("Failed to restore directory: {}", e));
             }
-            
+
             // Process the output
             let output_str = String::from_utf8_lossy(&output.stdout).to_string();
-            
+
             // Return the output
             if output.status.success() || output_str.trim().is_empty() {
                 // Either successful with results or no matches found (exit code 1)
@@ -446,25 +420,32 @@ impl CargoDocRouter {
                 let error_str = String::from_utf8_lossy(&output.stderr).to_string();
                 Err(format!("Git grep failed: {}", error_str))
             }
-        }).await;
-        
+        })
+        .await;
+
         // Handle search errors
         if let Err(e) = search_result {
             return format!("Search failed: {}", e);
         }
-        
+
         match search_result.unwrap() {
             Ok(result) => {
                 if result.trim().is_empty() {
-                    format!("No matches found for pattern '{}' in repository {}", pattern, repository)
+                    format!(
+                        "No matches found for pattern '{}' in repository {}",
+                        pattern, repository
+                    )
                 } else {
-                    format!("Search results for '{}' in repository {}:\n\n{}", pattern, repository, result)
+                    format!(
+                        "Search results for '{}' in repository {}:\n\n{}",
+                        pattern, repository, result
+                    )
                 }
-            },
+            }
             Err(e) => format!("Search failed: {}", e),
         }
     }
-    
+
     // GitHub Repository Branches/Tags List Tool
     #[tool(description = "List branches and tags for a GitHub repository")]
     async fn list_repository_refs(
@@ -478,52 +459,50 @@ impl CargoDocRouter {
             Ok(result) => result,
             Err(e) => return format!("Error: {}", e),
         };
-        
+
         // Get a temporary directory for the repository
         let repo_dir = self.repo_manager.get_repo_dir(&user, &repo);
-        
+
         // Check if repo is already cloned
         let is_cloned = self.repo_manager.is_repo_cloned(&repo_dir).await;
-        
+
         // If repo is not cloned, clone it
         if !is_cloned {
             // Create directory if it doesn't exist
             if let Err(e) = tokio::fs::create_dir_all(&repo_dir).await {
                 return format!("Failed to create directory: {}", e);
             }
-            
+
             // Clone repository
             let clone_url = format!("https://github.com/{}/{}.git", user, repo);
-            
+
             // Clone with git command
             let repo_dir_clone = repo_dir.clone();
             let clone_result = tokio::task::spawn_blocking(move || {
                 let status = std::process::Command::new("git")
-                    .args([
-                        "clone",
-                        "--depth=1",
-                        &clone_url,
-                        &repo_dir_clone,
-                    ])
+                    .args(["clone", "--depth=1", &clone_url, &repo_dir_clone])
                     .status();
-                
+
                 match status {
                     Ok(exit_status) if exit_status.success() => Ok(()),
-                    Ok(exit_status) => Err(format!("Git clone failed with status: {}", exit_status)),
+                    Ok(exit_status) => {
+                        Err(format!("Git clone failed with status: {}", exit_status))
+                    }
                     Err(e) => Err(format!("Failed to execute git clone: {}", e)),
                 }
-            }).await;
-            
+            })
+            .await;
+
             // Handle errors during cloning
             if let Err(e) = clone_result {
                 return format!("Failed to run git clone: {}", e);
             }
-            
+
             if let Err(e) = clone_result.unwrap() {
                 return format!("Git clone failed: {}", e);
             }
         }
-        
+
         // Get branches and tags
         let repo_dir_clone = repo_dir.clone();
         let user_clone = user.clone();
@@ -534,31 +513,31 @@ impl CargoDocRouter {
                 Ok(dir) => dir,
                 Err(e) => return Err(format!("Failed to get current directory: {}", e)),
             };
-            
+
             if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
                 return Err(format!("Failed to change directory: {}", e));
             }
-            
+
             // First run git fetch to make sure we have all refs
             let fetch_status = std::process::Command::new("git")
                 .args(["fetch", "--all"])
                 .status();
-            
+
             if let Err(e) = fetch_status {
                 let _ = std::env::set_current_dir(current_dir);
                 return Err(format!("Git fetch failed: {}", e));
             }
-            
+
             if !fetch_status.unwrap().success() {
                 let _ = std::env::set_current_dir(current_dir);
                 return Err("Git fetch failed".to_string());
             }
-            
+
             // Get branches
             let branches_output = std::process::Command::new("git")
                 .args(["branch", "-r"])
                 .output();
-            
+
             let branches_output = match branches_output {
                 Ok(output) => output,
                 Err(e) => {
@@ -566,14 +545,12 @@ impl CargoDocRouter {
                     return Err(format!("Failed to list branches: {}", e));
                 }
             };
-            
+
             let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
-            
+
             // Get tags
-            let tags_output = std::process::Command::new("git")
-                .args(["tag"])
-                .output();
-            
+            let tags_output = std::process::Command::new("git").args(["tag"]).output();
+
             let tags_output = match tags_output {
                 Ok(output) => output,
                 Err(e) => {
@@ -581,18 +558,18 @@ impl CargoDocRouter {
                     return Err(format!("Failed to list tags: {}", e));
                 }
             };
-            
+
             let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
-            
+
             // Change back to the original directory
             if let Err(e) = std::env::set_current_dir(current_dir) {
                 return Err(format!("Failed to restore directory: {}", e));
             }
-            
+
             // Format the output
             let mut result = String::new();
             result.push_str(&format!("Repository: {}/{}\n\n", user_clone, repo_clone));
-            
+
             // Extract and format branches
             let branches: Vec<String> = branches_str
                 .lines()
@@ -605,14 +582,14 @@ impl CargoDocRouter {
                     }
                 })
                 .collect();
-            
+
             // Extract and format tags
             let tags: Vec<String> = tags_str
                 .lines()
                 .map(|line| line.trim().to_string())
                 .filter(|line| !line.is_empty())
                 .collect();
-            
+
             // Add branches section
             result.push_str("## Branches\n");
             if branches.is_empty() {
@@ -622,7 +599,7 @@ impl CargoDocRouter {
                     result.push_str(&format!("- {}\n", branch));
                 }
             }
-            
+
             // Add tags section
             result.push_str("\n## Tags\n");
             if tags.is_empty() {
@@ -632,86 +609,83 @@ impl CargoDocRouter {
                     result.push_str(&format!("- {}\n", tag));
                 }
             }
-            
+
             Ok(result)
-        }).await;
-        
+        })
+        .await;
+
         // Handle errors in fetching refs
         if let Err(e) = refs_result {
             return format!("Failed to fetch refs: {}", e);
         }
-        
+
         match refs_result.unwrap() {
             Ok(result) => result,
             Err(e) => format!("Failed to list refs: {}", e),
         }
     }
-
+    ////
     // Look up documentation for a Rust crate
-    #[tool(description = "Look up documentation for a Rust crate")]
-    async fn lookup_crate(
-        &self,
-        #[tool(param)]
-        #[schemars(description = "The name of the crate to look up")]
-        crate_name: String,
-
-        #[tool(param)]
-        #[schemars(description = "The version of the crate (optional, defaults to latest)")]
-        version: Option<String>,
-    ) -> String {
-        // Check cache first
-        let cache_key = if let Some(ver) = &version {
-            format!("{}:{}", crate_name, ver)
-        } else {
-            crate_name.clone()
-        };
-
-        if let Some(doc) = self.cache.get(&cache_key).await {
-            return doc;
-        }
-
-        // Construct the docs.rs URL for the crate
-        let url = if let Some(ver) = version {
-            format!("https://docs.rs/crate/{}/{}/", crate_name, ver)
-        } else {
-            format!("https://docs.rs/crate/{}/", crate_name)
-        };
-
-        // Fetch the documentation page
-        let response = match self
-            .client
-            .get(&url)
-            .header(
-                "User-Agent",
-                "gitcodes/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
-            )
-            .send()
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => return format!("Failed to fetch documentation: {}", e),
-        };
-
-        if !response.status().is_success() {
-            return format!(
-                "Failed to fetch documentation. Status: {}",
-                response.status()
-            );
-        }
-
-        let html_body = match response.text().await {
-            Ok(body) => body,
-            Err(e) => return format!("Failed to read response body: {}", e),
-        };
-
-        // Convert HTML to markdown
-        let markdown_body = parse_html(&html_body);
-
-        // Cache the markdown result
-        self.cache.set(cache_key, markdown_body.clone()).await;
-
-        markdown_body
-    }
+    //    #[tool(description = "Look up documentation for a Rust crate")]
+    //    async fn lookup_crate(
+    //        &self,
+    //        #[tool(param)]
+    //        #[schemars(description = "The name of the crate to look up")]
+    //        crate_name: String,
+    //
+    //        #[tool(param)]
+    //        #[schemars(description = "The version of the crate (optional, defaults to latest)")]
+    //        version: Option<String>,
+    //    ) -> String {
+    //        // Check cache first
+    //        let cache_key = if let Some(ver) = &version {
+    //            format!("{}:{}", crate_name, ver)
+    //        } else {
+    //            crate_name.clone()
+    //        };
+    //
+    //        // Construct the docs.rs URL for the crate
+    //        let url = if let Some(ver) = version {
+    //            format!("https://docs.rs/crate/{}/{}/", crate_name, ver)
+    //        } else {
+    //            format!("https://docs.rs/crate/{}/", crate_name)
+    //        };
+    //
+    //        // Fetch the documentation page
+    //        let response = match self
+    //            .client
+    //            .get(&url)
+    //            .header(
+    //                "User-Agent",
+    //                "gitcodes/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
+    //            )
+    //            .send()
+    //            .await
+    //        {
+    //            Ok(resp) => resp,
+    //            Err(e) => return format!("Failed to fetch documentation: {}", e),
+    //        };
+    //
+    //        if !response.status().is_success() {
+    //            return format!(
+    //                "Failed to fetch documentation. Status: {}",
+    //                response.status()
+    //            );
+    //        }
+    //
+    //        let html_body = match response.text().await {
+    //            Ok(body) => body,
+    //            Err(e) => return format!("Failed to read response body: {}", e),
+    //        };
+    //
+    //        // Convert HTML to markdown
+    //        let markdown_body = parse_html(&html_body);
+    //
+    //        // Cache the markdown result
+    //        self.cache.set(cache_key, markdown_body.clone()).await;
+    //
+    //        markdown_body
+    //    }
 }
 
 #[tool(tool_box)]
@@ -726,4 +700,12 @@ impl ServerHandler for CargoDocRouter {
             ),
         }
     }
+}
+
+// Define the SortOption enum for GitHub repository sorting
+#[derive(Debug, schemars::JsonSchema)]
+pub enum SortOption {
+    Stars,
+    Forks,
+    Updated,
 }
