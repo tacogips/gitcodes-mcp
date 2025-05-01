@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+mod git_repository;
 
 use html2md::parse_html;
 
@@ -234,120 +235,16 @@ impl CargoDocRouter {
 
         // If repo is not cloned, clone it
         if !is_cloned {
-            // Create directory if it doesn't exist
-            if let Err(e) = tokio::fs::create_dir_all(&repo_dir).await {
-                return format!("Failed to create directory: {}", e);
-            }
-
-            // Clone repository
-            let clone_url = format!("https://github.com/{}/{}.git", user, repo);
-
-            // Clone with git command
-            let repo_dir_clone = repo_dir.clone();
-            let ref_name_clone = ref_name.clone();
-            let clone_result = tokio::task::spawn_blocking(move || {
-                let status = std::process::Command::new("git")
-                    .args([
-                        "clone",
-                        "--depth=1",
-                        "--branch",
-                        &ref_name_clone,
-                        &clone_url,
-                        &repo_dir_clone,
-                    ])
-                    .status();
-
-                match status {
-                    Ok(exit_status) if exit_status.success() => Ok(()),
-                    Ok(exit_status) => {
-                        Err(format!("Git clone failed with status: {}", exit_status))
-                    }
-                    Err(e) => Err(format!("Failed to execute git clone: {}", e)),
-                }
-            })
-            .await;
-
-            // Handle errors during cloning
-            if let Err(e) = clone_result {
-                return format!("Failed to run git clone: {}", e);
-            }
-
-            if let Err(e) = clone_result.unwrap() {
-                return format!("Git clone failed: {}", e);
+            let result = self
+                .clone_repository(&repo_dir, &user, &repo, &ref_name)
+                .await;
+            if let Err(e) = result {
+                return e;
             }
         } else {
-            // Repository exists, update it
-            let repo_dir_clone = repo_dir.clone();
-            let ref_name_clone = ref_name.clone();
-            let update_result = tokio::task::spawn_blocking(move || {
-                // Change to the repository directory
-                let current_dir = match std::env::current_dir() {
-                    Ok(dir) => dir,
-                    Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-                };
-
-                if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
-                    return Err(format!("Failed to change directory: {}", e));
-                }
-
-                // Fetch updates
-                let fetch_status = std::process::Command::new("git")
-                    .args(["fetch", "--depth=1", "origin"])
-                    .status();
-
-                if let Err(e) = fetch_status {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Git fetch failed: {}", e));
-                }
-
-                if !fetch_status.unwrap().success() {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err("Git fetch failed".to_string());
-                }
-
-                // Try to checkout the requested branch
-                let checkout_status = std::process::Command::new("git")
-                    .args(["checkout", &ref_name_clone])
-                    .status();
-
-                if let Err(e) = checkout_status {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Git checkout failed: {}", e));
-                }
-
-                if !checkout_status.unwrap().success() {
-                    // Try origin/branch_name
-                    let origin_checkout = std::process::Command::new("git")
-                        .args(["checkout", &format!("origin/{}", ref_name_clone)])
-                        .status();
-
-                    if let Err(e) = origin_checkout {
-                        let _ = std::env::set_current_dir(current_dir);
-                        return Err(format!("Git checkout failed: {}", e));
-                    }
-
-                    if !origin_checkout.unwrap().success() {
-                        let _ = std::env::set_current_dir(current_dir);
-                        return Err(format!("Branch/tag not found: {}", ref_name_clone));
-                    }
-                }
-
-                // Change back to the original directory
-                if let Err(e) = std::env::set_current_dir(current_dir) {
-                    return Err(format!("Failed to restore directory: {}", e));
-                }
-
-                Ok(())
-            })
-            .await;
-
-            // Handle update errors
-            if let Err(e) = update_result {
-                return format!("Failed to update repository: {}", e);
-            }
-
-            if let Err(e) = update_result.unwrap() {
-                return format!("Git update failed: {}", e);
+            let result = self.update_repository(&repo_dir, &ref_name).await;
+            if let Err(e) = result {
+                return e;
             }
         }
 
@@ -604,38 +501,9 @@ impl CargoDocRouter {
 
         // If repo is not cloned, clone it
         if !is_cloned {
-            // Create directory if it doesn't exist
-            if let Err(e) = tokio::fs::create_dir_all(&repo_dir).await {
-                return format!("Failed to create directory: {}", e);
-            }
-
-            // Clone repository
-            let clone_url = format!("https://github.com/{}/{}.git", user, repo);
-
-            // Clone with git command
-            let repo_dir_clone = repo_dir.clone();
-            let clone_result = tokio::task::spawn_blocking(move || {
-                let status = std::process::Command::new("git")
-                    .args(["clone", "--depth=1", &clone_url, &repo_dir_clone])
-                    .status();
-
-                match status {
-                    Ok(exit_status) if exit_status.success() => Ok(()),
-                    Ok(exit_status) => {
-                        Err(format!("Git clone failed with status: {}", exit_status))
-                    }
-                    Err(e) => Err(format!("Failed to execute git clone: {}", e)),
-                }
-            })
-            .await;
-
-            // Handle errors during cloning
-            if let Err(e) = clone_result {
-                return format!("Failed to run git clone: {}", e);
-            }
-
-            if let Err(e) = clone_result.unwrap() {
-                return format!("Git clone failed: {}", e);
+            match self.clone_repository(&repo_dir, &user, &repo, "main").await {
+                Ok(_) => {}
+                Err(e) => return e,
             }
         }
 
@@ -707,6 +575,478 @@ impl CargoDocRouter {
     //
     //        markdown_body
     //    }
+
+    //```diff
+    //diff --git a/src/tools/gitcodes/mod.rs b/src/tools/gitcodes/mod.rs
+    //index 93199bf..f350b4e 100644
+    //--- a/src/tools/gitcodes/mod.rs
+    //+++ b/src/tools/gitcodes/mod.rs
+    //@@ -1,5 +1,6 @@
+    // use std::collections::HashMap;
+    // use std::sync::Arc;
+    //+mod git_repository;
+    //
+    // use html2md::parse_html;
+    //
+    //@@ -234,120 +235,16 @@ impl CargoDocRouter {
+    //
+    //         // If repo is not cloned, clone it
+    //         if !is_cloned {
+    //-            // Create directory if it doesn't exist
+    //-            if let Err(e) = tokio::fs::create_dir_all(&repo_dir).await {
+    //-                return format!("Failed to create directory: {}", e);
+    //-            }
+    //-
+    //-            // Clone repository
+    //-            let clone_url = format!("https://github.com/{}/{}.git", user, repo);
+    //-
+    //-            // Clone with git command
+    //-            let repo_dir_clone = repo_dir.clone();
+    //-            let ref_name_clone = ref_name.clone();
+    //-            let clone_result = tokio::task::spawn_blocking(move || {
+    //-                let status = std::process::Command::new("git")
+    //-                    .args([
+    //-                        "clone",
+    //-                        "--depth=1",
+    //-                        "--branch",
+    //-                        &ref_name_clone,
+    //-                        &clone_url,
+    //-                        &repo_dir_clone,
+    //-                    ])
+    //-                    .status();
+    //-
+    //-                match status {
+    //-                    Ok(exit_status) if exit_status.success() => Ok(()),
+    //-                    Ok(exit_status) => {
+    //-                        Err(format!("Git clone failed with status: {}", exit_status))
+    //-                    }
+    //-                    Err(e) => Err(format!("Failed to execute git clone: {}", e)),
+    //-                }
+    //-            })
+    //-            .await;
+    //-
+    //-            // Handle errors during cloning
+    //-            if let Err(e) = clone_result {
+    //-                return format!("Failed to run git clone: {}", e);
+    //-            }
+    //-
+    //-            if let Err(e) = clone_result.unwrap() {
+    //-                return format!("Git clone failed: {}", e);
+    //+            let result = self
+    //+                .clone_repository(&repo_dir, &user, &repo, &ref_name)
+    //+                .await;
+    //+            if let Err(e) = result {
+    //+                return e;
+    //             }
+    //         } else {
+    //-            // Repository exists, update it
+    //-            let repo_dir_clone = repo_dir.clone();
+    //-            let ref_name_clone = ref_name.clone();
+    //-            let update_result = tokio::task::spawn_blocking(move || {
+    //-                // Change to the repository directory
+    //-                let current_dir = match std::env::current_dir() {
+    //-                    Ok(dir) => dir,
+    //-                    Err(e) => return Err(format!("Failed to get current directory: {}", e)),
+    //-                };
+    //-
+    //-                if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
+    //-                    return Err(format!("Failed to change directory: {}", e));
+    //-                }
+    //-
+    //-                // Fetch updates
+    //-                let fetch_status = std::process::Command::new("git")
+    //-                    .args(["fetch", "--depth=1", "origin"])
+    //-                    .status();
+    //-
+    //-                if let Err(e) = fetch_status {
+    //-                    let _ = std::env::set_current_dir(current_dir);
+    //-                    return Err(format!("Git fetch failed: {}", e));
+    //-                }
+    //-
+    //-                if !fetch_status.unwrap().success() {
+    //-                    let _ = std::env::set_current_dir(current_dir);
+    //-                    return Err("Git fetch failed".to_string());
+    //-                }
+    //-
+    //-                // Try to checkout the requested branch
+    //-                let checkout_status = std::process::Command::new("git")
+    //-                    .args(["checkout", &ref_name_clone])
+    //-                    .status();
+    //-
+    //-                if let Err(e) = checkout_status {
+    //-                    let _ = std::env::set_current_dir(current_dir);
+    //-                    return Err(format!("Git checkout failed: {}", e));
+    //-                }
+    //-
+    //-                if !checkout_status.unwrap().success() {
+    //-                    // Try origin/branch_name
+    //-                    let origin_checkout = std::process::Command::new("git")
+    //-                        .args(["checkout", &format!("origin/{}", ref_name_clone)])
+    //-                        .status();
+    //-
+    //-                    if let Err(e) = origin_checkout {
+    //-                        let _ = std::env::set_current_dir(current_dir);
+    //-                        return Err(format!("Git checkout failed: {}", e));
+    //-                    }
+    //-
+    //-                    if !origin_checkout.unwrap().success() {
+    //-                        let _ = std::env::set_current_dir(current_dir);
+    //-                        return Err(format!("Branch/tag not found: {}", ref_name_clone));
+    //-                    }
+    //-                }
+    //-
+    //-                // Change back to the original directory
+    //-                if let Err(e) = std::env::set_current_dir(current_dir) {
+    //-                    return Err(format!("Failed to restore directory: {}", e));
+    //-                }
+    //-
+    //-                Ok(())
+    //-            })
+    //-            .await;
+    //-
+    //-            // Handle update errors
+    //-            if let Err(e) = update_result {
+    //-                return format!("Failed to update repository: {}", e);
+    //-            }
+    //-
+    //-            if let Err(e) = update_result.unwrap() {
+    //-                return format!("Git update failed: {}", e);
+    //+            let result = self.update_repository(&repo_dir, &ref_name).await;
+    //+            if let Err(e) = result {
+    //+                return e;
+    //             }
+    //         }
+    //
+    //@@ -447,180 +344,171 @@ impl CargoDocRouter {
+    //         }
+    //     }
+    //
+    //-    // GitHub Repository Branches/Tags List Tool
+    //-    #[tool(description = "List branches and tags for a GitHub repository")]
+    //-    async fn list_repository_refs(
+    //+    // Function to fetch repository refs (branches and tags)
+    //+    async fn fetch_repository_refs(
+    //         &self,
+    //-        #[tool(param)]
+    //-        #[schemars(description = "Repository URL (required) - supports GitHub formats")]
+    //-        repository: String,
+    //-    ) -> String {
+    //-        // Parse repository URL
+    //-        let (user, repo) = match self.repo_manager.parse_repository_url(&repository) {
+    //-            Ok(result) => result,
+    //-            Err(e) => return format!("Error: {}", e),
+    //+        repo_dir: &str,
+    //+        user: &str,
+    //+        repo: &str,
+    //+    ) -> Result<String, String> {
+    //+        // Get branches and tags
+    //+        let repo_dir_clone = repo_dir.to_string();
+    //+        let user_clone = user.to_string();
+    //+        let repo_clone = repo.to_string();
+    //+
+    //+        // Change to the repository directory
+    //+        let current_dir = match std::env::current_dir() {
+    //+            Ok(dir) => dir,
+    //+            Err(e) => return Err(format!("Failed to get current directory: {}", e)),
+    //         };
+    //
+    //-        // Get a temporary directory for the repository
+    //-        let repo_dir = self.repo_manager.get_repo_dir(&user, &repo);
+    //-
+    //-        // Check if repo is already cloned
+    //-        let is_cloned = self.repo_manager.is_repo_cloned(&repo_dir).await;
+    //-
+    //-        // If repo is not cloned, clone it
+    //-        if !is_cloned {
+    //-            // Create directory if it doesn't exist
+    //-            if let Err(e) = tokio::fs::create_dir_all(&repo_dir).await {
+    //-                return format!("Failed to create directory: {}", e);
+    //-            }
+    //+        if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
+    //+            return Err(format!("Failed to change directory: {}", e));
+    //+        }
+    //
+    //-            // Clone repository
+    //-            let clone_url = format!("https://github.com/{}/{}.git", user, repo);
+    //-
+    //-            // Clone with git command
+    //-            let repo_dir_clone = repo_dir.clone();
+    //-            let clone_result = tokio::task::spawn_blocking(move || {
+    //-                let status = std::process::Command::new("git")
+    //-                    .args(["clone", "--depth=1", &clone_url, &repo_dir_clone])
+    //-                    .status();
+    //-
+    //-                match status {
+    //-                    Ok(exit_status) if exit_status.success() => Ok(()),
+    //-                    Ok(exit_status) => {
+    //-                        Err(format!("Git clone failed with status: {}", exit_status))
+    //-                    }
+    //-                    Err(e) => Err(format!("Failed to execute git clone: {}", e)),
+    //-                }
+    //-            })
+    //-            .await;
+    //+        // First run git fetch to make sure we have all refs
+    //+        let fetch_status = std::process::Command::new("git")
+    //+            .args(["fetch", "--all"])
+    //+            .status();
+    //
+    //-            // Handle errors during cloning
+    //-            if let Err(e) = clone_result {
+    //-                return format!("Failed to run git clone: {}", e);
+    //-            }
+    //+        if let Err(e) = fetch_status {
+    //+            let _ = std::env::set_current_dir(current_dir);
+    //+            return Err(format!("Git fetch failed: {}", e));
+    //+        }
+    //
+    //-            if let Err(e) = clone_result.unwrap() {
+    //-                return format!("Git clone failed: {}", e);
+    //-            }
+    //+        if !fetch_status.unwrap().success() {
+    //+            let _ = std::env::set_current_dir(current_dir);
+    //+            return Err("Git fetch failed".to_string());
+    //         }
+    //
+    //-        // Get branches and tags
+    //-        let repo_dir_clone = repo_dir.clone();
+    //-        let user_clone = user.clone();
+    //-        let repo_clone = repo.clone();
+    //-        let refs_result = tokio::task::spawn_blocking(move || {
+    //-            // Change to the repository directory
+    //-            let current_dir = match std::env::current_dir() {
+    //-                Ok(dir) => dir,
+    //-                Err(e) => return Err(format!("Failed to get current directory: {}", e)),
+    //-            };
+    //+        // Get branches
+    //+        let branches_output = std::process::Command::new("git")
+    //+            .args(["branch", "-r"])
+    //+            .output();
+    //
+    //-            if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
+    //-                return Err(format!("Failed to change directory: {}", e));
+    //+        let branches_output = match branches_output {
+    //+            Ok(output) => output,
+    //+            Err(e) => {
+    //+                let _ = std::env::set_current_dir(current_dir);
+    //+                return Err(format!("Failed to list branches: {}", e));
+    //             }
+    //+        };
+    //
+    //-            // First run git fetch to make sure we have all refs
+    //-            let fetch_status = std::process::Command::new("git")
+    //-                .args(["fetch", "--all"])
+    //-                .status();
+    //+        let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
+    //
+    //-            if let Err(e) = fetch_status {
+    //-                let _ = std::env::set_current_dir(current_dir);
+    //-                return Err(format!("Git fetch failed: {}", e));
+    //-            }
+    //+        // Get tags
+    //+        let tags_output = std::process::Command::new("git").args(["tag"]).output();
+    //
+    //-            if !fetch_status.unwrap().success() {
+    //+        let tags_output = match tags_output {
+    //+            Ok(output) => output,
+    //+            Err(e) => {
+    //                 let _ = std::env::set_current_dir(current_dir);
+    //-                return Err("Git fetch failed".to_string());
+    //+                return Err(format!("Failed to list tags: {}", e));
+    //             }
+    //+        };
+    //
+    //-            // Get branches
+    //-            let branches_output = std::process::Command::new("git")
+    //-                .args(["branch", "-r"])
+    //-                .output();
+    //-
+    //-            let branches_output = match branches_output {
+    //-                Ok(output) => output,
+    //-                Err(e) => {
+    //-                    let _ = std::env::set_current_dir(current_dir);
+    //-                    return Err(format!("Failed to list branches: {}", e));
+    //-                }
+    //-            };
+    //-
+    //-            let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
+    //+        let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
+    //
+    //-            // Get tags
+    //-            let tags_output = std::process::Command::new("git").args(["tag"]).output();
+    //+        // Change back to the original directory
+    //+        if let Err(e) = std::env::set_current_dir(current_dir) {
+    //+            return Err(format!("Failed to restore directory: {}", e));
+    //+        }
+    //
+    //-            let tags_output = match tags_output {
+    //-                Ok(output) => output,
+    //-                Err(e) => {
+    //-                    let _ = std::env::set_current_dir(current_dir);
+    //-                    return Err(format!("Failed to list tags: {}", e));
+    //+        // Format the output
+    //+        let mut result = String::new();
+    //+        result.push_str(&format!(
+    //+            "Repository: {}/{}
+    //+
+    //+",
+    //+            user_clone, repo_clone
+    //+        ));
+    //+
+    //+        // Extract and format branches
+    //+        let branches: Vec<String> = branches_str
+    //+            .lines()
+    //+            .filter_map(|line| {
+    //+                let line = line.trim();
+    //+                if line.starts_with("origin/") && !line.contains("HEAD") {
+    //+                    Some(line.trim_start_matches("origin/").to_string())
+    //+                } else {
+    //+                    None
+    //                 }
+    //-            };
+    //-
+    //-            let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
+    //-
+    //-            // Change back to the original directory
+    //-            if let Err(e) = std::env::set_current_dir(current_dir) {
+    //-                return Err(format!("Failed to restore directory: {}", e));
+    //+            })
+    //+            .collect();
+    //+
+    //+        // Extract and format tags
+    //+        let tags: Vec<String> = tags_str
+    //+            .lines()
+    //+            .map(|line| line.trim().to_string())
+    //+            .filter(|line| !line.is_empty())
+    //+            .collect();
+    //+
+    //+        // Add branches section
+    //+        result.push_str(
+    //+            "## Branches
+    //+",
+    //+        );
+    //+        if branches.is_empty() {
+    //+            result.push_str(
+    //+                "No branches found
+    //+",
+    //+            );
+    //+        } else {
+    //+            for branch in branches {
+    //+                result.push_str(&format!("- {}\n", branch));
+    //             }
+    //+        }
+    //
+    //-            // Format the output
+    //-            let mut result = String::new();
+    //-            result.push_str(&format!("Repository: {}/{}\n\n", user_clone, repo_clone));
+    //-
+    //-            // Extract and format branches
+    //-            let branches: Vec<String> = branches_str
+    //-                .lines()
+    //-                .filter_map(|line| {
+    //-                    let line = line.trim();
+    //-                    if line.starts_with("origin/") && !line.contains("HEAD") {
+    //-                        Some(line.trim_start_matches("origin/").to_string())
+    //-                    } else {
+    //-                        None
+    //-                    }
+    //-                })
+    //-                .collect();
+    //-
+    //-            // Extract and format tags
+    //-            let tags: Vec<String> = tags_str
+    //-                .lines()
+    //-                .map(|line| line.trim().to_string())
+    //-                .filter(|line| !line.is_empty())
+    //-                .collect();
+    //-
+    //-            // Add branches section
+    //-            result.push_str("## Branches\n");
+    //-            if branches.is_empty() {
+    //-                result.push_str("No branches found\n");
+    //-            } else {
+    //-                for branch in branches {
+    //-                    result.push_str(&format!("- {}\n", branch));
+    //-                }
+    //+        // Add tags section
+    //+        result.push_str(
+    //+            "
+    //+## Tags
+    //+",
+    //+        );
+    //+        if tags.is_empty() {
+    //+            result.push_str(
+    //+                "No tags found
+    //+",
+    //+            );
+    //+        } else {
+    //+            for tag in tags {
+    //+                result.push_str(&format!("- {}\n", tag));
+    //             }
+    //+        }
+    //
+    //-            // Add tags section
+    //-            result.push_str("\n## Tags\n");
+    //-            if tags.is_empty() {
+    //-                result.push_str("No tags found\n");
+    //-            } else {
+    //-                for tag in tags {
+    //-                    result.push_str(&format!("- {}\n", tag));
+    //-                }
+    //-            }
+    //+        Ok(result)
+    //+    }
+    //
+    //-            Ok(result)
+    //-        })
+    //-        .await;
+    //+    // GitHub Repository Branches/Tags List Tool
+    //+    #[tool(description = "List branches and tags for a GitHub repository")]
+    //+    async fn list_repository_refs(
+    //+        &self,
+    //+        #[tool(param)]
+    //+        #[schemars(description = "Repository URL (required) - supports GitHub formats")]
+    //+        repository: String,
+    //+    ) -> String {
+    //+        // Parse repository URL
+    //+        let (user, repo) = match self.repo_manager.parse_repository_url(&repository) {
+    //+            Ok(result) => result,
+    //+            Err(e) => return format!("Error: {}", e),
+    //+        };
+    //
+    //-        // Handle errors in fetching refs
+    //-        if let Err(e) = refs_result {
+    //-            return format!("Failed to fetch refs: {}", e);
+    //+        // Get a temporary directory for the repository
+    //+        let repo_dir = self.repo_manager.get_repo_dir(&user, &repo);
+    //+
+    //+        // Check if repo is already cloned
+    //+        let is_cloned = self.repo_manager.is_repo_cloned(&repo_dir).await;
+    //+
+    //+        // If repo is not cloned, clone it
+    //+        if !is_cloned {
+    //+            match self.clone_repository(&repo_dir, &user, &repo, "main").await {
+    //+                Ok(_) => {},
+    //+                Err(e) => return e,
+    //+            }
+    //         }
+    //
+    //-        match refs_result.unwrap() {
+    //+        // Fetch repository refs using the extracted function
+    //+        match self.fetch_repository_refs(&repo_dir, &user, &repo).await {
+    //             Ok(result) => result,
+    //             Err(e) => format!("Failed to list refs: {}", e),
+    //         }
+    //@@ -640,7 +528,7 @@ impl CargoDocRouter {
+    //     //    ) -> String {
+    //     //        // Check cache first
+    //     //        let cache_key = if let Some(ver) = &version {
+    //-    //            format!("{}:{}", crate_name, ver)
+    //+    //            format!("{}}:{}", crate_name, ver)
+    //     //        } else {
+    //     //            crate_name.clone()
+    //     //        };
+    // ```
+    //
 }
 
 #[tool(tool_box)]
