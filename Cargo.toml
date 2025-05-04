@@ -37,7 +37,7 @@ anyhow = "1.0"
 rand = "0.8"
 clap = { version = "4.4", features = ["derive"] }
 html2md = "0.2.14"
-lumin = "0.1.4"
+lumin = "0.1.5"
 
 [dev-dependencies]
 # Testing utilities
