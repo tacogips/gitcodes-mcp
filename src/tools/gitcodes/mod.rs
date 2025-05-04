@@ -255,20 +255,18 @@ impl CargoDocRouter {
             search_options.case_sensitive = case_sensitive.unwrap_or(false);
 
             // Execute the search
-            match search::search_files(&pattern_clone, &repo_dir_clone, &search_options) {
-                Ok(result) => {
+            match search::search_files(&pattern_clone, std::path::Path::new(&repo_dir_clone), &search_options) {
+                Ok(results) => {
                     // Format results
                     let mut output = String::new();
 
-                    for file_match in result.matches {
-                        for line_match in file_match.line_matches {
-                            output.push_str(&format!(
-                                "{}:{}: {}\n",
-                                file_match.path.display(),
-                                line_match.line_number,
-                                line_match.line
-                            ));
-                        }
+                    for result in results {
+                        output.push_str(&format!(
+                            "{}:{}: {}\n",
+                            result.file_path.display(),
+                            result.line_number,
+                            result.line_content
+                        ));
                     }
 
                     output

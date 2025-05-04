@@ -37,6 +37,55 @@ When making significant changes, update devlog.md to document your work by follo
 - Use Rust's ownership system effectively (avoid unnecessary clones)
 - Actively use cargo-docs (mcp) to investigate crate usage patterns
 
+## MCP Tool Guidelines
+
+When working with MCP tool functions, always enhance tool descriptions and provide detailed usage examples without being explicitly asked:
+
+### Tool Description Annotations
+
+For the `#[tool(description = "...")]` annotation:
+
+- Write 2-3 sentences explaining the tool's purpose
+- Include what the tool returns (format, structure)
+- Explain when an AI agent should use this tool vs. other similar tools
+- Add 2-4 complete JSON call examples showing different parameter combinations
+- Format examples using code blocks with proper JSON syntax:
+  ```
+  `{"name": "tool_name", "arguments": {"param1": "value1", "param2": "value2"}}`
+  ```
+
+Example of good tool description:
+
+```rust
+#[tool(description = "Search for Rust crates on crates.io (returns JSON or markdown). This tool helps you discover relevant Rust libraries by searching the official registry. Use this when you need to find crates for specific functionality or alternatives to known crates. Example usage: `{\"name\": \"search_crates\", \"arguments\": {\"query\": \"http client\"}}`. With limit: `{\"name\": \"search_crates\", \"arguments\": {\"query\": \"json serialization\", \"limit\": 20}}`. For specific features: `{\"name\": \"search_crates\", \"arguments\": {\"query\": \"async database\", \"limit\": 5}}`")]
+```
+
+### Parameter Description Annotations
+
+For the `#[schemars(description = "...")]` annotation:
+
+- Explain each parameter's purpose in detail (1-2 sentences)
+- Specify expected format and valid values
+- Include constraints and validation rules
+- Provide example values showing format variations
+- For optional parameters, explain default behavior when omitted
+
+Example of good parameter description:
+
+```rust
+#[schemars(description = "The name of the crate to look up. Must be the exact crate name as published on crates.io (e.g., 'serde', 'tokio', 'reqwest'). This parameter is case-sensitive and must match exactly how the crate is published. For standard library types, use 'std' as the crate name.")]
+```
+
+### Server Instructions
+
+In the ServerHandler's get_info() implementation:
+
+- Organize instructions with clear markdown headings
+- Include a concise tool overview section
+- Provide JSON examples for each tool with proper formatting
+- Show tool combinations for common use cases
+- Include a troubleshooting section for common errors
+
 ## Development Guidelines
 
 ### Documentation Terminology

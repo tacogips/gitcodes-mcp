@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/d6e/gitcodes-mcp"
 
 [workspace]
-members = ["."]
+members = [".", "tmp"]
 
 [dependencies]
 rmcp = { version = "0.1", features = [
