@@ -4,6 +4,7 @@ mod git_repository;
 
 use html2md::parse_html;
 
+use lumin::search::{SearchOptions, SearchResult};
 use rand::Rng;
 use reqwest::Client;
 use tokio::sync::Mutex;
@@ -248,77 +249,44 @@ impl CargoDocRouter {
             }
         }
 
-        // Use git grep for search
+        // Use lumin for search
         let repo_dir_clone = repo_dir.clone();
         let pattern_clone = pattern.clone();
-        let search_result = {
-            // Change to the repository directory
-            let current_dir = match std::env::current_dir() {
-                Ok(dir) => dir,
-                Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-            };
-
-            if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
-                return Err(format!("Failed to change directory: {}", e));
+        let search_result = tokio::task::spawn_blocking(move || {
+            // Create search options
+            let mut search_options = SearchOptions::default();
+            
+            // Configure case sensitivity
+            search_options.case_sensitive = case_sensitive.unwrap_or(false);
+            
+            // Configure regex usage
+            search_options.use_regex = use_regex.unwrap_or(true);
+            
+            // Configure file extensions
+            if let Some(extensions) = file_extensions {
+                search_options.file_extensions = extensions;
             }
-
-            // Build the git grep command
-            let mut cmd = std::process::Command::new("git");
-            cmd.arg("grep");
-
-            // Add case-sensitivity flag
-            if case_sensitive.unwrap_or(false) {
-                // Default is case-sensitive in git grep
-            } else {
-                cmd.arg("-i"); // Case-insensitive
+            
+            // Execute the search
+            match SearchResult::search(&pattern_clone, &repo_dir_clone, &search_options) {
+                Ok(result) => {
+                    // Format results
+                    let mut output = String::new();
+                    
+                    for file_match in result.matches {
+                        for line_match in file_match.line_matches {
+                            output.push_str(&format!("{}:{}: {}\n", 
+                                file_match.path.display(), 
+                                line_match.line_number, 
+                                line_match.line));
+                        }
+                    }
+                    
+                    Ok(output)
+                },
+                Err(e) => Err(format!("Lumin search failed: {}", e))
             }
-
-            // Add regex flag
-            if use_regex.unwrap_or(true) {
-                cmd.arg("-E"); // Extended regex
-            } else {
-                cmd.arg("-F"); // Fixed strings
-            }
-
-            // Add line number flag
-            cmd.arg("-n");
-
-            // Add pattern
-            cmd.arg(&pattern_clone);
-
-            // Add file extensions if specified
-            if let Some(extensions) = &file_extensions {
-                for ext in extensions {
-                    cmd.arg(format!("*.{}", ext));
-                }
-            }
-
-            // Run the grep command
-            let output = match cmd.output() {
-                Ok(output) => output,
-                Err(e) => {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Failed to execute git grep: {}", e));
-                }
-            };
-
-            // Change back to the original directory
-            if let Err(e) = std::env::set_current_dir(current_dir) {
-                return Err(format!("Failed to restore directory: {}", e));
-            }
-
-            // Process the output
-            let output_str = String::from_utf8_lossy(&output.stdout).to_string();
-
-            // Return the output
-            if output.status.success() || output_str.trim().is_empty() {
-                // Either successful with results or no matches found (exit code 1)
-                Ok(output_str)
-            } else {
-                let error_str = String::from_utf8_lossy(&output.stderr).to_string();
-                Err(format!("Git grep failed: {}", error_str))
-            }
-        };
+        }).await.map_err(|e| format!("Search task failed: {}", e))?;
 
         // Handle search errors
         if let Err(e) = search_result {

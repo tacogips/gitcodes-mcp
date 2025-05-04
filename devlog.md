@@ -11,6 +11,19 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-04: Implement Lumin Integration for Code Search
+
+- Added `lumin` v1.0.3 dependency for file search functionality
+- Replaced direct git grep command execution with lumin's search API
+- Improved code organization and error handling in the code search functionality
+- Aligned implementation with the original specification in spec.md
+
+### 2024-05-04: Dependency Documentation Update
+
+- Confirmed the removal of `lumin` dependency as documented in the implementation challenges
+- Noted the discrepancy between spec.md (which references lumin) and the actual implementation
+- Verified that direct git command execution is used instead of lumin for grepping
+
 ### 2024-05-01: Initial Implementation of Model Context Protocol for GitHub
 
 Implemented the core functionality specified in `spec.md`:
