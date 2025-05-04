@@ -77,6 +77,27 @@ Implemented the core functionality specified in `spec.md`:
    - Implemented graceful fallbacks for commands that might fail
    - Added proper resource cleanup in error cases
 
+### 2024-05-05: GitHub Authentication Documentation
+
+Added detailed documentation regarding the use of the `GITCODE_MCP_GITHUB_TOKEN` environment variable:
+
+- The environment variable `GITCODE_MCP_GITHUB_TOKEN` is used for GitHub API authentication
+- Authentication is optional but recommended to avoid rate limiting:
+  - Unauthenticated requests: Limited to 60 requests/hour
+  - Authenticated requests: 5,000 requests/hour
+- Token usage:
+  - When provided, the token is stored in memory when MCP starts
+  - It is not referenced from the environment variable after initialization
+  - For accessing private repositories, the token must have the `repo` scope
+- When token is not provided:
+  - The system falls back to unauthenticated requests
+  - All public repository operations still work
+  - Rate limits are significantly lower (60 vs 5,000 requests/hour)
+  - Private repositories will not be accessible
+- Token security:
+  - Tokens are never logged or exposed in error messages
+  - Tokens are only used for GitHub API requests, not for local operations
+
 ### Future Improvements
 
 1. **Security Enhancements**

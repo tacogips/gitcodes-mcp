@@ -38,6 +38,26 @@ cargo run --bin gitcodes http --address 0.0.0.0:3000
 cargo run --bin gitcodes http --debug
 ```
 
+### GitHub Authentication
+
+The GitHub API tools support both authenticated and unauthenticated requests:
+
+```bash
+# Set GitHub personal access token for higher rate limits (optional)
+export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+
+# Run with authentication
+cargo run --bin gitcodes http
+```
+
+**Note**:
+- Authentication is **optional** but recommended to avoid rate limits
+- Without a token, you're limited to 60 requests/hour (vs 5,000/hour with a token)
+- All operations on public repositories work without a token
+- Private repositories require a token with the `repo` scope
+- The token is read once at startup and stored in memory
+```
+
 ### Directly Testing Documentation Tools
 
 You can directly test the documentation tools from the command line without starting a server:

@@ -9,10 +9,13 @@ When working with this codebase, refer to the following key documents:
 - **CLAUDE.md** (this file): Primary instructions for working with the codebase
 - **spec.md**: Library specifications and implementation details
 - **devlog.md**: Development log with design decisions, implementation details, and roadmap
+- **Rustdoc comments**: In-code documentation accessible via `cargo doc --open`
+- **README.md**: User-facing documentation and usage instructions
 
 For library-specific specifications and implementation details, refer to spec.md.
 To understand the history, architecture decisions, and implementation details of this project, always refer to the devlog.md file.
-When making significant changes, update devlog.md to document your work by following the instructions at the top of that file.
+For API details and function-level documentation, consult the Rustdoc comments in the source code.
+When making significant changes, update both devlog.md and relevant Rustdoc comments to document your work.
 
 ## Build & Run Commands
 
@@ -98,7 +101,14 @@ In this project, the term "documentation" or "project documentation" refers to t
 - devlog.md: Development history documentation for AI agents who will develop the code in the future
 - README.md: Documentation for users of this library or application
 
-When asked to update "documentation", you should check and update all of these documentation sources for consistency.
+When asked to "update documentation", "add to the documentation", or "edit the documentation", you should:
+
+1. Update all relevant markdown documentation files (README.md, spec.md, devlog.md)
+2. Update Rustdoc comments in the source code when applicable
+3. Ensure consistency across all documentation sources
+4. Follow Rust documentation best practices (///, //! format for Rustdoc)
+
+IMPORTANT: When a user asks to document something, always include updates to both the markdown files AND Rustdoc comments in the code itself. This dual-documentation approach ensures that information is available both to users reading the documentation files and to developers examining the code directly.
 
 ### Generating Process
 
