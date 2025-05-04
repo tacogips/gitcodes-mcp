@@ -250,30 +250,34 @@ impl CargoDocRouter {
         let search_result = tokio::task::spawn_blocking(move || {
             // Create search options
             let mut search_options = SearchOptions::default();
-            
+
             // Configure case sensitivity
             search_options.case_sensitive = case_sensitive.unwrap_or(false);
-            
+
             // Execute the search
-            match search::search(&pattern_clone, &repo_dir_clone, &search_options) {
+            match search::search_files(&pattern_clone, &repo_dir_clone, &search_options) {
                 Ok(result) => {
                     // Format results
                     let mut output = String::new();
-                    
+
                     for file_match in result.matches {
                         for line_match in file_match.line_matches {
-                            output.push_str(&format!("{}:{}: {}\n", 
-                                file_match.path.display(), 
-                                line_match.line_number, 
-                                line_match.line));
+                            output.push_str(&format!(
+                                "{}:{}: {}\n",
+                                file_match.path.display(),
+                                line_match.line_number,
+                                line_match.line
+                            ));
                         }
                     }
-                    
+
                     output
-                },
-                Err(e) => format!("Lumin search failed: {}", e)
+                }
+                Err(e) => format!("Lumin search failed: {}", e),
             }
-        }).await.map_err(|e| format!("Search task failed: {}", e));
+        })
+        .await
+        .map_err(|e| format!("Search task failed: {}", e));
 
         // Handle search errors
         if let Err(e) = &search_result {
