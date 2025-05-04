@@ -1,3 +1,40 @@
+//! GitHub tools for interacting with repositories and code search
+//! 
+//! This module provides tools for:
+//! - Searching GitHub repositories
+//! - Searching code within repositories (grep functionality)
+//! - Listing branches and tags of repositories
+//!
+//! ## Authentication
+//!
+//! These tools support both authenticated and unauthenticated access to GitHub:
+//!
+//! ```
+//! # Authentication is optional but recommended to avoid rate limiting
+//! export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+//! ```
+//!
+//! ### GitHub Token (`GITCODE_MCP_GITHUB_TOKEN`)
+//!
+//! - **Purpose**: Authenticates requests to GitHub API
+//! - **Requirement**: Optional, but strongly recommended to avoid rate limits
+//! - **Rate Limits**:
+//!   - Without token: 60 requests/hour (unauthenticated)
+//!   - With token: 5,000 requests/hour (authenticated)
+//! - **Usage**: Set as environment variable before starting the server
+//! - **Security**: Token is read once at startup and stored in memory
+//! - **Permissions**: For private repositories, token must have `repo` scope
+//!
+//! ### When Token is NOT Required
+//!
+//! A GitHub token is not required if:
+//! - You're only accessing public repositories
+//! - You're making few requests (under 60 per hour)
+//! - You don't need to access private repositories
+//!
+//! All public repository operations work without authentication, but with
+//! significantly lower rate limits.
+
 mod git_repository;
 
 use lumin::{search, search::SearchOptions};
@@ -6,7 +43,10 @@ use reqwest::Client;
 
 use rmcp::{model::*, schemars, tool, ServerHandler};
 
-// Repository manager for clone operations
+/// Repository manager for Git operations
+///
+/// Handles cloning, updating, and retrieving information from GitHub repositories.
+/// Uses system temporary directories to store cloned repositories.
 #[derive(Clone)]
 pub struct RepositoryManager {
     temp_dir_base: String,
@@ -67,10 +107,29 @@ impl RepositoryManager {
     }
 }
 
+/// Main router for GitHub and crate documentation functionality
+///
+/// This struct handles GitHub API requests and provides tools for:
+/// - Repository searching
+/// - Code searching within repositories
+/// - Branch and tag listing
+/// - (Planned) Rust crate documentation
+///
+/// # Authentication
+///
+/// The router handles GitHub authentication through the `GITCODE_MCP_GITHUB_TOKEN` 
+/// environment variable. This token is:
+/// - Read once at startup and stored in memory
+/// - Used for all GitHub API requests
+/// - Optional, but recommended to avoid rate limiting (60 vs 5,000 requests/hour)
+/// - Required for accessing private repositories (with `repo` scope)
 #[derive(Clone)]
 pub struct CargoDocRouter {
+    /// HTTP client for API requests
     pub client: Client,
+    /// Manager for repository operations
     pub repo_manager: RepositoryManager,
+    /// GitHub authentication token (if provided via GITCODE_MCP_GITHUB_TOKEN)
     pub github_token: Option<String>,
 }
 
@@ -82,7 +141,19 @@ impl Default for CargoDocRouter {
 
 #[tool(tool_box)]
 impl CargoDocRouter {
+    /// Creates a new router instance
+    ///
+    /// Initializes:
+    /// - HTTP client for API requests
+    /// - Repository manager for Git operations
+    /// - GitHub token from GITCODE_MCP_GITHUB_TOKEN environment variable (if available)
+    ///
+    /// # Authentication
+    ///
+    /// The GitHub token is read from the `GITCODE_MCP_GITHUB_TOKEN` environment variable.
+    /// If not provided, the system still works but with lower rate limits (60 requests/hour).
     pub fn new() -> Self {
+        // Read GitHub token from environment variable
         let github_token = std::env::var("GITCODE_MCP_GITHUB_TOKEN").ok();
 
         Self {
@@ -92,28 +163,43 @@ impl CargoDocRouter {
         }
     }
 
-    // GitHub Repository Search Tool
-    #[tool(description = "Search for GitHub repositories")]
+    /// Search for GitHub repositories using the GitHub API
+    ///
+    /// This method searches for repositories on GitHub based on the provided query.
+    /// It supports sorting, pagination, and uses GitHub's search API.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour
+    /// - With a token, allows 5,000 requests/hour
+    ///
+    /// # Rate Limiting
+    ///
+    /// GitHub API has rate limits that vary based on authentication:
+    /// - Unauthenticated: 60 requests/hour
+    /// - Authenticated: 5,000 requests/hour
+    #[tool(description = "Search for GitHub repositories. Searches GitHub's API for repositories matching your query. Supports sorting by stars, forks, or update date, and pagination for viewing more results. Example usage: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"rust http client\"}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"game engine\", \"sort_by\": \"Stars\", \"order\": \"Descending\"}}`. With pagination: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"machine learning\", \"per_page\": 50, \"page\": 2}}`")]
     async fn search_repositories(
         &self,
         #[tool(param)]
-        #[schemars(description = "Search query (required)")]
+        #[schemars(description = "Search query (required) - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'. Maximum length is 256 characters.")]
         query: String,
 
         #[tool(param)]
-        #[schemars(description = "How to sort results (optional, default is 'relevance')")]
+        #[schemars(description = "How to sort results (optional, default is 'relevance'). Options: Stars (most starred), Forks (most forked), Updated (most recently updated). When unspecified, results are sorted by best match to the query.")]
         sort_by: Option<SortOption>,
 
         #[tool(param)]
-        #[schemars(description = "Sort order (optional, default is 'descending')")]
+        #[schemars(description = "Sort order (optional, default is 'descending'). Options: Ascending (lowest to highest), Descending (highest to lowest). For date-based sorting like 'Updated', Descending means newest first.")]
         order: Option<OrderOption>,
 
         #[tool(param)]
-        #[schemars(description = "Results per page (optional, default is 30, max 100)")]
+        #[schemars(description = "Results per page (optional, default is 30, max 100). Controls how many repositories are returned in a single response. Higher values provide more comprehensive results but may include less relevant items.")]
         per_page: Option<u8>,
 
         #[tool(param)]
-        #[schemars(description = "Result page number (optional, default is 1)")]
+        #[schemars(description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages).")]
         page: Option<u32>,
     ) -> String {
         // Set up request parameters
@@ -180,37 +266,52 @@ impl CargoDocRouter {
         }
     }
 
-    // GitHub Repository Code Grep Tool
-    #[tool(description = "Search code in a GitHub repository")]
+    /// Search code in a GitHub repository
+    ///
+    /// This tool clones or updates the repository locally, then performs a code search
+    /// using the specified pattern. It supports both public and private repositories.
+    ///
+    /// # Authentication
+    ///
+    /// - For public repositories: No authentication needed
+    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    ///
+    /// # Implementation Note
+    ///
+    /// This tool uses a combination of git operations and the lumin search library:
+    /// 1. Repository is cloned or updated locally
+    /// 2. Code search is performed on the local files
+    /// 3. Results are formatted and returned
+    #[tool(description = "Search code in a GitHub repository. Clones the repository locally and searches for pattern matches in the code. Supports public and private repositories, branch/tag selection, and regex search. Example usage: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"https://github.com/serde-rs/serde\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`")]
     async fn grep_repository(
         &self,
         #[tool(param)]
-        #[schemars(description = "Repository URL (required) - supports GitHub formats")]
+        #[schemars(description = "Repository URL (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', or 'github:user/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope.")]
         repository: String,
 
         #[tool(param)]
-        #[schemars(description = "Branch or tag (optional, default is main or master)")]
+        #[schemars(description = "Branch or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to search in. If the specified branch doesn't exist, falls back to 'main' or 'master'.")]
         ref_name: Option<String>,
 
         #[tool(param)]
-        #[schemars(description = "Search pattern (required)")]
+        #[schemars(description = "Search pattern (required) - the text pattern to search for in the code. Supports regular expressions by default.")]
         pattern: String,
 
         #[tool(param)]
-        #[schemars(description = "Whether to be case-sensitive (optional, default is false)")]
+        #[schemars(description = "Whether to be case-sensitive (optional, default is false). When true, matching is exact with respect to letter case. When false, matches any letter case.")]
         case_sensitive: Option<bool>,
 
         #[tool(param)]
-        #[schemars(description = "Whether to use regex (optional, default is true)")]
+        #[schemars(description = "Whether to use regex (optional, default is true). Controls whether the pattern is interpreted as a regular expression or literal text.")]
         use_regex: Option<bool>,
 
         #[tool(param)]
-        #[schemars(description = "File extensions to search (optional, e.g., [\"rs\", \"toml\"])")]
+        #[schemars(description = "File extensions to search (optional, e.g., [\"rs\", \"toml\"]). Limits search to files with specified extensions. Omit to search all text files.")]
         file_extensions: Option<Vec<String>>,
 
         #[tool(param)]
         #[schemars(
-            description = "Directories to exclude from search (optional, e.g., [\"target\", \"node_modules\"])"
+            description = "Directories to exclude from search (optional, e.g., [\"target\", \"node_modules\"]). Skips specified directories during search. Common build directories are excluded by default."
         )]
         _exclude_dirs: Option<Vec<String>>,
     ) -> String {
@@ -431,12 +532,27 @@ impl CargoDocRouter {
         Ok(result)
     }
 
-    // GitHub Repository Branches/Tags List Tool
-    #[tool(description = "List branches and tags for a GitHub repository")]
+    /// List branches and tags for a GitHub repository
+    ///
+    /// This tool retrieves a list of all branches and tags for the specified repository.
+    /// It supports both public and private repositories.
+    ///
+    /// # Authentication
+    ///
+    /// - For public repositories: No authentication needed
+    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    ///
+    /// # Implementation Note
+    ///
+    /// This tool:
+    /// 1. Clones or updates the repository locally
+    /// 2. Fetches all branches and tags
+    /// 3. Formats the results into a readable format
+    #[tool(description = "List branches and tags for a GitHub repository. Clones the repository locally and retrieves all branches and tags. Returns a formatted list of available references. Example usage: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository\": \"https://github.com/rust-lang/rust\"}}`. Another example: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository\": \"github:tokio-rs/tokio\"}}`")]
     async fn list_repository_refs(
         &self,
         #[tool(param)]
-        #[schemars(description = "Repository URL (required) - supports GitHub formats")]
+        #[schemars(description = "Repository URL (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', or 'github:user/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope.")]
         repository: String,
     ) -> String {
         // Parse repository URL
@@ -654,29 +770,67 @@ impl CargoDocRouter {
 
 #[tool(tool_box)]
 impl ServerHandler for CargoDocRouter {
+    /// Provides information about this MCP server
+    ///
+    /// Returns server capabilities, protocol version, and usage instructions
     fn get_info(&self) -> ServerInfo {
+        let auth_status = if self.github_token.is_some() {
+            "Authenticated GitHub API access enabled (5,000 requests/hour)"
+        } else {
+            "Unauthenticated GitHub API access (60 requests/hour limit). Set GITCODE_MCP_GITHUB_TOKEN for higher limits."
+        };
+        
+        let instructions = format!(
+            "# GitHub and Rust Documentation MCP Server
+            
+## Authentication Status
+{}
+
+## Available Tools
+- `search_repositories`: Search for GitHub repositories
+- `grep_repository`: Search code within a GitHub repository
+- `list_repository_refs`: List branches and tags for a repository
+
+## Authentication
+To increase rate limits and access private repositories:
+```
+export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+```
+
+GitHub token is optional for public repositories but required for:
+- Higher rate limits (5,000 vs 60 requests/hour)
+- Accessing private repositories (requires 'repo' scope)
+", auth_status);
+
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some(
-                "GitHub and Rust Documentation MCP Server for accessing repository information and Rust crate documentation.".to_string(),
-            ),
+            instructions: Some(instructions),
         }
     }
 }
 
-// Define the SortOption enum for GitHub repository sorting
+/// Sort options for GitHub repository search results
+///
+/// Controls how repository search results are ordered in the response.
 #[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub enum SortOption {
+    /// Sort by number of stars (popularity)
     Stars,
+    /// Sort by number of forks (derived projects)
     Forks,
+    /// Sort by most recently updated
     Updated,
 }
 
-// Define the OrderOption enum for GitHub repository sort order
+/// Sort direction options for GitHub repository search results
+///
+/// Controls whether results are displayed in ascending or descending order.
 #[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub enum OrderOption {
+    /// Sort in ascending order (lowest to highest, oldest to newest)
     Ascending,
+    /// Sort in descending order (highest to lowest, newest to oldest)
     Descending,
 }
