@@ -1,13 +1,8 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 mod git_repository;
 
-use html2md::parse_html;
-
-use lumin::search::{SearchOptions, SearchResult};
+use lumin::{search, search::SearchOptions};
 use rand::Rng;
 use reqwest::Client;
-use tokio::sync::Mutex;
 
 use rmcp::{model::*, schemars, tool, ServerHandler};
 
@@ -259,16 +254,8 @@ impl CargoDocRouter {
             // Configure case sensitivity
             search_options.case_sensitive = case_sensitive.unwrap_or(false);
             
-            // Configure regex usage
-            search_options.use_regex = use_regex.unwrap_or(true);
-            
-            // Configure file extensions
-            if let Some(extensions) = file_extensions {
-                search_options.file_extensions = extensions;
-            }
-            
             // Execute the search
-            match SearchResult::search(&pattern_clone, &repo_dir_clone, &search_options) {
+            match search::search(&pattern_clone, &repo_dir_clone, &search_options) {
                 Ok(result) => {
                     // Format results
                     let mut output = String::new();
@@ -282,32 +269,28 @@ impl CargoDocRouter {
                         }
                     }
                     
-                    Ok(output)
+                    output
                 },
-                Err(e) => Err(format!("Lumin search failed: {}", e))
+                Err(e) => format!("Lumin search failed: {}", e)
             }
-        }).await.map_err(|e| format!("Search task failed: {}", e))?;
+        }).await.map_err(|e| format!("Search task failed: {}", e));
 
         // Handle search errors
-        if let Err(e) = search_result {
+        if let Err(e) = &search_result {
             return format!("Search failed: {}", e);
         }
 
-        match search_result.unwrap() {
-            Ok(result) => {
-                if result.trim().is_empty() {
-                    format!(
-                        "No matches found for pattern '{}' in repository {}",
-                        pattern, repository
-                    )
-                } else {
-                    format!(
-                        "Search results for '{}' in repository {}:\n\n{}",
-                        pattern, repository, result
-                    )
-                }
-            }
-            Err(e) => format!("Search failed: {}", e),
+        let search_output = search_result.unwrap();
+        if search_output.trim().is_empty() {
+            format!(
+                "No matches found for pattern '{}' in repository {}",
+                pattern, repository
+            )
+        } else {
+            format!(
+                "Search results for '{}' in repository {}:\n\n{}",
+                pattern, repository, search_output
+            )
         }
     }
 
