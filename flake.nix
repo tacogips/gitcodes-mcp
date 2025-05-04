@@ -8,6 +8,10 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crane = {
+      url = "github:ipetkov/crane/v0.17.3";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -16,6 +20,7 @@
       nixpkgs,
       flake-utils,
       fenix,
+      crane,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -28,6 +33,9 @@
           sha256 = "sha256-AJ6LX/Q/Er9kS15bn9iflkUwcgYqRQxiOIL2ToVAXaU=";
         };
 
+        # Create a crane lib with our rust-toolchain
+        craneLib = (crane.mkLib pkgs).overrideToolchain rust-toolchain;
+
         # Create a modified buildRustPackage that skips the problematic steps
         buildRustPackageCustom =
           args:
@@ -38,22 +46,40 @@
               dontFixCargo = true;
               cargoLockCheck = false;
               doCheck = false;
-
             }
           );
+
+        # Build cargo-machete with the same rust-toolchain
+        cargo-machete = craneLib.buildPackage {
+          pname = "cargo-machete";
+          version = "0.8.0";
+
+          src = pkgs.fetchCrate {
+            pname = "cargo-machete";
+            version = "0.8.0";
+            sha256 = "sha256-EMU/ZegrNBzDtjifdVlHP/P9hNJJ//SDDwlB7uo1sY0=";
+          };
+
+          # Ensure the binary is installed in the expected location
+          cargoExtraArgs = "--bin cargo-machete";
+
+          doCheck = false;
+        };
       in
       {
         # Development shell with Rust toolchain
-        devShells.default = pkgs.mkShell {
+        devShells.default = craneLib.devShell {
           packages = [
-            rust-toolchain
             pkgs.nixpkgs-fmt
             pkgs.openssl
             pkgs.pkg-config
             pkgs.nodejs
             pkgs.nodePackages.npm
             pkgs.go-task
+            cargo-machete
           ];
+
+          inputsFrom = [ ];
 
           # Add OpenSSL configuration
           shellHook = ''
