@@ -120,10 +120,19 @@ When making significant changes to the codebase:
 
 1. Follow the code style guidelines
 2. Ensure all tests pass with `cargo test`
-3. Run linting with `cargo clippy`
+3. Run linting with `cargo clippy` 
 4. Format code with `cargo fmt`
-5. **Document your changes in devlog.md**
-6. **Document your changes in spec.md**
+5. **Update Rustdoc comments in source code:**
+   - Add or update module-level documentation (//!)
+   - Add or update item-level documentation (///)
+   - Verify documentation compiles with `cargo doc --no-deps`
+6. **Document your changes in devlog.md**
+7. **Document your changes in spec.md**
+
+Remember that documentation is part of the codebase and should be held to the same quality standards as the code itself. When updating documentation:
+- Ensure Rustdoc comments compile without warnings
+- Make sure examples in documentation are correct and up-to-date
+- Keep code and documentation in sync
 
 ### Documenting in devlog.md
 
