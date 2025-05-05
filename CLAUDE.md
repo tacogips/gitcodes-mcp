@@ -45,9 +45,17 @@ When making significant changes, update both devlog.md and relevant Rustdoc comm
   3. `pub use` declarations (no line breaks within this block)
   4. `use` declarations (no line breaks within this block)
 
+- All `use` and `mod` declarations must be placed at the beginning of the Rust file (or package or module). If the file begins with Rustdoc comments, the declarations should immediately follow those comments.
+
+- Place struct/enum definitions and their implementations together. A struct/enum declaration should be immediately followed by its implementations, rather than interspersing other type definitions between them.
+
 Example of proper module and import organization:
 
 ```rust
+// Example with rustdoc at the top
+//! Module documentation comment
+//! Additional documentation
+
 pub mod git_repository;
 pub mod params;
 
@@ -58,6 +66,80 @@ pub use params::*;
 
 use lumin::{search, search::SearchOptions};
 use reqwest::Client;
+
+// Rest of the code follows...
+```
+
+Example of proper struct/enum organization (keeping implementations with their definitions):
+
+```rust
+use strum::{AsRefStr, Display, EnumString};
+
+// SearchParams and its implementation are kept together
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct SearchParams {
+    pub query: String,
+}
+
+impl SearchParams {
+    pub fn construct_search_url(&self) -> String {
+        // implementation details
+        String::new()
+    }
+}
+
+// GrepParams (no implementations needed)
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct GrepParams {
+    pub exclude_dirs: Option<Vec<String>>,
+}
+
+// SortOption and all its implementations are kept together
+#[derive(
+    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
+)]
+#[strum(serialize_all = "lowercase")]
+pub enum SortOption {
+    Updated,
+    Relevance,
+}
+
+impl SortOption {
+    /// Converts the sort option to its API string representation
+    pub fn to_str(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+impl Default for SortOption {
+    fn default() -> Self {
+        SortOption::Relevance
+    }
+}
+
+// OrderOption and all its implementations are kept together
+#[derive(
+    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
+)]
+#[strum(serialize_all = "lowercase")]
+pub enum OrderOption {
+    Ascending,
+    Descending,
+}
+
+impl OrderOption {
+    /// Converts the order option to its API string representation
+    pub fn to_str(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+impl Default for OrderOption {
+    /// Returns the default order option (Descending)
+    fn default() -> Self {
+        OrderOption::Descending
+    }
+}
 ```
 
 ## MCP Tool Guidelines

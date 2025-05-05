@@ -1,6 +1,4 @@
-// Wrapper implementation for GitHub tools using the MCP protocol
 use rmcp::{model::*, schemars, tool, ServerHandler};
-
 use super::github_service::{
     params::{GrepParams, OrderOption, SearchParams, SortOption},
     GitHubService,

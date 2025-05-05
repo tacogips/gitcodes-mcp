@@ -50,10 +50,8 @@
 //! All public repository operations work without authentication, but with
 //! significantly lower rate limits.
 
-// Export the github_service module
 pub mod github_service;
-pub use github_service::{GitHubService, RepositoryManager, params::{SearchParams, SortOption, OrderOption, GrepParams}};
-
-// Re-export the tools implementation
 mod tools;
+
+pub use github_service::{GitHubService, RepositoryManager, params::{SearchParams, SortOption, OrderOption, GrepParams}};
 pub use tools::GitHubCodeTools;
