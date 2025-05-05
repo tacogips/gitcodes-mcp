@@ -19,7 +19,7 @@ enum Commands {
         /// Enable debug logging
         #[arg(short, long)]
         debug: bool,
-        
+
         /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
         #[arg(short = 't', long)]
         github_token: Option<String>,
@@ -33,7 +33,7 @@ enum Commands {
         /// Enable debug logging
         #[arg(short, long)]
         debug: bool,
-        
+
         /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
         #[arg(short = 't', long)]
         github_token: Option<String>,
@@ -45,8 +45,15 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Stdio { debug, github_token } => run_stdio_server(debug, github_token).await,
-        Commands::Http { address, debug, github_token } => run_http_server(address, debug, github_token).await,
+        Commands::Stdio {
+            debug,
+            github_token,
+        } => run_stdio_server(debug, github_token).await,
+        Commands::Http {
+            address,
+            debug,
+            github_token,
+        } => run_http_server(address, debug, github_token).await,
     }
 }
 
@@ -99,7 +106,7 @@ async fn run_http_server(address: String, debug: bool, github_token: Option<Stri
         "Access the Rust Documentation Server at http://{}/sse",
         addr
     );
-    
+
     if github_token.is_some() {
         tracing::info!("Using GitHub token from command line arguments");
     }

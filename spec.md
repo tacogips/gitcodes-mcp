@@ -131,10 +131,18 @@ pub struct SearchParams {
     pub page: Option<u32>,
 }
 
+impl SearchParams {
+    // Constructs the GitHub API URL for repository search
+    pub fn construct_search_url(&self) -> String {
+        // Implementation that handles parameter defaults and builds the search URL
+    }
+}
+
 pub enum SortOption {
-    Stars,   // Sort by number of stars (popularity)
-    Forks,   // Sort by number of forks (derived projects)
-    Updated, // Sort by most recently updated
+    Relevance, // Default, no specific sort parameter
+    Stars,     // Sort by number of stars (popularity)
+    Forks,     // Sort by number of forks (derived projects)
+    Updated,   // Sort by most recently updated
 }
 
 pub enum OrderOption {

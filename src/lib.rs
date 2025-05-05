@@ -9,7 +9,7 @@
 //! - Search for GitHub repositories
 //! - Search code within repositories (grep)
 //! - List repository branches and tags
-//! 
+//!
 //! ## Authentication
 //!
 //! GitHub operations support both authenticated and unauthenticated access.

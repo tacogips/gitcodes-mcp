@@ -108,7 +108,7 @@ async fn stdio_client() -> Result<()> {
         },
         "id": 2
     });
-    
+
     // Also prepare a GitHub repository search request
     let github_request = json!({
         "jsonrpc": "2.0",
@@ -141,17 +141,19 @@ async fn stdio_client() -> Result<()> {
         "Received response: {}",
         serde_json::to_string_pretty(&parsed)?
     );
-    
+
     // Now send the GitHub repository search request
     println!("Sending request to search GitHub repositories...");
-    stdin.write_all(github_request.to_string().as_bytes()).await?;
+    stdin
+        .write_all(github_request.to_string().as_bytes())
+        .await?;
     stdin.write_all(b"\n").await?;
     stdin.flush().await?;
-    
+
     // Read the response
     let mut github_response = String::new();
     stdout.read_line(&mut github_response).await?;
-    
+
     println!("GitHub search response: {:?}", github_response);
     let github_parsed: Value = serde_json::from_str(&github_response)?;
     println!(

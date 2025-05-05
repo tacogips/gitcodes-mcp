@@ -10,13 +10,17 @@ pub struct SseServerApp {
 
 impl SseServerApp {
     pub fn new(bind_addr: SocketAddr, github_token: Option<String>) -> Self {
-        Self { bind_addr, github_token }
+        Self {
+            bind_addr,
+            github_token,
+        }
     }
 
     pub async fn serve(self) -> Result<()> {
         let sse_server = SseServer::serve(self.bind_addr).await?;
         let github_token = self.github_token.clone();
-        let cancellation_token = sse_server.with_service(move || GitHubCodeTools::new(github_token.clone()));
+        let cancellation_token =
+            sse_server.with_service(move || GitHubCodeTools::new(github_token.clone()));
 
         // Wait for Ctrl+C signal to gracefully shutdown
         tokio::signal::ctrl_c().await?;

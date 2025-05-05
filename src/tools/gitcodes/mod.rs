@@ -102,23 +102,54 @@ pub use tools::GitHubCodeTools;
 
 /// Search parameters for GitHub repository search
 ///
-/// Contains all the parameters needed for configuring a repository search request.
-/// This is internal to the module and not exposed externally.
+/// Contains all the parameters needed for configuring a repository search request to GitHub's API.
+/// This struct handles both the parameter validation and URL construction for repository searches.
+///
+/// # Examples
+///
+/// ```
+/// use gitcodes_mcp::tools::gitcodes::{SearchParams, SortOption, OrderOption};
+///
+/// // Basic search with defaults
+/// let params = SearchParams {
+///    query: "rust http client".to_string(),
+///    sort_by: None,
+///    order: None,
+///    per_page: None,
+///    page: None,
+/// };
+///
+/// // Advanced search with custom options
+/// let advanced_params = SearchParams {
+///    query: "language:rust stars:>1000".to_string(),
+///    sort_by: Some(SortOption::Stars),
+///    order: Some(OrderOption::Descending),
+///    per_page: Some(50),
+///    page: Some(2),
+/// };
+/// ```
 #[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub struct SearchParams {
     /// Sort parameter for search results
+    /// When None, defaults to SortOption::Relevance (GitHub's default sorting)
     pub sort_by: Option<SortOption>,
 
-    /// Order parameter (asc or desc)
+    /// Order parameter for sorting results (ascending or descending)
+    /// When None, defaults to OrderOption::Descending
     pub order: Option<OrderOption>,
 
-    /// Number of results per page
+    /// Number of results per page (1-100)
+    /// When None, defaults to 30
+    /// Values over 100 will be capped at 100 (GitHub API limit)
     pub per_page: Option<u8>,
 
-    /// Page number
+    /// Page number for pagination (starts at 1)
+    /// When None, defaults to 1
     pub page: Option<u32>,
 
     /// Search query for repositories
+    /// This is the only required parameter
+    /// Supports GitHub's search syntax, e.g., "language:rust stars:>1000"
     pub query: String,
 }
 
@@ -186,11 +217,8 @@ impl GitHubService {
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
     pub async fn search_repositories(&self, params: SearchParams) -> String {
-        // Build search parameters for API request
-        let internal_params = InternalSearchParams::build_internal_search_params(&params);
-
         // Construct the API URL
-        let url = internal_params.construct_search_url(&params.query);
+        let url = params.construct_search_url();
 
         // Execute the search request
         self.execute_search_request(&url).await
@@ -783,81 +811,65 @@ impl OrderOption {
     }
 }
 
-/// Internal search parameters for GitHub API requests
-///
-/// Used internally to convert from individual search parameters to the format needed for API calls
-#[derive(Debug)]
-struct InternalSearchParams {
-    /// Sort parameter for search results
-    sort: String,
-    /// Order parameter (asc or desc)
-    order: String,
-    /// Number of results per page
-    per_page: u8,
-    /// Page number
-    page: u32,
-}
-
-impl InternalSearchParams {
-    /// Creates a new instance of InternalSearchParams with the given parameters
-    ///
-    /// # Arguments
-    ///
-    /// * `sort` - Sort parameter for search results
-    /// * `order` - Order parameter (asc or desc)
-    /// * `per_page` - Number of results per page (1-100)
-    /// * `page` - Page number (starts at 1)
-    ///
-    /// # Returns
-    ///
-    /// A new InternalSearchParams instance
-    pub fn new(sort: String, order: String, per_page: u8, page: u32) -> Self {
-        // Ensure per_page is within limits (GitHub API limit is 100)
-        let per_page = per_page.min(100);
-
-        Self {
-            sort,
-            order,
-            per_page,
-            page,
-        }
-    }
-
+impl SearchParams {
     /// Constructs the GitHub API URL for repository search
     ///
     /// Builds the complete URL with query parameters for the GitHub search API.
-    pub fn construct_search_url(&self, query: &str) -> String {
-        let mut url = format!(
-            "https://api.github.com/search/repositories?q={}",
-            urlencoding::encode(query)
-        );
-
-        if !self.sort.is_empty() {
-            url.push_str(&format!("&sort={}", self.sort));
-        }
-
-        url.push_str(&format!("&order={}", self.order));
-        url.push_str(&format!("&per_page={}&page={}", self.per_page, self.page));
-
-        url
-    }
-
-    /// Builds internal search parameters for repository search
+    /// This method handles parameter defaults, validation, and proper URL encoding.
     ///
-    /// Converts the user-provided SearchParams into internal format for API request.
-    fn build_internal_search_params(params: &SearchParams) -> InternalSearchParams {
+    /// # Returns
+    ///
+    /// A fully formed URL string ready for HTTP request to GitHub's search API
+    ///
+    /// # Parameter Handling
+    ///
+    /// - `sort_by`: Uses SortOption::Relevance if None (empty string in the URL)
+    /// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
+    /// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
+    /// - `page`: Uses 1 if None
+    /// - `query`: URL encoded to handle special characters
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use gitcodes_mcp::tools::gitcodes::{SearchParams, SortOption, OrderOption};
+    ///
+    /// let params = SearchParams {
+    ///     query: "rust web framework".to_string(),
+    ///     sort_by: Some(SortOption::Stars),
+    ///     order: Some(OrderOption::Descending),
+    ///     per_page: Some(50),
+    ///     page: Some(1),
+    /// };
+    ///
+    /// let url = params.construct_search_url();
+    /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
+    /// ```
+    pub fn construct_search_url(&self) -> String {
         // Set up sort parameter using Default implementation
         let default_sort = SortOption::default();
-        let sort = params.sort_by.as_ref().unwrap_or(&default_sort).to_str();
+        let sort = self.sort_by.as_ref().unwrap_or(&default_sort).to_str();
 
         // Set up order parameter using Default implementation
         let default_order = OrderOption::default();
-        let order_param = params.order.as_ref().unwrap_or(&default_order).to_str();
+        let order = self.order.as_ref().unwrap_or(&default_order).to_str();
 
         // Set default values for pagination
-        let per_page = params.per_page.unwrap_or(30);
-        let page = params.page.unwrap_or(1);
+        let per_page = self.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
+        let page = self.page.unwrap_or(1);
 
-        InternalSearchParams::new(sort.to_string(), order_param.to_string(), per_page, page)
+        let mut url = format!(
+            "https://api.github.com/search/repositories?q={}",
+            urlencoding::encode(&self.query)
+        );
+
+        if !sort.is_empty() {
+            url.push_str(&format!("&sort={}", sort));
+        }
+
+        url.push_str(&format!("&order={}", order));
+        url.push_str(&format!("&per_page={}&page={}", per_page, page));
+
+        url
     }
 }

@@ -11,6 +11,17 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Merge SearchParams and Eliminate InternalSearchParams
+
+- Consolidated search parameter handling by removing `InternalSearchParams` struct
+- Moved functionality directly into `SearchParams` implementation
+- Enhanced encapsulation by adding `construct_search_url()` method directly to `SearchParams`
+- Simplified the API by removing an unnecessary abstraction layer
+- Improved code readability and maintainability by consolidating parameter validation
+- Updated `GitHubService::search_repositories()` to work with the merged implementation
+- Reduced code duplication and improved type safety
+- Removed internal parameter conversion, making the code more maintainable
+
 ### 2024-05-06: Add Command Line GitHub Token Configuration
 
 - Added `--github-token` parameter to command line interface using clap

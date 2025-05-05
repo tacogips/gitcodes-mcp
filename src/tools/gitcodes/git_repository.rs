@@ -1,4 +1,3 @@
-
 use rand::Rng;
 
 /// Repository manager for Git operations
@@ -30,7 +29,10 @@ impl Default for RepositoryManager {
 }
 
 // Parse repository URL to extract user and repo name
-pub fn parse_repository_url(_manager: &RepositoryManager, url: &str) -> Result<(String, String), String> {
+pub fn parse_repository_url(
+    _manager: &RepositoryManager,
+    url: &str,
+) -> Result<(String, String), String> {
     let user_repo = if url.starts_with("https://github.com/") {
         url.trim_start_matches("https://github.com/")
             .trim_end_matches(".git")
