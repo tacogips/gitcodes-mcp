@@ -11,6 +11,20 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Add Command Line GitHub Token Configuration
+
+- Added `--github-token` parameter to command line interface using clap
+- Created option for passing GitHub token directly through command line arguments
+- Implemented priority authentication flow:
+  1. Command line argument (highest priority)
+  2. Programmatic parameter (second priority)
+  3. Environment variable (fallback)
+- Modified transport implementations (stdio and sse_server) to accept the token parameter
+- Updated all documentation to reflect the three authentication options
+- Enhanced flexibility by supporting multiple authentication methods
+- Added tracing information to log when command line token is used
+- Ensured backward compatibility with all existing authentication methods
+
 ### 2024-05-06: Merge Authentication Methods in GitHubService
 
 - Refactored `GitHubService::new()` to accept an optional GitHub token parameter

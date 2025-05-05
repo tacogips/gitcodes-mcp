@@ -114,9 +114,10 @@ impl GitHubService {
     ///
     /// # Authentication
     ///
-    /// Authentication can be provided in two ways:
-    /// 1. Explicitly via the `github_token` parameter (highest priority)
-    /// 2. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
+    /// Authentication can be provided in three ways:
+    /// 1. Command line argument `--github-token` (highest priority)
+    /// 2. Explicitly via the `github_token` parameter in code (second priority)
+    /// 3. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
     ///
     /// If no token is provided through either method, the system will work with 
     /// lower rate limits (60 requests/hour vs 5,000 requests/hour).

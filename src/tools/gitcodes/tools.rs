@@ -63,14 +63,20 @@ impl ServerHandler for GitHubCodeTools {
 - `list_repository_refs`: List branches and tags for a repository
 
 ## Authentication
-You can authenticate in two ways:
+You can authenticate in three ways:
 
-### Option 1: Environment Variable
+### Option 1: Command Line Argument (highest priority)
+```
+gitcodes-mcp stdio --github-token=your_token
+gitcodes-mcp http --github-token=your_token
+```
+
+### Option 2: Environment Variable (used as fallback)
 ```
 export GITCODE_MCP_GITHUB_TOKEN=your_github_token
 ```
 
-### Option 2: Programmatic via new() method
+### Option 3: Programmatic via new() method
 Initialize with token using:
 GitHubCodeTools::new(Some(\"token\"))
 

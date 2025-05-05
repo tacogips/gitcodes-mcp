@@ -19,6 +19,10 @@ enum Commands {
         /// Enable debug logging
         #[arg(short, long)]
         debug: bool,
+        
+        /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
+        #[arg(short = 't', long)]
+        github_token: Option<String>,
     },
     /// Run the server with HTTP/SSE interface
     Http {
@@ -29,6 +33,10 @@ enum Commands {
         /// Enable debug logging
         #[arg(short, long)]
         debug: bool,
+        
+        /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
+        #[arg(short = 't', long)]
+        github_token: Option<String>,
     },
 }
 
@@ -37,12 +45,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Stdio { debug } => run_stdio_server(debug).await,
-        Commands::Http { address, debug } => run_http_server(address, debug).await,
+        Commands::Stdio { debug, github_token } => run_stdio_server(debug, github_token).await,
+        Commands::Http { address, debug, github_token } => run_http_server(address, debug, github_token).await,
     }
 }
 
-async fn run_stdio_server(debug: bool) -> Result<()> {
+async fn run_stdio_server(debug: bool, github_token: Option<String>) -> Result<()> {
     // Initialize the tracing subscriber with stderr logging
     let level = if debug {
         tracing::Level::DEBUG
@@ -61,14 +69,17 @@ async fn run_stdio_server(debug: bool) -> Result<()> {
         .init();
 
     tracing::info!("Starting MCP documentation server in STDIN/STDOUT mode");
+    if github_token.is_some() {
+        tracing::info!("Using GitHub token from command line arguments");
+    }
 
     // Run the server using the new rust-sdk implementation
-    gitcodes_mcp::transport::stdio::run_stdio_server()
+    gitcodes_mcp::transport::stdio::run_stdio_server(github_token)
         .await
         .map_err(|e| anyhow::anyhow!("Error running STDIO server: {}", e))
 }
 
-async fn run_http_server(address: String, debug: bool) -> Result<()> {
+async fn run_http_server(address: String, debug: bool, github_token: Option<String>) -> Result<()> {
     // Setup tracing
     let level = if debug { "debug" } else { "info" };
 
@@ -88,9 +99,13 @@ async fn run_http_server(address: String, debug: bool) -> Result<()> {
         "Access the Rust Documentation Server at http://{}/sse",
         addr
     );
+    
+    if github_token.is_some() {
+        tracing::info!("Using GitHub token from command line arguments");
+    }
 
     // Create app and run server using the new rust-sdk implementation
-    let app = gitcodes_mcp::transport::sse_server::SseServerApp::new(addr);
+    let app = gitcodes_mcp::transport::sse_server::SseServerApp::new(addr, github_token);
     app.serve().await?;
 
     Ok(())
