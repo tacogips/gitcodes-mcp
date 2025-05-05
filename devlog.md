@@ -11,6 +11,29 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor construct_search_url Method to InternalSearchParams
+
+- Moved `construct_search_url` method from `GitHubService` to `InternalSearchParams`
+- Updated reference in `GitHubService::search_repositories` to use the new method
+- Improved encapsulation by placing URL construction logic with the parameters it uses
+- Enhanced code organization by following the principle that methods should be on the data they operate on
+- Made the API more intuitive as the search parameters now directly construct their URL representation
+
+### 2024-05-06: Refactor build_internal_search_params to Use InternalSearchParams::new
+
+- Modified `build_internal_search_params` method to use the `InternalSearchParams::new()` constructor
+- Updated comments in the method to be more concise and descriptive
+- Improved code maintainability by using proper constructor pattern
+- Removed redundant comment about ensuring per_page limits as this is now handled in the constructor
+
+### 2024-05-06: Add InternalSearchParams Constructor Method
+
+- Added a new `InternalSearchParams::new()` constructor method to improve encapsulation and code clarity
+- Constructor method now handles GitHub API limit validation (capping per_page at 100)
+- Updated `build_internal_search_params` to use the new constructor method
+- Improved code maintainability by centralizing parameter validation and initialization logic
+- Enhanced documentation with clearer parameter descriptions
+
 ### 2024-05-06: Implement Default Trait for Enums
 
 - Implemented `Default` trait for `SortOption` and `OrderOption` enums

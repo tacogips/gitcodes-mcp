@@ -144,7 +144,7 @@ impl GitHubService {
         let internal_params = self.build_internal_search_params(&params);
 
         // Construct the API URL
-        let url = self.construct_search_url(&params.query, &internal_params);
+        let url = internal_params.construct_search_url(&params.query);
 
         // Execute the search request
         self.execute_search_request(&url).await
@@ -168,36 +168,18 @@ impl GitHubService {
             .unwrap_or(&default_order)
             .to_str();
 
-        // Ensure per_page is within limits
-        let per_page = params.per_page.unwrap_or(30).min(100);
+        // Set default values for pagination
+        let per_page = params.per_page.unwrap_or(30);
         let page = params.page.unwrap_or(1);
 
-        InternalSearchParams {
-            sort: sort.to_string(),
-            order: order_param.to_string(),
+        InternalSearchParams::new(
+            sort.to_string(),
+            order_param.to_string(),
             per_page,
             page,
-        }
+        )
     }
 
-    /// Constructs the GitHub API URL for repository search
-    ///
-    /// Builds the complete URL with query parameters for the GitHub search API.
-    fn construct_search_url(&self, query: &str, params: &InternalSearchParams) -> String {
-        let mut url = format!(
-            "https://api.github.com/search/repositories?q={}",
-            urlencoding::encode(query)
-        );
-
-        if !params.sort.is_empty() {
-            url.push_str(&format!("&sort={}", params.sort));
-        }
-
-        url.push_str(&format!("&order={}", params.order));
-        url.push_str(&format!("&per_page={}&page={}", params.per_page, params.page));
-
-        url
-    }
 
     /// Executes a GitHub API search request
     ///
@@ -786,6 +768,51 @@ struct InternalSearchParams {
     per_page: u8,
     /// Page number
     page: u32,
+}
+
+impl InternalSearchParams {
+    /// Creates a new instance of InternalSearchParams with the given parameters
+    ///
+    /// # Arguments
+    ///
+    /// * `sort` - Sort parameter for search results
+    /// * `order` - Order parameter (asc or desc)
+    /// * `per_page` - Number of results per page (1-100)
+    /// * `page` - Page number (starts at 1)
+    ///
+    /// # Returns
+    ///
+    /// A new InternalSearchParams instance
+    pub fn new(sort: String, order: String, per_page: u8, page: u32) -> Self {
+        // Ensure per_page is within limits (GitHub API limit is 100)
+        let per_page = per_page.min(100);
+        
+        Self {
+            sort,
+            order,
+            per_page,
+            page,
+        }
+    }
+    
+    /// Constructs the GitHub API URL for repository search
+    ///
+    /// Builds the complete URL with query parameters for the GitHub search API.
+    pub fn construct_search_url(&self, query: &str) -> String {
+        let mut url = format!(
+            "https://api.github.com/search/repositories?q={}",
+            urlencoding::encode(query)
+        );
+
+        if !self.sort.is_empty() {
+            url.push_str(&format!("&sort={}", self.sort));
+        }
+
+        url.push_str(&format!("&order={}", self.order));
+        url.push_str(&format!("&per_page={}&page={}", self.per_page, self.page));
+
+        url
+    }
 }
 
 /// Search parameters for GitHub repository search
