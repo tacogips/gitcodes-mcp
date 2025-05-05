@@ -52,9 +52,22 @@ pub struct RepositoryManager {
     temp_dir_base: String,
 }
 
+impl RepositoryManager {
+    /// Creates a new RepositoryManager instance
+    ///
+    /// Initializes a repository manager with the system's temporary directory
+    /// as the base location for storing cloned repositories.
+    pub fn new() -> Self {
+        let system_temp = std::env::temp_dir().to_string_lossy().to_string();
+        Self {
+            temp_dir_base: system_temp,
+        }
+    }
+}
+
 impl Default for RepositoryManager {
     fn default() -> Self {
-        git_repository::new_repository_manager()
+        Self::new()
     }
 }
 
@@ -108,7 +121,7 @@ impl GitHubService {
 
         Self {
             client: Client::new(),
-            repo_manager: git_repository::new_repository_manager(),
+            repo_manager: RepositoryManager::new(),
             github_token,
         }
     }

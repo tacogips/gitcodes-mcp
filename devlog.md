@@ -11,6 +11,14 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Refactor RepositoryManager Creation
+
+- Moved `new_repository_manager()` function to a proper `RepositoryManager::new()` method
+- Enhanced object-oriented design by implementing constructor directly on the struct
+- Updated `Default` implementation to use the new method
+- Removed redundant standalone function from `git_repository.rs`
+- Improved code organization and adherence to Rust idioms
+
 ### 2024-05-05: Refactor Enum String Conversion to Methods
 
 - Added `to_str()` methods to `SortOption` and `OrderOption` enums 

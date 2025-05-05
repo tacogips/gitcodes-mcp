@@ -5,12 +5,6 @@ use rand::Rng;
 use crate::tools::gitcodes::RepositoryManager;
 
 // Public functions for use with RepositoryManager
-pub fn new_repository_manager() -> RepositoryManager {
-    let system_temp = std::env::temp_dir().to_string_lossy().to_string();
-    RepositoryManager {
-        temp_dir_base: system_temp,
-    }
-}
 
 // Parse repository URL to extract user and repo name
 pub fn parse_repository_url(_manager: &RepositoryManager, url: &str) -> Result<(String, String), String> {
