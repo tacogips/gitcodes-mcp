@@ -11,6 +11,14 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Implement Default Trait for Enums
+
+- Implemented `Default` trait for `SortOption` and `OrderOption` enums
+- Added `Relevance` variant to `SortOption` with empty string serialization
+- Updated `build_internal_search_params` to use the `Default` implementations
+- Removed hardcoded default values ("", "desc") in favor of type-safe defaults
+- Improved code maintainability by centralizing default value definitions in the enum types
+
 ### 2024-05-06: Add strum for Enum String Conversion
 
 - Added `strum` crate as a dependency for simplifying enum-to-string conversions

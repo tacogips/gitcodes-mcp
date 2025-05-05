@@ -154,17 +154,19 @@ impl GitHubService {
     ///
     /// Converts the user-provided SearchParams into internal format for API request.
     fn build_internal_search_params(&self, params: &SearchParams) -> InternalSearchParams {
-        // Set up sort parameter
-        let sort = match &params.sort_by {
-            Some(option) => option.to_str(),
-            None => "", // Default is relevance
-        };
+        // Set up sort parameter using Default implementation
+        let default_sort = SortOption::default();
+        let sort = params.sort_by
+            .as_ref()
+            .unwrap_or(&default_sort)
+            .to_str();
 
-        // Set up order parameter
-        let order_param = match params.order {
-            Some(ref option) => option.to_str(),
-            None => "desc", // Default is descending
-        };
+        // Set up order parameter using Default implementation
+        let default_order = OrderOption::default();
+        let order_param = params.order
+            .as_ref()
+            .unwrap_or(&default_order)
+            .to_str();
 
         // Ensure per_page is within limits
         let per_page = params.per_page.unwrap_or(30).min(100);
@@ -715,6 +717,9 @@ impl GitHubService {
 #[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
 #[strum(serialize_all = "lowercase")]
 pub enum SortOption {
+    /// No specific sort, use GitHub's default relevance sorting
+    #[strum(serialize = "")]
+    Relevance,
     /// Sort by number of stars (popularity)
     #[strum(serialize = "stars")]
     Stars,
@@ -724,6 +729,13 @@ pub enum SortOption {
     /// Sort by most recently updated
     #[strum(serialize = "updated")]
     Updated,
+}
+
+impl Default for SortOption {
+    /// Returns the default sort option (Relevance)
+    fn default() -> Self {
+        SortOption::Relevance
+    }
 }
 
 impl SortOption {
@@ -745,6 +757,13 @@ pub enum OrderOption {
     /// Sort in descending order (highest to lowest, newest to oldest)
     #[strum(serialize = "desc")]
     Descending,
+}
+
+impl Default for OrderOption {
+    /// Returns the default order option (Descending)
+    fn default() -> Self {
+        OrderOption::Descending
+    }
 }
 
 impl OrderOption {
