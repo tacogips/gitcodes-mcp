@@ -13,6 +13,22 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Improve Type Safety with Path and PathBuf
+
+- Replaced string path representations with proper Path and PathBuf types:
+  - Changed `repo_dir` in `RepositoryInfo` from `String` to `PathBuf`
+  - Changed `temp_dir_base` in `RepositoryManager` from `String` to `PathBuf`
+  - Updated all related method signatures to use `&Path` instead of `&str` for path parameters
+  - Modified `get_repo_dir` to use `PathBuf::join()` instead of string concatenation
+- Enhanced error handling for path operations:
+  - Used `Path::to_string_lossy()` for paths that need to be passed to command-line tools
+  - Maintained proper path handling throughout the codebase
+- Improved code safety and maintainability:
+  - Better type safety by using specialized path types
+  - Clearer semantics for path and directory operations
+  - More robust path manipulation using standard library functions
+- Eliminated potential path handling bugs and edge cases
+
 ### 2024-05-06: Improve Encapsulation by Removing Unnecessary Public Modifiers
 
 - Restricted visibility of internal helper functions in the `git_repository` module:

@@ -1,4 +1,5 @@
 use lumin::{search, search::SearchOptions};
+use std::path::Path;
 
 /// Performs a code search on a prepared repository
 ///
@@ -13,14 +14,14 @@ use lumin::{search, search::SearchOptions};
 /// * `_use_regex` - Whether to use regex for the search (not currently implemented)
 /// * `_file_extensions` - Filter by file extensions (not currently implemented)
 pub async fn perform_code_search(
-    repo_dir: &str,
+    repo_dir: &Path,
     pattern: &str,
     case_sensitive: Option<bool>,
     _use_regex: Option<bool>,
     _file_extensions: Option<Vec<String>>,
 ) -> Result<String, String> {
     // Clone values for the thread
-    let repo_dir_clone = repo_dir.to_string();
+    let repo_dir_clone = repo_dir.to_path_buf();
     let pattern_clone = pattern.to_string();
 
     // Execute search in a blocking task
@@ -34,7 +35,7 @@ pub async fn perform_code_search(
         // Execute the search
         match search::search_files(
             &pattern_clone,
-            std::path::Path::new(&repo_dir_clone),
+            &repo_dir_clone,
             &search_options,
         ) {
             Ok(results) => {

@@ -1,4 +1,5 @@
 use rand::Rng;
+use std::path::{Path, PathBuf};
 
 /// Repository information after URL parsing and preparation
 #[derive(Debug)]
@@ -8,7 +9,7 @@ pub struct RepositoryInfo {
     /// Repository name
     pub repo: String,
     /// Local directory where repository is cloned
-    pub repo_dir: String,
+    pub repo_dir: PathBuf,
     /// Branch or tag name to use
     pub ref_name: String,
 }
@@ -19,7 +20,7 @@ pub struct RepositoryInfo {
 /// Uses system temporary directories to store cloned repositories.
 #[derive(Clone)]
 pub struct RepositoryManager {
-    pub(crate) temp_dir_base: String,
+    pub(crate) temp_dir_base: PathBuf,
 }
 
 impl RepositoryManager {
@@ -28,25 +29,21 @@ impl RepositoryManager {
     /// Initializes a repository manager with the system's temporary directory
     /// as the base location for storing cloned repositories.
     pub fn new() -> Self {
-        let system_temp = std::env::temp_dir().to_string_lossy().to_string();
+        let system_temp = std::env::temp_dir();
         Self {
             temp_dir_base: system_temp,
         }
     }
     
     /// Generate a unique directory name for the repository
-    fn get_repo_dir(&self, user: &str, repo: &str) -> String {
-        format!(
-            "{}/mcp_github_{}_{}_{}",
-            self.temp_dir_base,
-            user,
-            repo,
-            rand::thread_rng().gen::<u32>() % 10000
-        )
+    fn get_repo_dir(&self, user: &str, repo: &str) -> PathBuf {
+        let random_suffix = rand::thread_rng().gen::<u32>() % 10000;
+        let dir_name = format!("mcp_github_{}_{}_{}", user, repo, random_suffix);
+        self.temp_dir_base.join(dir_name)
     }
     
     /// Check if repository is already cloned
-    async fn is_repo_cloned(&self, dir: &str) -> bool {
+    async fn is_repo_cloned(&self, dir: &Path) -> bool {
         tokio::fs::metadata(dir).await.is_ok()
     }
     
@@ -140,7 +137,7 @@ fn parse_repository_url(url: &str) -> Result<(String, String), String> {
 /// * `repo` - Repository name
 /// * `ref_name` - Branch or tag name to checkout
 async fn clone_repository(
-    repo_dir: &str,
+    repo_dir: &Path,
     user: &str,
     repo: &str,
     ref_name: &str,
@@ -154,7 +151,7 @@ async fn clone_repository(
     let clone_url = format!("https://github.com/{}/{}.git", user, repo);
 
     // Clone with git command
-    let repo_dir_clone = repo_dir.to_string();
+    let repo_dir_clone = repo_dir.to_string_lossy().to_string();
     let ref_name_clone = ref_name.to_string();
     let clone_result = tokio::task::spawn_blocking(move || {
         let status = std::process::Command::new("git")
@@ -192,9 +189,9 @@ async fn clone_repository(
 ///
 /// * `repo_dir` - The directory containing the repository
 /// * `ref_name` - Branch or tag name to checkout
-async fn update_repository(repo_dir: &str, ref_name: &str) -> Result<(), String> {
+async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String> {
     // Repository exists, update it
-    let repo_dir_clone = repo_dir.to_string();
+    let repo_dir_clone = repo_dir.to_string_lossy().to_string();
     let ref_name_clone = ref_name.to_string();
     let update_result = tokio::task::spawn_blocking(move || {
         // Change to the repository directory

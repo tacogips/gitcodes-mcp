@@ -35,6 +35,7 @@ pub use git_repository::*;
 pub use params::*;
 
 use reqwest::Client;
+use std::path::Path;
 
 // Repository information struct has been moved to git_repository.rs
 
@@ -176,12 +177,12 @@ impl GitHubService {
     // Function to fetch repository refs (branches and tags)
     async fn fetch_repository_refs(
         &self,
-        repo_dir: &str,
+        repo_dir: &Path,
         user: &str,
         repo: &str,
     ) -> Result<String, String> {
         // Get branches and tags
-        let repo_dir_clone = repo_dir.to_string();
+        let repo_dir_clone = repo_dir.to_string_lossy().to_string();
         let user_clone = user.to_string();
         let repo_clone = repo.to_string();
 
