@@ -11,6 +11,13 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Remove Leftover Tool Attributes
+
+- Removed remaining `#[tool]` attributes from `GitHubService::search_repositories`
+- Cleaned up unused imports (`tool`, `schemars`) from `mod.rs`
+- Fixed formatting issues in the module
+- Completed the proper separation of core functionality and MCP tool interface
+
 ### 2024-05-05: Reorganize Git Repository Code Structure
 
 - Moved `RepositoryManager` struct from `mod.rs` to `git_repository.rs`
