@@ -13,6 +13,43 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Rename and Improve Repository Cache Directory Configuration
+
+- Renamed fields and parameters for better semantic clarity:
+  - Changed `temp_dir_base` to `repository_cache_dir_base` in RepositoryManager
+  - Updated CLI parameter from `--temp-dir` to `--cache-dir` with short form `-c`
+  - Updated all method and constructor parameters for consistency
+- Improved terminology throughout the codebase:
+  - Updated documentation to use "repository cache" instead of "temporary directory"
+  - Changed convenience method names from `with_default_temp_dir` to `with_default_cache_dir`
+  - Updated log messages to use "repository cache directory" for clarity
+- Enhanced CLI help text to better explain the purpose of the parameter
+- Updated all related code paths to maintain consistency:
+  - Parameter names in constructors
+  - Variable names in function implementations
+  - Field names in structs
+  - Messages in logging statements
+
+### 2024-05-06: Add Custom Temporary Directory Configuration
+
+- Added option to configure custom temporary directory for repository storage:
+  - Modified `RepositoryManager::new()` to accept an optional PathBuf for temp_dir_base
+  - Added validation to ensure the directory exists and is writable
+  - Added fallback to system temporary directory if none provided
+  - Implemented proper error handling for validation failures
+- Added `--temp-dir` command-line parameter to both stdio and http server modes:
+  - Updated clap configuration in the main binary
+  - Added clear help text describing the parameter function
+  - Implemented proper logging to notify when custom directory is used
+- Updated service initialization chain:
+  - Modified `GitHubService::new()` and `GitHubCodeTools::new()` to accept temp_dir parameter
+  - Added convenience methods `with_default_temp_dir()` for backward compatibility
+  - Updated transport implementations to pass the parameter through
+- Enhanced robustness with proper I/O validation:
+  - Added existence check for specified directory
+  - Added check to verify the path is a directory and not a file
+  - Added write permission verification using a test file
+
 ### 2024-05-06: Improve Type Safety with Path and PathBuf
 
 - Replaced string path representations with proper Path and PathBuf types:

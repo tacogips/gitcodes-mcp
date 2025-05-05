@@ -16,7 +16,7 @@ pub struct GitHubCodeTools {
 }
 
 impl GitHubCodeTools {
-    /// Creates a new GitHubCodeTools instance with optional authentication and custom temp dir
+    /// Creates a new GitHubCodeTools instance with optional authentication and custom repository cache dir
     ///
     /// # Authentication
     ///
@@ -27,21 +27,21 @@ impl GitHubCodeTools {
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
-    /// * `temp_dir` - Optional path to a directory for storing temporary repositories.
-    pub fn new(github_token: Option<String>, temp_dir: Option<PathBuf>) -> Self {
+    /// * `repository_cache_dir` - Optional path to a directory for storing cloned repositories.
+    pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
         Self {
-            service: GitHubService::new(github_token, temp_dir),
+            service: GitHubService::new(github_token, repository_cache_dir),
         }
     }
     
-    /// Creates a new GitHubCodeTools instance with default temp directory
+    /// Creates a new GitHubCodeTools instance with default repository cache directory
     ///
     /// This is a convenience constructor that uses the system's temporary directory.
     ///
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication.
-    pub fn with_default_temp_dir(github_token: Option<String>) -> Self {
+    pub fn with_default_cache_dir(github_token: Option<String>) -> Self {
         Self::new(github_token, None)
     }
 
@@ -53,7 +53,7 @@ impl GitHubCodeTools {
 
 impl Default for GitHubCodeTools {
     fn default() -> Self {
-        Self::with_default_temp_dir(None)
+        Self::with_default_cache_dir(None)
     }
 }
 

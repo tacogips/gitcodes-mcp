@@ -17,27 +17,27 @@ pub struct RepositoryInfo {
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
-/// Uses system temporary directories to store cloned repositories.
+/// Uses a dedicated directory to store cloned repositories.
 #[derive(Clone)]
 pub struct RepositoryManager {
-    pub(crate) temp_dir_base: PathBuf,
+    pub(crate) repository_cache_dir_base: PathBuf,
 }
 
 impl RepositoryManager {
-    /// Creates a new RepositoryManager instance with a custom temp directory
+    /// Creates a new RepositoryManager instance with a custom repository cache directory
     ///
     /// # Parameters
     ///
-    /// * `temp_dir_base` - Optional custom path for storing repositories.
-    ///                      If None, the system's temporary directory is used.
+    /// * `repository_cache_dir` - Optional custom path for storing repositories.
+    ///                            If None, the system's temporary directory is used.
     ///
     /// # Returns
     ///
     /// * `Result<Self, String>` - A new RepositoryManager instance or an error message
     ///                            if the directory cannot be created or accessed.
-    pub fn new(temp_dir_base: Option<PathBuf>) -> Result<Self, String> {
+    pub fn new(repository_cache_dir: Option<PathBuf>) -> Result<Self, String> {
         // Use provided path or default to system temp directory
-        let base_dir = match temp_dir_base {
+        let base_dir = match repository_cache_dir {
             Some(path) => path,
             None => std::env::temp_dir(),
         };
@@ -46,13 +46,13 @@ impl RepositoryManager {
         if !base_dir.exists() {
             // Try to create the directory if it doesn't exist
             std::fs::create_dir_all(&base_dir)
-                .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+                .map_err(|e| format!("Failed to create repository cache directory: {}", e))?;
         } else if !base_dir.is_dir() {
             return Err(format!("Specified path '{}' is not a directory", base_dir.display()));
         }
         
         // Check if the directory is writable by trying to create a test file
-        let test_file_path = base_dir.join(".write_test_temp_file");
+        let test_file_path = base_dir.join(".write_test_repo_cache_file");
         match std::fs::File::create(&test_file_path) {
             Ok(_) => {
                 // Clean up the test file
@@ -62,15 +62,15 @@ impl RepositoryManager {
         }
         
         Ok(Self {
-            temp_dir_base: base_dir,
+            repository_cache_dir_base: base_dir,
         })
     }
     
-    /// Creates a new RepositoryManager with the system's default temp directory
+    /// Creates a new RepositoryManager with the system's default cache directory
     ///
     /// This is a convenience method that creates a RepositoryManager with the
-    /// system's temporary directory as the base location.
-    pub fn with_default_temp_dir() -> Self {
+    /// system's temporary directory as the repository cache location.
+    pub fn with_default_cache_dir() -> Self {
         Self::new(None).expect("Failed to initialize with system temporary directory")
     }
     
@@ -78,7 +78,7 @@ impl RepositoryManager {
     fn get_repo_dir(&self, user: &str, repo: &str) -> PathBuf {
         let random_suffix = rand::thread_rng().gen::<u32>() % 10000;
         let dir_name = format!("mcp_github_{}_{}_{}", user, repo, random_suffix);
-        self.temp_dir_base.join(dir_name)
+        self.repository_cache_dir_base.join(dir_name)
     }
     
     /// Check if repository is already cloned
@@ -135,7 +135,7 @@ impl RepositoryManager {
 
 impl Default for RepositoryManager {
     fn default() -> Self {
-        Self::with_default_temp_dir()
+        Self::with_default_cache_dir()
     }
 }
 

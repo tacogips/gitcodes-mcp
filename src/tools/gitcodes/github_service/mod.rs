@@ -35,7 +35,7 @@ pub use git_repository::*;
 pub use params::*;
 
 use reqwest::Client;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // Repository information struct has been moved to git_repository.rs
 
@@ -66,7 +66,7 @@ pub struct GitHubService {
 
 impl Default for GitHubService {
     fn default() -> Self {
-        Self::with_default_temp_dir(None)
+        Self::with_default_cache_dir(None)
     }
 }
 
@@ -91,14 +91,14 @@ impl GitHubService {
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
-    /// * `temp_dir` - Optional custom directory path for storing cloned repositories.
+    /// * `repository_cache_dir` - Optional custom directory path for storing cloned repositories.
     ///
     /// # Returns
     ///
     /// A new GitHubService instance or panics if the repository manager cannot be initialized.
-    pub fn new(github_token: Option<String>, temp_dir: Option<PathBuf>) -> Self {
-        // Initialize the repository manager with the provided temp directory or default
-        let repo_manager = match RepositoryManager::new(temp_dir) {
+    pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
+        // Initialize the repository manager with the provided repository cache directory or default
+        let repo_manager = match RepositoryManager::new(repository_cache_dir) {
             Ok(manager) => manager,
             Err(e) => panic!("Failed to initialize repository manager: {}", e),
         };
@@ -110,7 +110,7 @@ impl GitHubService {
         }
     }
     
-    /// Creates a new GitHub service instance with the default temp directory
+    /// Creates a new GitHub service instance with the default repository cache directory
     ///
     /// This is a convenience constructor that uses the system's temporary directory
     /// for storing repositories.
@@ -118,7 +118,7 @@ impl GitHubService {
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication.
-    pub fn with_default_temp_dir(github_token: Option<String>) -> Self {
+    pub fn with_default_cache_dir(github_token: Option<String>) -> Self {
         Self::new(github_token, None)
     }
 

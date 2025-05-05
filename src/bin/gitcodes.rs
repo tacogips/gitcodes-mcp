@@ -24,10 +24,10 @@ enum Commands {
         #[arg(short = 't', long)]
         github_token: Option<String>,
         
-        /// Custom directory for storing temporary repository clones
+        /// Custom directory for storing repository cache data
         /// Defaults to system temp directory if not specified
-        #[arg(short, long)]
-        temp_dir: Option<std::path::PathBuf>,
+        #[arg(short = 'c', long = "cache-dir")]
+        repository_cache_dir: Option<std::path::PathBuf>,
     },
     /// Run the server with HTTP/SSE interface
     Http {
@@ -43,10 +43,10 @@ enum Commands {
         #[arg(short = 't', long)]
         github_token: Option<String>,
         
-        /// Custom directory for storing temporary repository clones
+        /// Custom directory for storing repository cache data
         /// Defaults to system temp directory if not specified
-        #[arg(short, long)]
-        temp_dir: Option<std::path::PathBuf>,
+        #[arg(short = 'c', long = "cache-dir")]
+        repository_cache_dir: Option<std::path::PathBuf>,
     },
 }
 
@@ -58,21 +58,21 @@ async fn main() -> Result<()> {
         Commands::Stdio {
             debug,
             github_token,
-            temp_dir,
-        } => run_stdio_server(debug, github_token, temp_dir).await,
+            repository_cache_dir,
+        } => run_stdio_server(debug, github_token, repository_cache_dir).await,
         Commands::Http {
             address,
             debug,
             github_token,
-            temp_dir,
-        } => run_http_server(address, debug, github_token, temp_dir).await,
+            repository_cache_dir,
+        } => run_http_server(address, debug, github_token, repository_cache_dir).await,
     }
 }
 
 async fn run_stdio_server(
     debug: bool, 
     github_token: Option<String>,
-    temp_dir: Option<std::path::PathBuf>
+    repository_cache_dir: Option<std::path::PathBuf>
 ) -> Result<()> {
     // Initialize the tracing subscriber with stderr logging
     let level = if debug {
@@ -96,12 +96,12 @@ async fn run_stdio_server(
         tracing::info!("Using GitHub token from command line arguments");
     }
     
-    if let Some(dir) = &temp_dir {
-        tracing::info!("Using custom temporary directory: {}", dir.display());
+    if let Some(dir) = &repository_cache_dir {
+        tracing::info!("Using custom repository cache directory: {}", dir.display());
     }
 
     // Run the server using the new rust-sdk implementation
-    gitcodes_mcp::transport::stdio::run_stdio_server(github_token, temp_dir)
+    gitcodes_mcp::transport::stdio::run_stdio_server(github_token, repository_cache_dir)
         .await
         .map_err(|e| anyhow::anyhow!("Error running STDIO server: {}", e))
 }
@@ -110,7 +110,7 @@ async fn run_http_server(
     address: String, 
     debug: bool, 
     github_token: Option<String>,
-    temp_dir: Option<std::path::PathBuf>
+    repository_cache_dir: Option<std::path::PathBuf>
 ) -> Result<()> {
     // Setup tracing
     let level = if debug { "debug" } else { "info" };
@@ -136,12 +136,12 @@ async fn run_http_server(
         tracing::info!("Using GitHub token from command line arguments");
     }
     
-    if let Some(dir) = &temp_dir {
-        tracing::info!("Using custom temporary directory: {}", dir.display());
+    if let Some(dir) = &repository_cache_dir {
+        tracing::info!("Using custom repository cache directory: {}", dir.display());
     }
 
     // Create app and run server using the new rust-sdk implementation
-    let app = gitcodes_mcp::transport::sse_server::SseServerApp::new(addr, github_token, temp_dir);
+    let app = gitcodes_mcp::transport::sse_server::SseServerApp::new(addr, github_token, repository_cache_dir);
     app.serve().await?;
 
     Ok(())
