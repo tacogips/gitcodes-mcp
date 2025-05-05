@@ -1,7 +1,7 @@
 // Wrapper implementation for GitHub tools using the MCP protocol
 use rmcp::{model::*, schemars, tool, ServerHandler};
 
-use super::{GitHubService, OrderOption, SortOption};
+use super::{GitHubService, OrderOption, SortOption, SearchParams};
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 /// 

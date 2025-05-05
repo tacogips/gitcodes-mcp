@@ -11,6 +11,21 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Add strum for Enum String Conversion
+
+- Added `strum` crate as a dependency for simplifying enum-to-string conversions
+- Applied derive macros to `SortOption` and `OrderOption` enums:
+  - `Display`: Enables formatting enum values with `{}` in strings
+  - `EnumString`: Allows parsing strings into enum values
+  - `AsRefStr`: Provides `as_ref()` method for string references
+- Used `#[strum(serialize_all = "lowercase")]` to ensure all variants output lowercase by default
+- Added specific `#[strum(serialize = "...")]` attributes for custom API string values:
+  - `Ascending` → "asc"
+  - `Descending` → "desc"
+- Simplified the `to_str()` methods to use the derived `as_ref()` method
+- Fixed lifetime issues by removing the `'static` constraint
+- Maintained backward compatibility with existing API pattern
+
 ### 2024-05-06: Refactor Search Parameters to Use Structured Type
 
 - Changed `search_repositories` parameter from individual parameters to a unified `SearchParams` struct

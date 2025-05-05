@@ -41,6 +41,7 @@ pub use git_repository::*;
 use lumin::{search, search::SearchOptions};
 use reqwest::Client;
 use rmcp::schemars;
+use strum::{Display, EnumString, AsRefStr};
 
 /// Repository information after URL parsing and preparation
 #[derive(Debug)]
@@ -175,19 +176,6 @@ impl GitHubService {
             per_page,
             page,
         }
-    }
-    
-    /// Internal search parameters for GitHub API requests
-    #[derive(Debug)]
-    struct InternalSearchParams {
-        /// Sort parameter for search results
-        sort: String,
-        /// Order parameter (asc or desc)
-        order: String,
-        /// Number of results per page
-        per_page: u8,
-        /// Page number
-        page: u32,
     }
 
     /// Constructs the GitHub API URL for repository search
@@ -724,46 +712,61 @@ impl GitHubService {
 /// Sort options for GitHub repository search results
 ///
 /// Controls how repository search results are ordered in the response.
-#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum SortOption {
     /// Sort by number of stars (popularity)
+    #[strum(serialize = "stars")]
     Stars,
     /// Sort by number of forks (derived projects)
+    #[strum(serialize = "forks")]
     Forks,
     /// Sort by most recently updated
+    #[strum(serialize = "updated")]
     Updated,
 }
 
 impl SortOption {
     /// Converts the sort option to its API string representation
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            SortOption::Stars => "stars",
-            SortOption::Forks => "forks",
-            SortOption::Updated => "updated",
-        }
+    pub fn to_str(&self) -> &str {
+        self.as_ref()
     }
 }
 
 /// Sort direction options for GitHub repository search results
 ///
 /// Controls whether results are displayed in ascending or descending order.
-#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum OrderOption {
     /// Sort in ascending order (lowest to highest, oldest to newest)
+    #[strum(serialize = "asc")]
     Ascending,
     /// Sort in descending order (highest to lowest, newest to oldest)
+    #[strum(serialize = "desc")]
     Descending,
 }
 
 impl OrderOption {
     /// Converts the order option to its API string representation
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            OrderOption::Ascending => "asc",
-            OrderOption::Descending => "desc",
-        }
+    pub fn to_str(&self) -> &str {
+        self.as_ref()
     }
+}
+
+/// Internal search parameters for GitHub API requests
+/// 
+/// Used internally to convert from the public SearchParams to the format needed for API calls
+#[derive(Debug)]
+struct InternalSearchParams {
+    /// Sort parameter for search results
+    sort: String,
+    /// Order parameter (asc or desc)
+    order: String,
+    /// Number of results per page
+    per_page: u8,
+    /// Page number
+    page: u32,
 }
 
 /// Search parameters for GitHub repository search
