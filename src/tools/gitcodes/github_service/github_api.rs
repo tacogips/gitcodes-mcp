@@ -6,8 +6,11 @@ pub struct SearchParams {
 }
 
 impl SearchParams {
-    pub fn construct_search_url(&self) -> String {}
+    pub fn construct_search_url(&self) -> String {
+        format!("https://api.github.com/search/repositories?q={}", self.query)
+    }
 }
+
 #[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub struct GrepParams {
     pub exclude_dirs: Option<Vec<String>>,
