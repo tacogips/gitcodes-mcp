@@ -27,6 +27,7 @@
 //! ```
 
 pub mod git_repository;
+mod github_api;
 pub mod params;
 
 pub use git_repository::*;
@@ -101,13 +102,10 @@ impl GitHubService {
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
     pub fn new(github_token: Option<String>) -> Self {
-        // Use provided token or fall back to environment variable
-        let token = github_token.or_else(|| std::env::var("GITCODE_MCP_GITHUB_TOKEN").ok());
-
         Self {
             client: Client::new(),
             repo_manager: RepositoryManager::new(),
-            github_token: token,
+            github_token,
         }
     }
 
@@ -137,50 +135,9 @@ impl GitHubService {
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
     pub async fn search_repositories(&self, params: SearchParams) -> String {
-        // Construct the API URL
-        let url = params.construct_search_url();
-
+        //TODO(tacogips) this method should return anyhow::Result<String> instead of Strin
         // Execute the search request
-        self.execute_search_request(&url).await
-    }
-
-    /// Executes a GitHub API search request
-    ///
-    /// Sends the HTTP request to the GitHub API and handles the response.
-    async fn execute_search_request(&self, url: &str) -> String {
-        // Set up the API request
-        let mut req_builder = self.client.get(url).header(
-            "User-Agent",
-            "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
-        );
-
-        // Add authentication token if available
-        if let Some(token) = &self.github_token {
-            req_builder = req_builder.header("Authorization", format!("token {}", token));
-        }
-
-        // Execute API request
-        let response = match req_builder.send().await {
-            Ok(resp) => resp,
-            Err(e) => return format!("Failed to search repositories: {}", e),
-        };
-
-        // Check if the request was successful
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = match response.text().await {
-                Ok(text) => text,
-                Err(_) => "Unknown error".to_string(),
-            };
-
-            return format!("GitHub API error {}: {}", status, error_text);
-        }
-
-        // Return the raw JSON response
-        match response.text().await {
-            Ok(text) => text,
-            Err(e) => format!("Failed to read response body: {}", e),
-        }
+        github_api::execute_search_request(&params, &self.client, self.github_token.as_ref()).await
     }
 
     /// Search code in a GitHub repository
@@ -534,6 +491,7 @@ impl GitHubService {
     }
 
     // Clone repository function
+    //TODO(tacogips) should move to RepositoryManager
     async fn clone_repository(
         &self,
         repo_dir: &str,
