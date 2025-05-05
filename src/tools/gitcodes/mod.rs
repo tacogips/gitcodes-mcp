@@ -22,9 +22,9 @@
 //! ```no_run
 //! // Provide a token directly when creating the service
 //! use gitcodes_mcp::tools::gitcodes::{GitHubService, GitHubCodeTools};
-//! 
+//!
 //! let github_service = GitHubService::new(Some("your_github_token".to_string()));
-//! 
+//!
 //! // Or when creating the tools wrapper
 //! let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()));
 //! ```
@@ -56,7 +56,7 @@ pub use git_repository::*;
 use lumin::{search, search::SearchOptions};
 use reqwest::Client;
 use rmcp::schemars;
-use strum::{Display, EnumString, AsRefStr};
+use strum::{AsRefStr, Display, EnumString};
 
 /// Repository information after URL parsing and preparation
 #[derive(Debug)]
@@ -108,16 +108,16 @@ pub use tools::GitHubCodeTools;
 pub struct SearchParams {
     /// Sort parameter for search results
     pub sort_by: Option<SortOption>,
-    
+
     /// Order parameter (asc or desc)
     pub order: Option<OrderOption>,
-    
+
     /// Number of results per page
     pub per_page: Option<u8>,
-    
+
     /// Page number
     pub page: Option<u32>,
-    
+
     /// Search query for repositories
     pub query: String,
 }
@@ -143,7 +143,7 @@ impl GitHubService {
     /// 2. Explicitly via the `github_token` parameter in code (second priority)
     /// 3. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
     ///
-    /// If no token is provided through either method, the system will work with 
+    /// If no token is provided through either method, the system will work with
     /// lower rate limits (60 requests/hour vs 5,000 requests/hour).
     ///
     /// # Parameters
@@ -159,7 +159,7 @@ impl GitHubService {
             github_token: token,
         }
     }
-    
+
     /// Get the authentication status for display
     pub fn get_auth_status(&self) -> String {
         if self.github_token.is_some() {
@@ -187,7 +187,7 @@ impl GitHubService {
     /// - Authenticated: 5,000 requests/hour
     pub async fn search_repositories(&self, params: SearchParams) -> String {
         // Build search parameters for API request
-        let internal_params = self.build_internal_search_params(&params);
+        let internal_params = InternalSearchParams::build_internal_search_params(&params);
 
         // Construct the API URL
         let url = internal_params.construct_search_url(&params.query);
@@ -195,37 +195,6 @@ impl GitHubService {
         // Execute the search request
         self.execute_search_request(&url).await
     }
-
-    /// Builds internal search parameters for repository search
-    ///
-    /// Converts the user-provided SearchParams into internal format for API request.
-    fn build_internal_search_params(&self, params: &SearchParams) -> InternalSearchParams {
-        // Set up sort parameter using Default implementation
-        let default_sort = SortOption::default();
-        let sort = params.sort_by
-            .as_ref()
-            .unwrap_or(&default_sort)
-            .to_str();
-
-        // Set up order parameter using Default implementation
-        let default_order = OrderOption::default();
-        let order_param = params.order
-            .as_ref()
-            .unwrap_or(&default_order)
-            .to_str();
-
-        // Set default values for pagination
-        let per_page = params.per_page.unwrap_or(30);
-        let page = params.page.unwrap_or(1);
-
-        InternalSearchParams::new(
-            sort.to_string(),
-            order_param.to_string(),
-            per_page,
-            page,
-        )
-    }
-
 
     /// Executes a GitHub API search request
     ///
@@ -293,25 +262,29 @@ impl GitHubService {
         _exclude_dirs: Option<Vec<String>>,
     ) -> String {
         // Parse repository information from URL
-        let repo_info = match self.parse_and_prepare_repository(&repository, ref_name).await {
+        let repo_info = match self
+            .parse_and_prepare_repository(&repository, ref_name)
+            .await
+        {
             Ok(info) => info,
             Err(e) => return e,
         };
 
         // Execute code search
-        let search_result = self.perform_code_search(
-            &repo_info.repo_dir,
-            &pattern,
-            case_sensitive,
-            use_regex,
-            file_extensions.clone(),
-        ).await;
+        let search_result = self
+            .perform_code_search(
+                &repo_info.repo_dir,
+                &pattern,
+                case_sensitive,
+                use_regex,
+                file_extensions.clone(),
+            )
+            .await;
 
         // Format and return results
         self.format_search_results(&search_result, &pattern, &repository)
     }
 
-    
     /// Parses a repository URL and prepares it for operations
     ///
     /// This helper function:
@@ -321,13 +294,14 @@ impl GitHubService {
     async fn parse_and_prepare_repository(
         &self,
         repository: &str,
-        ref_name: Option<String>
+        ref_name: Option<String>,
     ) -> Result<RepositoryInfo, String> {
         // Parse repository URL
-        let (user, repo) = match git_repository::parse_repository_url(&self.repo_manager, repository) {
-            Ok(result) => result,
-            Err(e) => return Err(format!("Error: {}", e)),
-        };
+        let (user, repo) =
+            match git_repository::parse_repository_url(&self.repo_manager, repository) {
+                Ok(result) => result,
+                Err(e) => return Err(format!("Error: {}", e)),
+            };
 
         // Default branch if not specified
         let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
@@ -340,7 +314,10 @@ impl GitHubService {
 
         // If repo is not cloned, clone it
         if !is_cloned {
-            if let Err(e) = self.clone_repository(&repo_dir, &user, &repo, &ref_name).await {
+            if let Err(e) = self
+                .clone_repository(&repo_dir, &user, &repo, &ref_name)
+                .await
+            {
                 return Err(e);
             }
         } else {
@@ -382,7 +359,11 @@ impl GitHubService {
             search_options.case_sensitive = case_sensitive.unwrap_or(false);
 
             // Execute the search
-            match search::search_files(&pattern_clone, std::path::Path::new(&repo_dir_clone), &search_options) {
+            match search::search_files(
+                &pattern_clone,
+                std::path::Path::new(&repo_dir_clone),
+                &search_options,
+            ) {
                 Ok(results) => {
                     // Format results
                     let mut output = String::new();
@@ -428,7 +409,7 @@ impl GitHubService {
                         pattern, repository, search_output
                     )
                 }
-            },
+            }
             Err(e) => format!("Search failed: {}", e),
         }
     }
@@ -584,15 +565,13 @@ impl GitHubService {
     /// 1. Clones or updates the repository locally
     /// 2. Fetches all branches and tags
     /// 3. Formats the results into a readable format
-    pub async fn list_repository_refs(
-        &self,
-        repository: String,
-    ) -> String {
+    pub async fn list_repository_refs(&self, repository: String) -> String {
         // Parse repository URL
-        let (user, repo) = match git_repository::parse_repository_url(&self.repo_manager, &repository) {
-            Ok(result) => result,
-            Err(e) => return format!("Error: {}", e),
-        };
+        let (user, repo) =
+            match git_repository::parse_repository_url(&self.repo_manager, &repository) {
+                Ok(result) => result,
+                Err(e) => return format!("Error: {}", e),
+            };
 
         // Get a temporary directory for the repository
         let repo_dir = git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
@@ -738,11 +717,12 @@ impl GitHubService {
     }
 }
 
-
 /// Sort options for GitHub repository search results
 ///
 /// Controls how repository search results are ordered in the response.
-#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
+#[derive(
+    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
+)]
 #[strum(serialize_all = "lowercase")]
 pub enum SortOption {
     /// No specific sort, use GitHub's default relevance sorting
@@ -776,7 +756,9 @@ impl SortOption {
 /// Sort direction options for GitHub repository search results
 ///
 /// Controls whether results are displayed in ascending or descending order.
-#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
+#[derive(
+    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
+)]
 #[strum(serialize_all = "lowercase")]
 pub enum OrderOption {
     /// Sort in ascending order (lowest to highest, oldest to newest)
@@ -802,7 +784,7 @@ impl OrderOption {
 }
 
 /// Internal search parameters for GitHub API requests
-/// 
+///
 /// Used internally to convert from individual search parameters to the format needed for API calls
 #[derive(Debug)]
 struct InternalSearchParams {
@@ -832,7 +814,7 @@ impl InternalSearchParams {
     pub fn new(sort: String, order: String, per_page: u8, page: u32) -> Self {
         // Ensure per_page is within limits (GitHub API limit is 100)
         let per_page = per_page.min(100);
-        
+
         Self {
             sort,
             order,
@@ -840,7 +822,7 @@ impl InternalSearchParams {
             page,
         }
     }
-    
+
     /// Constructs the GitHub API URL for repository search
     ///
     /// Builds the complete URL with query parameters for the GitHub search API.
@@ -859,5 +841,23 @@ impl InternalSearchParams {
 
         url
     }
-}
 
+    /// Builds internal search parameters for repository search
+    ///
+    /// Converts the user-provided SearchParams into internal format for API request.
+    fn build_internal_search_params(params: &SearchParams) -> InternalSearchParams {
+        // Set up sort parameter using Default implementation
+        let default_sort = SortOption::default();
+        let sort = params.sort_by.as_ref().unwrap_or(&default_sort).to_str();
+
+        // Set up order parameter using Default implementation
+        let default_order = OrderOption::default();
+        let order_param = params.order.as_ref().unwrap_or(&default_order).to_str();
+
+        // Set default values for pagination
+        let per_page = params.per_page.unwrap_or(30);
+        let page = params.page.unwrap_or(1);
+
+        InternalSearchParams::new(sort.to_string(), order_param.to_string(), per_page, page)
+    }
+}
