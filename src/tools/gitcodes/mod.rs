@@ -58,13 +58,12 @@ impl Default for RepositoryManager {
     }
 }
 
-/// Main router for GitHub and crate documentation functionality
+/// Main router for GitHub repository operations
 ///
 /// This struct handles GitHub API requests and provides tools for:
 /// - Repository searching
 /// - Code searching within repositories
 /// - Branch and tag listing
-/// - (Planned) Rust crate documentation
 ///
 /// # Authentication
 ///
@@ -75,7 +74,7 @@ impl Default for RepositoryManager {
 /// - Optional, but recommended to avoid rate limiting (60 vs 5,000 requests/hour)
 /// - Required for accessing private repositories (with `repo` scope)
 #[derive(Clone)]
-pub struct CargoDocRouter {
+pub struct GitHubRepositoryRouter {
     /// HTTP client for API requests
     pub client: Client,
     /// Manager for repository operations
@@ -84,14 +83,14 @@ pub struct CargoDocRouter {
     pub github_token: Option<String>,
 }
 
-impl Default for CargoDocRouter {
+impl Default for GitHubRepositoryRouter {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[tool(tool_box)]
-impl CargoDocRouter {
+impl GitHubRepositoryRouter {
     /// Creates a new router instance
     ///
     /// Initializes:
@@ -720,7 +719,7 @@ impl CargoDocRouter {
 }
 
 #[tool(tool_box)]
-impl ServerHandler for CargoDocRouter {
+impl ServerHandler for GitHubRepositoryRouter {
     /// Provides information about this MCP server
     ///
     /// Returns server capabilities, protocol version, and usage instructions

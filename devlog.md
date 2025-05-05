@@ -11,6 +11,13 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Rename CargoDocRouter to GitHubRepositoryRouter
+
+- Renamed `CargoDocRouter` to `GitHubRepositoryRouter` to better reflect its purpose and functionality
+- Updated all references across the codebase to use the new name
+- Removed mentions of planned Rust crate documentation in router documentation
+- Updated imports and usages in transport implementations
+
 ### 2024-05-05: Code Structure Refactoring for Repository Management
 
 - Refactored the `RepositoryManager` implementation to address compilation errors
