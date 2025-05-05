@@ -1,7 +1,7 @@
 // Wrapper implementation for GitHub tools using the MCP protocol
 use rmcp::{model::*, schemars, tool, ServerHandler};
 
-use super::{GitHubService, OrderOption, SortOption};
+use super::github_service::{GitHubService, params::{SearchParams, SortOption, OrderOption, GrepParams}};
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
@@ -150,7 +150,7 @@ impl GitHubCodeTools {
         page: Option<u32>,
     ) -> String {
         // Create a SearchParams struct from the individual parameters
-        let params = super::SearchParams {
+        let params = SearchParams {
             query,
             sort_by,
             order,
@@ -225,7 +225,7 @@ impl GitHubCodeTools {
         exclude_dirs: Option<Vec<String>>,
     ) -> String {
         // Create a GrepParams struct from the individual parameters
-        let params = super::GrepParams {
+        let params = GrepParams {
             repository,
             ref_name,
             pattern,

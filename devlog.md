@@ -11,6 +11,21 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor GitHub Service Components into Separate Package
+
+- Created a dedicated `github_service` directory under `gitcodes` to improve code organization
+- Moved parameter-related structs and enums to a separate `params.rs` file:
+  - `SearchParams` struct and methods
+  - `GrepParams` struct and methods
+  - `SortOption` enum
+  - `OrderOption` enum
+- Moved service implementation to `github_service/mod.rs`
+- Updated imports and exports throughout the codebase
+- Modified documentation to reflect the new module structure
+- Maintained backward compatibility with existing API
+- Enhanced code organization by following better separation of concerns
+- Improved code maintainability by grouping related components
+
 ### 2024-05-06: Create GrepParams Struct for Code Search
 
 - Created a new `GrepParams` struct for code search parameters
