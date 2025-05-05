@@ -52,6 +52,19 @@ pub struct RepositoryManager {
     temp_dir_base: String,
 }
 
+/// Repository information after URL parsing and preparation
+#[derive(Debug)]
+struct RepositoryInfo {
+    /// GitHub username or organization
+    user: String,
+    /// Repository name
+    repo: String,
+    /// Local directory where repository is cloned
+    repo_dir: String,
+    /// Branch or tag name to use
+    ref_name: String,
+}
+
 impl RepositoryManager {
     /// Creates a new RepositoryManager instance
     ///
@@ -75,7 +88,7 @@ impl Default for RepositoryManager {
 ///
 /// This struct provides integrated tools for GitHub operations:
 /// - Repository searching
-/// - Code searching within repositories 
+/// - Code searching within repositories
 /// - Branch and tag listing
 ///
 /// # Authentication
@@ -167,16 +180,16 @@ impl GitHubService {
     ) -> String {
         // Build search parameters
         let search_params = self.build_search_params(sort_by, order, per_page, page);
-        
+
         // Construct the API URL
         let url = self.construct_search_url(&query, &search_params);
-        
+
         // Execute the search request
         self.execute_search_request(&url).await
     }
-    
+
     /// Builds the search parameters for repository search
-    /// 
+    ///
     /// Converts the user-provided search options into API parameters.
     fn build_search_params(
         &self,
@@ -190,17 +203,17 @@ impl GitHubService {
             Some(option) => option.to_str(),
             None => "", // Default is relevance
         };
-        
+
         // Set up order parameter
         let order_param = match order {
             Some(option) => option.to_str(),
             None => "desc", // Default is descending
         };
-        
+
         // Ensure per_page is within limits
         let per_page = per_page.unwrap_or(30).min(100);
         let page = page.unwrap_or(1);
-        
+
         SearchParams {
             sort: sort.to_string(),
             order: order_param.to_string(),
@@ -208,7 +221,7 @@ impl GitHubService {
             page,
         }
     }
-    
+
     /// Constructs the GitHub API URL for repository search
     ///
     /// Builds the complete URL with query parameters for the GitHub search API.
@@ -224,10 +237,10 @@ impl GitHubService {
 
         url.push_str(&format!("&order={}", params.order));
         url.push_str(&format!("&per_page={}&page={}", params.per_page, params.page));
-        
+
         url
     }
-    
+
     /// Executes a GitHub API search request
     ///
     /// Sends the HTTP request to the GitHub API and handles the response.
@@ -316,10 +329,41 @@ impl GitHubService {
         )]
         _exclude_dirs: Option<Vec<String>>,
     ) -> String {
+        // Parse repository information from URL
+        let repo_info = match self.parse_and_prepare_repository(&repository, ref_name).await {
+            Ok(info) => info,
+            Err(e) => return e,
+        };
+
+        // Execute code search
+        let search_result = self.perform_code_search(
+            &repo_info.repo_dir,
+            &pattern,
+            case_sensitive,
+            use_regex,
+            file_extensions.clone(),
+        ).await;
+
+        // Format and return results
+        self.format_search_results(&search_result, &pattern, &repository)
+    }
+
+    
+    /// Parses a repository URL and prepares it for operations
+    ///
+    /// This helper function:
+    /// 1. Extracts user and repo name from the URL
+    /// 2. Creates or determines the repository directory
+    /// 3. Ensures the repository is cloned or updated locally
+    async fn parse_and_prepare_repository(
+        &self,
+        repository: &str,
+        ref_name: Option<String>
+    ) -> Result<RepositoryInfo, String> {
         // Parse repository URL
-        let (user, repo) = match git_repository::parse_repository_url(&self.repo_manager, &repository) {
+        let (user, repo) = match git_repository::parse_repository_url(&self.repo_manager, repository) {
             Ok(result) => result,
-            Err(e) => return format!("Error: {}", e),
+            Err(e) => return Err(format!("Error: {}", e)),
         };
 
         // Default branch if not specified
@@ -333,23 +377,41 @@ impl GitHubService {
 
         // If repo is not cloned, clone it
         if !is_cloned {
-            let result = self
-                .clone_repository(&repo_dir, &user, &repo, &ref_name)
-                .await;
-            if let Err(e) = result {
-                return e;
+            if let Err(e) = self.clone_repository(&repo_dir, &user, &repo, &ref_name).await {
+                return Err(e);
             }
         } else {
-            let result = self.update_repository(&repo_dir, &ref_name).await;
-            if let Err(e) = result {
-                return e;
+            if let Err(e) = self.update_repository(&repo_dir, &ref_name).await {
+                return Err(e);
             }
         }
 
-        // Use lumin for search
-        let repo_dir_clone = repo_dir.clone();
-        let pattern_clone = pattern.clone();
-        let search_result = tokio::task::spawn_blocking(move || {
+        Ok(RepositoryInfo {
+            user,
+            repo,
+            repo_dir,
+            ref_name,
+        })
+    }
+
+    /// Performs a code search on a prepared repository
+    ///
+    /// This function executes the search using the lumin search library
+    /// and processes the results.
+    async fn perform_code_search(
+        &self,
+        repo_dir: &str,
+        pattern: &str,
+        case_sensitive: Option<bool>,
+        _use_regex: Option<bool>,
+        _file_extensions: Option<Vec<String>>,
+    ) -> Result<String, String> {
+        // Clone values for the thread
+        let repo_dir_clone = repo_dir.to_string();
+        let pattern_clone = pattern.to_string();
+
+        // Execute search in a blocking task
+        tokio::task::spawn_blocking(move || {
             // Create search options
             let mut search_options = SearchOptions::default();
 
@@ -371,30 +433,40 @@ impl GitHubService {
                         ));
                     }
 
-                    output
+                    Ok(output)
                 }
-                Err(e) => format!("Lumin search failed: {}", e),
+                Err(e) => Err(format!("Lumin search failed: {}", e)),
             }
         })
         .await
-        .map_err(|e| format!("Search task failed: {}", e));
+        .map_err(|e| format!("Search task failed: {}", e))?
+    }
 
-        // Handle search errors
-        if let Err(e) = &search_result {
-            return format!("Search failed: {}", e);
-        }
-
-        let search_output = search_result.unwrap();
-        if search_output.trim().is_empty() {
-            format!(
-                "No matches found for pattern '{}' in repository {}",
-                pattern, repository
-            )
-        } else {
-            format!(
-                "Search results for '{}' in repository {}:\n\n{}",
-                pattern, repository, search_output
-            )
+    /// Formats the search results for output
+    ///
+    /// This function takes the raw search results and formats them into
+    /// a user-friendly message.
+    fn format_search_results(
+        &self,
+        search_result: &Result<String, String>,
+        pattern: &str,
+        repository: &str,
+    ) -> String {
+        match search_result {
+            Ok(search_output) => {
+                if search_output.trim().is_empty() {
+                    format!(
+                        "No matches found for pattern '{}' in repository {}",
+                        pattern, repository
+                    )
+                } else {
+                    format!(
+                        "Search results for '{}' in repository {}:\n\n{}",
+                        pattern, repository, search_output
+                    )
+                }
+            },
+            Err(e) => format!("Search failed: {}", e),
         }
     }
 
@@ -582,69 +654,6 @@ impl GitHubService {
             Err(e) => format!("Failed to list refs: {}", e),
         }
     }
-
-    ////
-    // Look up documentation for a Rust crate
-    //    #[tool(description = "Look up documentation for a Rust crate")]
-    //    async fn lookup_crate(
-    //        &self,
-    //        #[tool(param)]
-    //        #[schemars(description = "The name of the crate to look up")]
-    //        crate_name: String,
-    //
-    //        #[tool(param)]
-    //        #[schemars(description = "The version of the crate (optional, defaults to latest)")]
-    //        version: Option<String>,
-    //    ) -> String {
-    //        // Check cache first
-    //        let cache_key = if let Some(ver) = &version {
-    //            format!("{}}:{}", crate_name, ver)
-    //        } else {
-    //            crate_name.clone()
-    //        };
-    //
-    //        // Construct the docs.rs URL for the crate
-    //        let url = if let Some(ver) = version {
-    //            format!("https://docs.rs/crate/{}/{}/", crate_name, ver)
-    //        } else {
-    //            format!("https://docs.rs/crate/{}/", crate_name)
-    //        };
-    //
-    //        // Fetch the documentation page
-    //        let response = match self
-    //            .client
-    //            .get(&url)
-    //            .header(
-    //                "User-Agent",
-    //                "gitcodes/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
-    //            )
-    //            .send()
-    //            .await
-    //        {
-    //            Ok(resp) => resp,
-    //            Err(e) => return format!("Failed to fetch documentation: {}", e),
-    //        };
-    //
-    //        if !response.status().is_success() {
-    //            return format!(
-    //                "Failed to fetch documentation. Status: {}",
-    //                response.status()
-    //            );
-    //        }
-    //
-    //        let html_body = match response.text().await {
-    //            Ok(body) => body,
-    //            Err(e) => return format!("Failed to read response body: {}", e),
-    //        };
-    //
-    //        // Convert HTML to markdown
-    //        let markdown_body = parse_html(&html_body);
-    //
-    //        // Cache the markdown result
-    //        self.cache.set(cache_key, markdown_body.clone()).await;
-    //
-    //        markdown_body
-    //    }
 
     // Clone repository function
     async fn clone_repository(

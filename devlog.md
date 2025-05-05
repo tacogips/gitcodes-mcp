@@ -11,6 +11,17 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Refactor GitHubService::grep_repository Method
+
+- Restructured the `grep_repository` method to improve modularity and readability
+- Created helper methods to handle specific responsibilities:
+  - `parse_and_prepare_repository`: Handles URL parsing and repository preparation
+  - `perform_code_search`: Executes the search using lumin search engine
+  - `format_search_results`: Formats results for user-friendly output
+- Added a `RepositoryInfo` struct to encapsulate repository data between functions
+- Improved error handling with more consistent Result return types
+- Enhanced documentation for each helper method
+
 ### 2024-05-05: Refactor RepositoryManager Creation
 
 - Moved `new_repository_manager()` function to a proper `RepositoryManager::new()` method
