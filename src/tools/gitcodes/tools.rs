@@ -53,7 +53,7 @@ impl GitHubCodeTools {
 
 impl Default for GitHubCodeTools {
     fn default() -> Self {
-        Self::new(None)
+        Self::with_default_temp_dir(None)
     }
 }
 
