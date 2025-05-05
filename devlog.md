@@ -13,6 +13,36 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor Code Search Functions to Separate Module
+
+- Created a new `code_search.rs` module for code search functionality:
+  - Extracted `perform_code_search` function from `GitHubService` class
+  - Extracted `format_search_results` function from `GitHubService` class
+  - Made the module private with mod-level visibility
+- Updated the `grep_repository` method to use the new functions
+- Improved initialization of SearchOptions using struct initialization rather than mutation
+- Enhanced code organization by following better separation of concerns:
+  - `params.rs` for data structures 
+  - `github_api.rs` for API interaction logic
+  - `git_repository.rs` for Git operations
+  - `code_search.rs` for code search logic 
+  - `mod.rs` for service orchestration
+- Maintained all functionality while improving code maintainability
+
+### 2024-05-06: Refactor Git Repository Functions to Separate Module
+
+- Extracted repository operations from `GitHubService` to `git_repository.rs`:
+  - Moved `clone_repository` function to the `git_repository` module as mentioned in the TODO comment
+  - Moved `update_repository` function to the `git_repository` module
+  - Removed the duplicate implementations from `GitHubService`
+  - Updated function calls in `GitHubService` to use the new functions
+- Enhanced code organization by grouping related functionality:
+  - All Git operations now reside in the `git_repository` module
+  - Service class now delegates repository operations rather than implementing them
+- Improved code reusability by making these functions public and stateless
+- Enhanced maintainability by eliminating duplicate code
+- Completed refactoring mentioned in TODO comment
+
 ### 2024-05-06: Refactor GitHub API Functions to Separate Module
 
 - Moved API-related functionality from `GitHubService` to a separate `github_api.rs` module:

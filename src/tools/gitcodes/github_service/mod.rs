@@ -28,12 +28,12 @@
 
 pub mod git_repository;
 mod github_api;
+mod code_search;
 pub mod params;
 
 pub use git_repository::*;
 pub use params::*;
 
-use lumin::{search, search::SearchOptions};
 use reqwest::Client;
 
 /// Repository information after URL parsing and preparation
@@ -167,18 +167,17 @@ impl GitHubService {
         };
 
         // Execute code search
-        let search_result = self
-            .perform_code_search(
-                &repo_info.repo_dir,
-                &params.pattern,
-                params.case_sensitive,
-                params.use_regex,
-                params.file_extensions.clone(),
-            )
-            .await;
+        let search_result = code_search::perform_code_search(
+            &repo_info.repo_dir,
+            &params.pattern,
+            params.case_sensitive,
+            params.use_regex,
+            params.file_extensions.clone(),
+        )
+        .await;
 
         // Format and return results
-        self.format_search_results(&search_result, &params.pattern, &params.repository)
+        code_search::format_search_results(&search_result, &params.pattern, &params.repository)
     }
 
     /// Parses a repository URL and prepares it for operations
@@ -210,16 +209,9 @@ impl GitHubService {
 
         // If repo is not cloned, clone it
         if !is_cloned {
-            if let Err(e) = self
-                .clone_repository(&repo_dir, &user, &repo, &ref_name)
-                .await
-            {
-                return Err(e);
-            }
+            git_repository::clone_repository(&repo_dir, &user, &repo, &ref_name).await?
         } else {
-            if let Err(e) = self.update_repository(&repo_dir, &ref_name).await {
-                return Err(e);
-            }
+            git_repository::update_repository(&repo_dir, &ref_name).await?
         }
 
         Ok(RepositoryInfo {
@@ -230,85 +222,7 @@ impl GitHubService {
         })
     }
 
-    /// Performs a code search on a prepared repository
-    ///
-    /// This function executes the search using the lumin search library
-    /// and processes the results.
-    async fn perform_code_search(
-        &self,
-        repo_dir: &str,
-        pattern: &str,
-        case_sensitive: Option<bool>,
-        _use_regex: Option<bool>,
-        _file_extensions: Option<Vec<String>>,
-    ) -> Result<String, String> {
-        // Clone values for the thread
-        let repo_dir_clone = repo_dir.to_string();
-        let pattern_clone = pattern.to_string();
-
-        // Execute search in a blocking task
-        tokio::task::spawn_blocking(move || {
-            // Create search options
-            let mut search_options = SearchOptions::default();
-
-            // Configure case sensitivity
-            search_options.case_sensitive = case_sensitive.unwrap_or(false);
-
-            // Execute the search
-            match search::search_files(
-                &pattern_clone,
-                std::path::Path::new(&repo_dir_clone),
-                &search_options,
-            ) {
-                Ok(results) => {
-                    // Format results
-                    let mut output = String::new();
-
-                    for result in results {
-                        output.push_str(&format!(
-                            "{}:{}: {}\n",
-                            result.file_path.display(),
-                            result.line_number,
-                            result.line_content
-                        ));
-                    }
-
-                    Ok(output)
-                }
-                Err(e) => Err(format!("Lumin search failed: {}", e)),
-            }
-        })
-        .await
-        .map_err(|e| format!("Search task failed: {}", e))?
-    }
-
-    /// Formats the search results for output
-    ///
-    /// This function takes the raw search results and formats them into
-    /// a user-friendly message.
-    fn format_search_results(
-        &self,
-        search_result: &Result<String, String>,
-        pattern: &str,
-        repository: &str,
-    ) -> String {
-        match search_result {
-            Ok(search_output) => {
-                if search_output.trim().is_empty() {
-                    format!(
-                        "No matches found for pattern '{}' in repository {}",
-                        pattern, repository
-                    )
-                } else {
-                    format!(
-                        "Search results for '{}' in repository {}:\n\n{}",
-                        pattern, repository, search_output
-                    )
-                }
-            }
-            Err(e) => format!("Search failed: {}", e),
-        }
-    }
+    // Code search methods have been moved to code_search.rs
 
     // Function to fetch repository refs (branches and tags)
     async fn fetch_repository_refs(
@@ -477,7 +391,7 @@ impl GitHubService {
 
         // If repo is not cloned, clone it
         if !is_cloned {
-            match self.clone_repository(&repo_dir, &user, &repo, "main").await {
+            match git_repository::clone_repository(&repo_dir, &user, &repo, "main").await {
                 Ok(_) => {}
                 Err(e) => return e,
             }
@@ -490,126 +404,6 @@ impl GitHubService {
         }
     }
 
-    // Clone repository function
-    //TODO(tacogips) should move to RepositoryManager
-    async fn clone_repository(
-        &self,
-        repo_dir: &str,
-        user: &str,
-        repo: &str,
-        ref_name: &str,
-    ) -> Result<(), String> {
-        // Create directory if it doesn't exist
-        if let Err(e) = tokio::fs::create_dir_all(repo_dir).await {
-            return Err(format!("Failed to create directory: {}", e));
-        }
-
-        // Clone repository
-        let clone_url = format!("https://github.com/{}/{}.git", user, repo);
-
-        // Clone with git command
-        let repo_dir_clone = repo_dir.to_string();
-        let ref_name_clone = ref_name.to_string();
-        let clone_result = tokio::task::spawn_blocking(move || {
-            let status = std::process::Command::new("git")
-                .args([
-                    "clone",
-                    "--depth=1",
-                    "--branch",
-                    &ref_name_clone,
-                    &clone_url,
-                    &repo_dir_clone,
-                ])
-                .status();
-
-            match status {
-                Ok(exit_status) if exit_status.success() => Ok(()),
-                Ok(exit_status) => Err(format!("Git clone failed with status: {}", exit_status)),
-                Err(e) => Err(format!("Failed to execute git clone: {}", e)),
-            }
-        })
-        .await;
-
-        // Handle errors during cloning
-        if let Err(e) = clone_result {
-            return Err(format!("Failed to run git clone: {}", e));
-        }
-
-        clone_result.unwrap()
-    }
-
-    // Update repository function
-    async fn update_repository(&self, repo_dir: &str, ref_name: &str) -> Result<(), String> {
-        // Repository exists, update it
-        let repo_dir_clone = repo_dir.to_string();
-        let ref_name_clone = ref_name.to_string();
-        let update_result = tokio::task::spawn_blocking(move || {
-            // Change to the repository directory
-            let current_dir = match std::env::current_dir() {
-                Ok(dir) => dir,
-                Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-            };
-
-            if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
-                return Err(format!("Failed to change directory: {}", e));
-            }
-
-            // Fetch updates
-            let fetch_status = std::process::Command::new("git")
-                .args(["fetch", "--depth=1", "origin"])
-                .status();
-
-            if let Err(e) = fetch_status {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Git fetch failed: {}", e));
-            }
-
-            if !fetch_status.unwrap().success() {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err("Git fetch failed".to_string());
-            }
-
-            // Try to checkout the requested branch
-            let checkout_status = std::process::Command::new("git")
-                .args(["checkout", &ref_name_clone])
-                .status();
-
-            if let Err(e) = checkout_status {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Git checkout failed: {}", e));
-            }
-
-            if !checkout_status.unwrap().success() {
-                // Try origin/branch_name
-                let origin_checkout = std::process::Command::new("git")
-                    .args(["checkout", &format!("origin/{}", ref_name_clone)])
-                    .status();
-
-                if let Err(e) = origin_checkout {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Git checkout failed: {}", e));
-                }
-
-                if !origin_checkout.unwrap().success() {
-                    let _ = std::env::set_current_dir(current_dir);
-                    return Err(format!("Branch/tag not found: {}", ref_name_clone));
-                }
-            }
-
-            // Change back to the original directory
-            if let Err(e) = std::env::set_current_dir(current_dir) {
-                return Err(format!("Failed to restore directory: {}", e));
-            }
-
-            Ok(())
-        })
-        .await;
-
-        // Handle update errors
-        if let Err(e) = update_result {
-            return Err(format!("Failed to update repository: {}", e));
-        }
-
-        update_result.unwrap()
-    }
+    // Now using git_repository functions instead of local implementations
+    // Functions have been moved to git_repository.rs
 }
