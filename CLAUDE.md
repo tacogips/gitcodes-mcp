@@ -39,6 +39,26 @@ When making significant changes, update both devlog.md and relevant Rustdoc comm
 - Match arms should be aligned
 - Use Rust's ownership system effectively (avoid unnecessary clones)
 - Actively use cargo-docs (mcp) to investigate crate usage patterns
+- Organize module and import declarations in the following order, with each block separated by a blank line:
+  1. `pub mod` declarations (no line breaks within this block)
+  2. `mod` declarations (no line breaks within this block)
+  3. `pub use` declarations (no line breaks within this block)
+  4. `use` declarations (no line breaks within this block)
+
+Example of proper module and import organization:
+
+```rust
+pub mod git_repository;
+pub mod params;
+
+mod aaa;
+
+pub use git_repository::*;
+pub use params::*;
+
+use lumin::{search, search::SearchOptions};
+use reqwest::Client;
+```
 
 ## MCP Tool Guidelines
 
