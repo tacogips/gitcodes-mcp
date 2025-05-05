@@ -11,6 +11,14 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Refactor Enum String Conversion to Methods
+
+- Added `to_str()` methods to `SortOption` and `OrderOption` enums 
+- Encapsulated string conversion logic within the enum types
+- Simplified `build_search_params()` function by using these methods
+- Enhanced code maintainability by centralizing conversion logic
+- Followed Rust best practices by implementing behavior directly on types
+
 ### 2024-05-05: Refactor GitHubService::search_repositories for Better Modularity
 
 - Refactored `search_repositories` method into smaller, focused helper methods

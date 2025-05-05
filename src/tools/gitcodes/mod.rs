@@ -173,17 +173,14 @@ impl GitHubService {
         page: Option<u32>,
     ) -> SearchParams {
         // Set up sort parameter
-        let sort = match sort_by {
-            Some(SortOption::Stars) => "stars",
-            Some(SortOption::Forks) => "forks",
-            Some(SortOption::Updated) => "updated",
+        let sort = match &sort_by {
+            Some(option) => option.to_str(),
             None => "", // Default is relevance
         };
         
         // Set up order parameter
         let order_param = match order {
-            Some(OrderOption::Ascending) => "asc",
-            Some(OrderOption::Descending) => "desc",
+            Some(option) => option.to_str(),
             None => "desc", // Default is descending
         };
         
@@ -815,6 +812,17 @@ pub enum SortOption {
     Updated,
 }
 
+impl SortOption {
+    /// Converts the sort option to its API string representation
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            SortOption::Stars => "stars",
+            SortOption::Forks => "forks",
+            SortOption::Updated => "updated",
+        }
+    }
+}
+
 /// Sort direction options for GitHub repository search results
 ///
 /// Controls whether results are displayed in ascending or descending order.
@@ -824,6 +832,16 @@ pub enum OrderOption {
     Ascending,
     /// Sort in descending order (highest to lowest, newest to oldest)
     Descending,
+}
+
+impl OrderOption {
+    /// Converts the order option to its API string representation
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            OrderOption::Ascending => "asc",
+            OrderOption::Descending => "desc",
+        }
+    }
 }
 
 /// Search parameters for GitHub repository search
