@@ -12,19 +12,21 @@
 //!
 //! ### 1. Environment Variable
 //!
-//! ```
+//! ```bash
 //! # Authentication is optional but recommended to avoid rate limiting
 //! export GITCODE_MCP_GITHUB_TOKEN=your_github_token
 //! ```
 //!
 //! ### 2. Programmatic API
 //!
-//! ```rust
+//! ```no_run
 //! // Provide a token directly when creating the service
-//! let github_service = GitHubService::with_token(Some("your_github_token".to_string()));
+//! use gitcodes_mcp::tools::gitcodes::{GitHubService, GitHubCodeTools};
+//! 
+//! let github_service = GitHubService::new(Some("your_github_token".to_string()));
 //! 
 //! // Or when creating the tools wrapper
-//! let github_tools = GitHubCodeTools::with_token(Some("your_github_token".to_string()));
+//! let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()));
 //! ```
 //!
 //! ### GitHub Token
@@ -96,7 +98,29 @@ pub struct GitHubService {
 
 // Re-export the tools implementation
 mod tools;
-pub use tools::{GitHubCodeTools, SearchParams};
+pub use tools::GitHubCodeTools;
+
+/// Search parameters for GitHub repository search
+///
+/// Contains all the parameters needed for configuring a repository search request.
+/// This is internal to the module and not exposed externally.
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct SearchParams {
+    /// Sort parameter for search results
+    pub sort_by: Option<SortOption>,
+    
+    /// Order parameter (asc or desc)
+    pub order: Option<OrderOption>,
+    
+    /// Number of results per page
+    pub per_page: Option<u8>,
+    
+    /// Page number
+    pub page: Option<u32>,
+    
+    /// Search query for repositories
+    pub query: String,
+}
 
 impl Default for GitHubService {
     fn default() -> Self {
@@ -779,7 +803,7 @@ impl OrderOption {
 
 /// Internal search parameters for GitHub API requests
 /// 
-/// Used internally to convert from the public SearchParams to the format needed for API calls
+/// Used internally to convert from individual search parameters to the format needed for API calls
 #[derive(Debug)]
 struct InternalSearchParams {
     /// Sort parameter for search results
