@@ -109,9 +109,9 @@ pub struct GitHubService {
     pub github_token: Option<String>,
 }
 
-// Re-export the wrapper
-mod wrapper;
-pub use wrapper::GitHubCodeTools;
+// Re-export the tools implementation
+mod tools;
+pub use tools::GitHubCodeTools;
 
 impl Default for GitHubService {
     fn default() -> Self {

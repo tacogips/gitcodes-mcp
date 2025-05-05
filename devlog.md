@@ -15,7 +15,7 @@ This file documents the development process, architectural decisions, and implem
 
 - Separated `#[tool(tool_box)]` implementation from `GitHubService`
 - Created a new `GitHubCodeTools` wrapper struct for MCP protocol integration
-- Moved tool annotations and handler implementation to the wrapper
+- Moved tool annotations and handler implementation to the wrapper in a dedicated `tools.rs` file
 - Implemented a clean separation of concerns between:
   - Core business logic in `GitHubService`
   - MCP protocol integration in `GitHubCodeTools`
