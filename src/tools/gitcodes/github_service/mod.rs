@@ -26,13 +26,14 @@
 //! let github_service = GitHubService::new(Some("your_github_token".to_string()));
 //! ```
 
+pub mod git_repository;
+pub mod params;
+
+pub use git_repository::*;
+pub use params::*;
+
 use lumin::{search, search::SearchOptions};
 use reqwest::Client;
-
-pub mod git_repository;
-pub use git_repository::*;
-pub mod params;
-pub use params::*;
 
 /// Repository information after URL parsing and preparation
 #[derive(Debug)]
