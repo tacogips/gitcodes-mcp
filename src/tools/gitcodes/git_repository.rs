@@ -1,10 +1,33 @@
 
 use rand::Rng;
 
+/// Repository manager for Git operations
+///
+/// Handles cloning, updating, and retrieving information from GitHub repositories.
+/// Uses system temporary directories to store cloned repositories.
+#[derive(Clone)]
+pub struct RepositoryManager {
+    pub(crate) temp_dir_base: String,
+}
 
-use crate::tools::gitcodes::RepositoryManager;
+impl RepositoryManager {
+    /// Creates a new RepositoryManager instance
+    ///
+    /// Initializes a repository manager with the system's temporary directory
+    /// as the base location for storing cloned repositories.
+    pub fn new() -> Self {
+        let system_temp = std::env::temp_dir().to_string_lossy().to_string();
+        Self {
+            temp_dir_base: system_temp,
+        }
+    }
+}
 
-// Public functions for use with RepositoryManager
+impl Default for RepositoryManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // Parse repository URL to extract user and repo name
 pub fn parse_repository_url(_manager: &RepositoryManager, url: &str) -> Result<(String, String), String> {

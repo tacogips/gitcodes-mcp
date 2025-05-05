@@ -43,15 +43,6 @@ use reqwest::Client;
 
 use rmcp::{schemars, tool};
 
-/// Repository manager for Git operations
-///
-/// Handles cloning, updating, and retrieving information from GitHub repositories.
-/// Uses system temporary directories to store cloned repositories.
-#[derive(Clone)]
-pub struct RepositoryManager {
-    temp_dir_base: String,
-}
-
 /// Repository information after URL parsing and preparation
 #[derive(Debug)]
 struct RepositoryInfo {
@@ -63,25 +54,6 @@ struct RepositoryInfo {
     repo_dir: String,
     /// Branch or tag name to use
     ref_name: String,
-}
-
-impl RepositoryManager {
-    /// Creates a new RepositoryManager instance
-    ///
-    /// Initializes a repository manager with the system's temporary directory
-    /// as the base location for storing cloned repositories.
-    pub fn new() -> Self {
-        let system_temp = std::env::temp_dir().to_string_lossy().to_string();
-        Self {
-            temp_dir_base: system_temp,
-        }
-    }
-}
-
-impl Default for RepositoryManager {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Service for GitHub repository operations

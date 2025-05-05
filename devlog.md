@@ -11,6 +11,13 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Reorganize Git Repository Code Structure
+
+- Moved `RepositoryManager` struct from `mod.rs` to `git_repository.rs`
+- Made `temp_dir_base` field module-private with `pub(crate)` visibility
+- Improved encapsulation by keeping Git-related functionality in its dedicated file
+- Better organization of code following separation of concerns principles
+
 ### 2024-05-05: Refactor MCP Tool Implementation with Wrapper Pattern
 
 - Separated `#[tool(tool_box)]` implementation from `GitHubService`
