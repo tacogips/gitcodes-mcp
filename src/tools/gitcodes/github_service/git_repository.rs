@@ -35,7 +35,7 @@ impl RepositoryManager {
     }
     
     /// Generate a unique directory name for the repository
-    pub fn get_repo_dir(&self, user: &str, repo: &str) -> String {
+    fn get_repo_dir(&self, user: &str, repo: &str) -> String {
         format!(
             "{}/mcp_github_{}_{}_{}",
             self.temp_dir_base,
@@ -46,7 +46,7 @@ impl RepositoryManager {
     }
     
     /// Check if repository is already cloned
-    pub async fn is_repo_cloned(&self, dir: &str) -> bool {
+    async fn is_repo_cloned(&self, dir: &str) -> bool {
         tokio::fs::metadata(dir).await.is_ok()
     }
     
@@ -104,7 +104,7 @@ impl Default for RepositoryManager {
 }
 
 // Parse repository URL to extract user and repo name
-pub fn parse_repository_url(url: &str) -> Result<(String, String), String> {
+fn parse_repository_url(url: &str) -> Result<(String, String), String> {
     let user_repo = if url.starts_with("https://github.com/") {
         url.trim_start_matches("https://github.com/")
             .trim_end_matches(".git")
@@ -139,7 +139,7 @@ pub fn parse_repository_url(url: &str) -> Result<(String, String), String> {
 /// * `user` - GitHub username or organization
 /// * `repo` - Repository name
 /// * `ref_name` - Branch or tag name to checkout
-pub async fn clone_repository(
+async fn clone_repository(
     repo_dir: &str,
     user: &str,
     repo: &str,
@@ -192,7 +192,7 @@ pub async fn clone_repository(
 ///
 /// * `repo_dir` - The directory containing the repository
 /// * `ref_name` - Branch or tag name to checkout
-pub async fn update_repository(repo_dir: &str, ref_name: &str) -> Result<(), String> {
+async fn update_repository(repo_dir: &str, ref_name: &str) -> Result<(), String> {
     // Repository exists, update it
     let repo_dir_clone = repo_dir.to_string();
     let ref_name_clone = ref_name.to_string();

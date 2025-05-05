@@ -13,6 +13,22 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Improve Encapsulation by Removing Unnecessary Public Modifiers
+
+- Restricted visibility of internal helper functions in the `git_repository` module:
+  - Changed `parse_repository_url` from `pub fn` to `fn`
+  - Changed `clone_repository` from `pub async fn` to `async fn`
+  - Changed `update_repository` from `pub async fn` to `async fn`
+  - Changed internal methods on `RepositoryManager` from `pub fn` to `fn` where possible
+- Improved code encapsulation by limiting public API surface:
+  - Only exposed methods and types required by external modules
+  - Kept `RepositoryInfo` struct and its fields public as they're used externally
+  - Maintained `parse_and_prepare_repository` method as public since it's needed by `GitHubService`
+- Enhanced maintainability by reducing API surface area:
+  - Limited exposure of implementation details
+  - Made code changes easier by reducing public contract
+  - Followed the principle of least privilege
+
 ### 2024-05-06: Refactor Repository Manager Methods
 
 - Converted standalone functions in `git_repository.rs` to methods on the `RepositoryManager` struct:
