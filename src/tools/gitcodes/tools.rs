@@ -1,4 +1,5 @@
 use rmcp::{model::*, schemars, tool, ServerHandler};
+use std::path::PathBuf;
 use super::github_service::{
     params::{GrepParams, OrderOption, SearchParams, SortOption},
     GitHubService,
@@ -15,7 +16,7 @@ pub struct GitHubCodeTools {
 }
 
 impl GitHubCodeTools {
-    /// Creates a new GitHubCodeTools instance with optional authentication
+    /// Creates a new GitHubCodeTools instance with optional authentication and custom temp dir
     ///
     /// # Authentication
     ///
@@ -26,10 +27,22 @@ impl GitHubCodeTools {
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
-    pub fn new(github_token: Option<String>) -> Self {
+    /// * `temp_dir` - Optional path to a directory for storing temporary repositories.
+    pub fn new(github_token: Option<String>, temp_dir: Option<PathBuf>) -> Self {
         Self {
-            service: GitHubService::new(github_token),
+            service: GitHubService::new(github_token, temp_dir),
         }
+    }
+    
+    /// Creates a new GitHubCodeTools instance with default temp directory
+    ///
+    /// This is a convenience constructor that uses the system's temporary directory.
+    ///
+    /// # Parameters
+    ///
+    /// * `github_token` - Optional GitHub token for authentication.
+    pub fn with_default_temp_dir(github_token: Option<String>) -> Self {
+        Self::new(github_token, None)
     }
 
     /// Creates a new GitHubCodeTools with a specific GitHubService

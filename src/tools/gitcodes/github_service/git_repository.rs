@@ -24,15 +24,54 @@ pub struct RepositoryManager {
 }
 
 impl RepositoryManager {
-    /// Creates a new RepositoryManager instance
+    /// Creates a new RepositoryManager instance with a custom temp directory
     ///
-    /// Initializes a repository manager with the system's temporary directory
-    /// as the base location for storing cloned repositories.
-    pub fn new() -> Self {
-        let system_temp = std::env::temp_dir();
-        Self {
-            temp_dir_base: system_temp,
+    /// # Parameters
+    ///
+    /// * `temp_dir_base` - Optional custom path for storing repositories.
+    ///                      If None, the system's temporary directory is used.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Self, String>` - A new RepositoryManager instance or an error message
+    ///                            if the directory cannot be created or accessed.
+    pub fn new(temp_dir_base: Option<PathBuf>) -> Result<Self, String> {
+        // Use provided path or default to system temp directory
+        let base_dir = match temp_dir_base {
+            Some(path) => path,
+            None => std::env::temp_dir(),
+        };
+        
+        // Validate and ensure the directory exists
+        if !base_dir.exists() {
+            // Try to create the directory if it doesn't exist
+            std::fs::create_dir_all(&base_dir)
+                .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+        } else if !base_dir.is_dir() {
+            return Err(format!("Specified path '{}' is not a directory", base_dir.display()));
         }
+        
+        // Check if the directory is writable by trying to create a test file
+        let test_file_path = base_dir.join(".write_test_temp_file");
+        match std::fs::File::create(&test_file_path) {
+            Ok(_) => {
+                // Clean up the test file
+                let _ = std::fs::remove_file(test_file_path);
+            },
+            Err(e) => return Err(format!("Directory '{}' is not writable: {}", base_dir.display(), e)),
+        }
+        
+        Ok(Self {
+            temp_dir_base: base_dir,
+        })
+    }
+    
+    /// Creates a new RepositoryManager with the system's default temp directory
+    ///
+    /// This is a convenience method that creates a RepositoryManager with the
+    /// system's temporary directory as the base location.
+    pub fn with_default_temp_dir() -> Self {
+        Self::new(None).expect("Failed to initialize with system temporary directory")
     }
     
     /// Generate a unique directory name for the repository
@@ -96,7 +135,7 @@ impl RepositoryManager {
 
 impl Default for RepositoryManager {
     fn default() -> Self {
-        Self::new()
+        Self::with_default_temp_dir()
     }
 }
 

@@ -66,7 +66,7 @@ pub struct GitHubService {
 
 impl Default for GitHubService {
     fn default() -> Self {
-        Self::new(None)
+        Self::with_default_temp_dir(None)
     }
 }
 
@@ -91,12 +91,35 @@ impl GitHubService {
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
-    pub fn new(github_token: Option<String>) -> Self {
+    /// * `temp_dir` - Optional custom directory path for storing cloned repositories.
+    ///
+    /// # Returns
+    ///
+    /// A new GitHubService instance or panics if the repository manager cannot be initialized.
+    pub fn new(github_token: Option<String>, temp_dir: Option<PathBuf>) -> Self {
+        // Initialize the repository manager with the provided temp directory or default
+        let repo_manager = match RepositoryManager::new(temp_dir) {
+            Ok(manager) => manager,
+            Err(e) => panic!("Failed to initialize repository manager: {}", e),
+        };
+        
         Self {
             client: Client::new(),
-            repo_manager: RepositoryManager::new(),
+            repo_manager,
             github_token,
         }
+    }
+    
+    /// Creates a new GitHub service instance with the default temp directory
+    ///
+    /// This is a convenience constructor that uses the system's temporary directory
+    /// for storing repositories.
+    ///
+    /// # Parameters
+    ///
+    /// * `github_token` - Optional GitHub token for authentication.
+    pub fn with_default_temp_dir(github_token: Option<String>) -> Self {
+        Self::new(github_token, None)
     }
 
     /// Get the authentication status for display
