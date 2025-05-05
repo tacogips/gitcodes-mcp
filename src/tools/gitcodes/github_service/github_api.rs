@@ -19,6 +19,7 @@ pub struct GrepParams {
 #[strum(serialize_all = "lowercase")]
 pub enum SortOption {
     Updated,
+    Relevance,
 }
 
 impl SortOption {
@@ -34,6 +35,9 @@ impl Default for SortOption {
     }
 }
 
+#[derive(
+    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
+)]
 #[strum(serialize_all = "lowercase")]
 pub enum OrderOption {
     Ascending,

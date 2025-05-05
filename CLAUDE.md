@@ -73,41 +73,34 @@ use reqwest::Client;
 Example of proper struct/enum organization (keeping implementations with their definitions):
 
 ```rust
-use strum::{AsRefStr, Display, EnumString};
-
 // SearchParams and its implementation are kept together
-#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub struct SearchParams {
     pub query: String,
 }
 
 impl SearchParams {
     pub fn construct_search_url(&self) -> String {
-        // implementation details
         String::new()
     }
 }
 
 // GrepParams (no implementations needed)
-#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub struct GrepParams {
     pub exclude_dirs: Option<Vec<String>>,
 }
 
 // SortOption and all its implementations are kept together
-#[derive(
-    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
-)]
-#[strum(serialize_all = "lowercase")]
 pub enum SortOption {
     Updated,
     Relevance,
 }
 
 impl SortOption {
-    /// Converts the sort option to its API string representation
     pub fn to_str(&self) -> &str {
-        self.as_ref()
+        match self {
+            SortOption::Updated => "updated",
+            SortOption::Relevance => "relevance",
+        }
     }
 }
 
@@ -118,24 +111,21 @@ impl Default for SortOption {
 }
 
 // OrderOption and all its implementations are kept together
-#[derive(
-    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
-)]
-#[strum(serialize_all = "lowercase")]
 pub enum OrderOption {
     Ascending,
     Descending,
 }
 
 impl OrderOption {
-    /// Converts the order option to its API string representation
     pub fn to_str(&self) -> &str {
-        self.as_ref()
+        match self {
+            OrderOption::Ascending => "asc",
+            OrderOption::Descending => "desc",
+        }
     }
 }
 
 impl Default for OrderOption {
-    /// Returns the default order option (Descending)
     fn default() -> Self {
         OrderOption::Descending
     }

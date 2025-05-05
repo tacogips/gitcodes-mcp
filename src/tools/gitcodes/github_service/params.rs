@@ -54,6 +54,69 @@ pub struct SearchParams {
     pub query: String,
 }
 
+impl SearchParams {
+    /// Constructs the GitHub API URL for repository search
+    ///
+    /// Builds the complete URL with query parameters for the GitHub search API.
+    /// This method handles parameter defaults, validation, and proper URL encoding.
+    ///
+    /// # Returns
+    ///
+    /// A fully formed URL string ready for HTTP request to GitHub's search API
+    ///
+    /// # Parameter Handling
+    ///
+    /// - `sort_by`: Uses SortOption::Relevance if None (empty string in the URL)
+    /// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
+    /// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
+    /// - `page`: Uses 1 if None
+    /// - `query`: URL encoded to handle special characters
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use gitcodes_mcp::tools::gitcodes::github_service::params::{SearchParams, SortOption, OrderOption};
+    ///
+    /// let params = SearchParams {
+    ///     query: "rust web framework".to_string(),
+    ///     sort_by: Some(SortOption::Stars),
+    ///     order: Some(OrderOption::Descending),
+    ///     per_page: Some(50),
+    ///     page: Some(1),
+    /// };
+    ///
+    /// let url = params.construct_search_url();
+    /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
+    /// ```
+    pub fn construct_search_url(&self) -> String {
+        // Set up sort parameter using Default implementation
+        let default_sort = SortOption::default();
+        let sort = self.sort_by.as_ref().unwrap_or(&default_sort).to_str();
+
+        // Set up order parameter using Default implementation
+        let default_order = OrderOption::default();
+        let order = self.order.as_ref().unwrap_or(&default_order).to_str();
+
+        // Set default values for pagination
+        let per_page = self.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
+        let page = self.page.unwrap_or(1);
+
+        let mut url = format!(
+            "https://api.github.com/search/repositories?q={}",
+            urlencoding::encode(&self.query)
+        );
+
+        if !sort.is_empty() {
+            url.push_str(&format!("&sort={}", sort));
+        }
+
+        url.push_str(&format!("&order={}", order));
+        url.push_str(&format!("&per_page={}&page={}", per_page, page));
+
+        url
+    }
+}
+
 /// Parameters for GitHub repository code search (grep)
 ///
 /// Contains all the parameters needed for configuring a code search request within a GitHub repository.
@@ -141,17 +204,17 @@ pub enum SortOption {
     Updated,
 }
 
-impl Default for SortOption {
-    /// Returns the default sort option (Relevance)
-    fn default() -> Self {
-        SortOption::Relevance
-    }
-}
-
 impl SortOption {
     /// Converts the sort option to its API string representation
     pub fn to_str(&self) -> &str {
         self.as_ref()
+    }
+}
+
+impl Default for SortOption {
+    /// Returns the default sort option (Relevance)
+    fn default() -> Self {
+        SortOption::Relevance
     }
 }
 
@@ -171,13 +234,6 @@ pub enum OrderOption {
     Descending,
 }
 
-impl Default for OrderOption {
-    /// Returns the default order option (Descending)
-    fn default() -> Self {
-        OrderOption::Descending
-    }
-}
-
 impl OrderOption {
     /// Converts the order option to its API string representation
     pub fn to_str(&self) -> &str {
@@ -185,65 +241,9 @@ impl OrderOption {
     }
 }
 
-impl SearchParams {
-    /// Constructs the GitHub API URL for repository search
-    ///
-    /// Builds the complete URL with query parameters for the GitHub search API.
-    /// This method handles parameter defaults, validation, and proper URL encoding.
-    ///
-    /// # Returns
-    ///
-    /// A fully formed URL string ready for HTTP request to GitHub's search API
-    ///
-    /// # Parameter Handling
-    ///
-    /// - `sort_by`: Uses SortOption::Relevance if None (empty string in the URL)
-    /// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
-    /// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
-    /// - `page`: Uses 1 if None
-    /// - `query`: URL encoded to handle special characters
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use gitcodes_mcp::tools::gitcodes::github_service::params::{SearchParams, SortOption, OrderOption};
-    ///
-    /// let params = SearchParams {
-    ///     query: "rust web framework".to_string(),
-    ///     sort_by: Some(SortOption::Stars),
-    ///     order: Some(OrderOption::Descending),
-    ///     per_page: Some(50),
-    ///     page: Some(1),
-    /// };
-    ///
-    /// let url = params.construct_search_url();
-    /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
-    /// ```
-    pub fn construct_search_url(&self) -> String {
-        // Set up sort parameter using Default implementation
-        let default_sort = SortOption::default();
-        let sort = self.sort_by.as_ref().unwrap_or(&default_sort).to_str();
-
-        // Set up order parameter using Default implementation
-        let default_order = OrderOption::default();
-        let order = self.order.as_ref().unwrap_or(&default_order).to_str();
-
-        // Set default values for pagination
-        let per_page = self.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
-        let page = self.page.unwrap_or(1);
-
-        let mut url = format!(
-            "https://api.github.com/search/repositories?q={}",
-            urlencoding::encode(&self.query)
-        );
-
-        if !sort.is_empty() {
-            url.push_str(&format!("&sort={}", sort));
-        }
-
-        url.push_str(&format!("&order={}", order));
-        url.push_str(&format!("&per_page={}&page={}", per_page, page));
-
-        url
+impl Default for OrderOption {
+    /// Returns the default order option (Descending)
+    fn default() -> Self {
+        OrderOption::Descending
     }
 }
