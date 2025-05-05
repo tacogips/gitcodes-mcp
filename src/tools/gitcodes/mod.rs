@@ -152,37 +152,78 @@ impl GitHubService {
         #[schemars(description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages).")]
         page: Option<u32>,
     ) -> String {
-        // Set up request parameters
+        // Build search parameters
+        let search_params = self.build_search_params(sort_by, order, per_page, page);
+        
+        // Construct the API URL
+        let url = self.construct_search_url(&query, &search_params);
+        
+        // Execute the search request
+        self.execute_search_request(&url).await
+    }
+    
+    /// Builds the search parameters for repository search
+    /// 
+    /// Converts the user-provided search options into API parameters.
+    fn build_search_params(
+        &self,
+        sort_by: Option<SortOption>,
+        order: Option<OrderOption>,
+        per_page: Option<u8>,
+        page: Option<u32>,
+    ) -> SearchParams {
+        // Set up sort parameter
         let sort = match sort_by {
             Some(SortOption::Stars) => "stars",
             Some(SortOption::Forks) => "forks",
             Some(SortOption::Updated) => "updated",
             None => "", // Default is relevance
         };
+        
+        // Set up order parameter
         let order_param = match order {
             Some(OrderOption::Ascending) => "asc",
             Some(OrderOption::Descending) => "desc",
             None => "desc", // Default is descending
         };
+        
         // Ensure per_page is within limits
         let per_page = per_page.unwrap_or(30).min(100);
         let page = page.unwrap_or(1);
-
-        // Construct the API URL
+        
+        SearchParams {
+            sort: sort.to_string(),
+            order: order_param.to_string(),
+            per_page,
+            page,
+        }
+    }
+    
+    /// Constructs the GitHub API URL for repository search
+    ///
+    /// Builds the complete URL with query parameters for the GitHub search API.
+    fn construct_search_url(&self, query: &str, params: &SearchParams) -> String {
         let mut url = format!(
             "https://api.github.com/search/repositories?q={}",
-            urlencoding::encode(&query)
+            urlencoding::encode(query)
         );
 
-        if !sort.is_empty() {
-            url.push_str(&format!("&sort={}", sort));
+        if !params.sort.is_empty() {
+            url.push_str(&format!("&sort={}", params.sort));
         }
 
-        url.push_str(&format!("&order={}", order_param));
-        url.push_str(&format!("&per_page={}&page={}", per_page, page));
-
+        url.push_str(&format!("&order={}", params.order));
+        url.push_str(&format!("&per_page={}&page={}", params.per_page, params.page));
+        
+        url
+    }
+    
+    /// Executes a GitHub API search request
+    ///
+    /// Sends the HTTP request to the GitHub API and handles the response.
+    async fn execute_search_request(&self, url: &str) -> String {
         // Set up the API request
-        let mut req_builder = self.client.get(&url).header(
+        let mut req_builder = self.client.get(url).header(
             "User-Agent",
             "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
         );
@@ -783,4 +824,19 @@ pub enum OrderOption {
     Ascending,
     /// Sort in descending order (highest to lowest, newest to oldest)
     Descending,
+}
+
+/// Search parameters for GitHub repository search
+///
+/// Contains all the parameters needed for configuring a repository search request.
+#[derive(Debug)]
+struct SearchParams {
+    /// Sort parameter for search results
+    sort: String,
+    /// Order parameter (asc or desc)
+    order: String,
+    /// Number of results per page
+    per_page: u8,
+    /// Page number
+    page: u32,
 }

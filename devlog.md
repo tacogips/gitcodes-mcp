@@ -11,6 +11,17 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Refactor GitHubService::search_repositories for Better Modularity
+
+- Refactored `search_repositories` method into smaller, focused helper methods
+- Created `SearchParams` struct to encapsulate search configuration
+- Extracted logic into three primary helper methods:
+  - `build_search_params`: Handles parameter preparation and validation
+  - `construct_search_url`: Builds the GitHub API URL with all query parameters
+  - `execute_search_request`: Handles the HTTP request and response processing
+- Improved code organization and maintainability while preserving functionality
+- Enhanced code documentation with more detailed method descriptions
+
 ### 2024-05-05: Rename GitHubRepositoryRouter to GitHubService
 
 - Renamed `GitHubRepositoryRouter` to `GitHubService` to better reflect its purpose as a service provider rather than a router
