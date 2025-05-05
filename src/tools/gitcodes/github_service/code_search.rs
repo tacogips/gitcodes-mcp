@@ -69,6 +69,7 @@ pub async fn perform_code_search(
 /// * `search_result` - The raw search result to format
 /// * `pattern` - The search pattern that was used
 /// * `repository` - The repository URL that was searched
+//TODO(tacogips) should return Result<String,String>
 pub fn format_search_results(
     search_result: &Result<String, String>,
     pattern: &str,

@@ -65,12 +65,12 @@ fn construct_search_url(param: &SearchParams) -> String {
 /// Executes a GitHub API search request
 ///
 /// Sends the HTTP request to the GitHub API and handles the response.
+//TODO(tacogips) this method should return Result<String,String> instead of String
 pub async fn execute_search_request(
     param: &SearchParams,
     client: &Client,
     github_token: Option<&String>,
 ) -> String {
-    //TODO(tacogips) this method should return anyhow::Result<String> instead of String
     let url = construct_search_url(param);
     // Set up the API request
     let mut req_builder = client.get(url).header(

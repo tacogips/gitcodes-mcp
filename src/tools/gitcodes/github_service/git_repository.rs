@@ -42,10 +42,7 @@ impl Default for RepositoryManager {
 }
 
 // Parse repository URL to extract user and repo name
-pub fn parse_repository_url(
-    _manager: &RepositoryManager,
-    url: &str,
-) -> Result<(String, String), String> {
+pub fn parse_repository_url(url: &str) -> Result<(String, String), String> {
     let user_repo = if url.starts_with("https://github.com/") {
         url.trim_start_matches("https://github.com/")
             .trim_end_matches(".git")
@@ -101,7 +98,7 @@ pub async fn parse_and_prepare_repository(
     ref_name: Option<String>,
 ) -> Result<RepositoryInfo, String> {
     // Parse repository URL
-    let (user, repo) = match parse_repository_url(manager, repository) {
+    let (user, repo) = match parse_repository_url(repository) {
         Ok(result) => result,
         Err(e) => return Err(format!("Error: {}", e)),
     };
@@ -193,10 +190,7 @@ pub async fn clone_repository(
 ///
 /// * `repo_dir` - The directory containing the repository
 /// * `ref_name` - Branch or tag name to checkout
-pub async fn update_repository(
-    repo_dir: &str,
-    ref_name: &str,
-) -> Result<(), String> {
+pub async fn update_repository(repo_dir: &str, ref_name: &str) -> Result<(), String> {
     // Repository exists, update it
     let repo_dir_clone = repo_dir.to_string();
     let ref_name_clone = ref_name.to_string();
