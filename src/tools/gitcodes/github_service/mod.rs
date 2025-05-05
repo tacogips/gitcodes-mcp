@@ -135,7 +135,7 @@ impl GitHubService {
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
     pub async fn search_repositories(&self, params: SearchParams) -> String {
-        //TODO(tacogips) this method should return anyhow::Result<String> instead of Strin
+        //TODO(tacogips) this method should return anyhow::Result<String> instead of String
         // Execute the search request
         github_api::execute_search_request(&params, &self.client, self.github_token.as_ref()).await
     }

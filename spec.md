@@ -131,11 +131,10 @@ pub struct SearchParams {
     pub page: Option<u32>,
 }
 
-impl SearchParams {
-    // Constructs the GitHub API URL for repository search
-    pub fn construct_search_url(&self) -> String {
-        // Implementation that handles parameter defaults and builds the search URL
-    }
+// SearchParams struct only contains parameters, no URL construction method
+// URL construction is now handled by a function in the github_api module:
+fn construct_search_url(param: &SearchParams) -> String {
+    // Implementation that handles parameter defaults and builds the search URL
 }
 
 pub enum SortOption {
@@ -154,6 +153,7 @@ pub enum OrderOption {
 #### Implementation Details
 
 - API endpoint: `https://api.github.com/search/repositories?q={query}`
+- URL construction and HTTP requests are handled in the `github_api` module
 - Reference documentation: https://docs.github.com/en/rest/search/search
 
 #### API Authentication
@@ -168,10 +168,10 @@ There are two ways to provide authentication:
    - Token can be provided directly when initializing `GitHubService` or `GitHubCodeTools`:
    ```rust
    // Direct initialization with token
-   let github_service = GitHubService::with_token(Some("your_github_token".to_string()));
+   let github_service = GitHubService::new(Some("your_github_token".to_string()));
    
    // Or with the wrapper class
-   let github_tools = GitHubCodeTools::with_token(Some("your_github_token".to_string()));
+   let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()));
    ```
 
 Authentication behavior:

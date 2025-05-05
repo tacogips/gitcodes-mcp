@@ -13,6 +13,22 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor GitHub API Functions to Separate Module
+
+- Moved API-related functionality from `GitHubService` to a separate `github_api.rs` module:
+  - Extracted `construct_search_url` function from `SearchParams` implementation
+  - Moved `execute_search_request` method from `GitHubService` class to a standalone function
+  - Made `github_api` module private with mod-level visibility
+- Updated `search_repositories` method in `GitHubService` to use the new function
+- Simplified token handling in the `GitHubService::new` function
+- Added TODO comments for future improvements, including proper error handling using `anyhow::Result<String>`
+- Enhanced code organization by following better separation of concerns:
+  - `params.rs` for data structures 
+  - `github_api.rs` for API interaction logic
+  - `mod.rs` for service orchestration
+- Maintained documentation for the extracted API methods
+- Improved modularity and maintainability by grouping related functionality
+
 ### 2024-05-06: Move Git Repository Manager to GitHub Service Package
 
 - Moved `git_repository.rs` from `gitcodes` directory to `github_service` directory

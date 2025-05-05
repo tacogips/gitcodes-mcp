@@ -4,7 +4,7 @@ use reqwest::Client;
 /// Constructs the GitHub API URL for repository search
 ///
 /// Builds the complete URL with query parameters for the GitHub search API.
-/// This method handles parameter defaults, validation, and proper URL encoding.
+/// This function handles parameter defaults, validation, and proper URL encoding.
 ///
 /// # Returns
 ///
@@ -31,7 +31,7 @@ use reqwest::Client;
 ///     page: Some(1),
 /// };
 ///
-/// let url = params.construct_search_url();
+/// let url = construct_search_url(&params);
 /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
 /// ```
 fn construct_search_url(param: &SearchParams) -> String {
@@ -70,7 +70,7 @@ pub async fn execute_search_request(
     client: &Client,
     github_token: Option<&String>,
 ) -> String {
-    //TODO(tacogips) this method should return anyhow::Result<String> instead of Strin
+    //TODO(tacogips) this method should return anyhow::Result<String> instead of String
     let url = construct_search_url(param);
     // Set up the API request
     let mut req_builder = client.get(url).header(
