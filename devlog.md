@@ -11,6 +11,17 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Create GrepParams Struct for Code Search
+
+- Created a new `GrepParams` struct for code search parameters
+- Refactored `GitHubService::grep_repository()` to use the structured parameter type
+- Updated `GitHubCodeTools::grep_repository()` to create and pass a GrepParams struct
+- Enhanced code documentation with examples for the new parameter type
+- Aligned implementation with specification in spec.md which already defined `GrepRequest`
+- Improved API consistency between search_repositories and grep_repository methods
+- Followed the same pattern used for the SearchParams refactoring
+- Added comprehensive Rustdoc comments for better developer experience
+
 ### 2024-05-06: Merge SearchParams and Eliminate InternalSearchParams
 
 - Consolidated search parameter handling by removing `InternalSearchParams` struct

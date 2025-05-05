@@ -278,7 +278,7 @@ Clones the specified GitHub repository locally and greps the code. Supports both
 #### Input Parameters
 
 ```rust
-pub struct GrepRequest {
+pub struct GrepParams {
     // Repository URL (required) - supports the following formats:
     // - https://github.com/{user_name}/{repo}
     // - git@github.com:{user_name}/{repo}.git

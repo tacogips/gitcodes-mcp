@@ -224,17 +224,18 @@ impl GitHubCodeTools {
         )]
         exclude_dirs: Option<Vec<String>>,
     ) -> String {
-        self.service
-            .grep_repository(
-                repository,
-                ref_name,
-                pattern,
-                case_sensitive,
-                use_regex,
-                file_extensions,
-                exclude_dirs.map(|_dirs| Vec::new()), // We don't actually use exclude_dirs in the main implementation
-            )
-            .await
+        // Create a GrepParams struct from the individual parameters
+        let params = super::GrepParams {
+            repository,
+            ref_name,
+            pattern,
+            case_sensitive,
+            use_regex,
+            file_extensions,
+            exclude_dirs,
+        };
+        
+        self.service.grep_repository(params).await
     }
 
     /// List branches and tags for a GitHub repository

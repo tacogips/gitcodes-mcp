@@ -279,19 +279,10 @@ impl GitHubService {
     /// 1. Repository is cloned or updated locally
     /// 2. Code search is performed on the local files
     /// 3. Results are formatted and returned
-    pub async fn grep_repository(
-        &self,
-        repository: String,
-        ref_name: Option<String>,
-        pattern: String,
-        case_sensitive: Option<bool>,
-        use_regex: Option<bool>,
-        file_extensions: Option<Vec<String>>,
-        _exclude_dirs: Option<Vec<String>>,
-    ) -> String {
+    pub async fn grep_repository(&self, params: GrepParams) -> String {
         // Parse repository information from URL
         let repo_info = match self
-            .parse_and_prepare_repository(&repository, ref_name)
+            .parse_and_prepare_repository(&params.repository, params.ref_name)
             .await
         {
             Ok(info) => info,
@@ -302,15 +293,15 @@ impl GitHubService {
         let search_result = self
             .perform_code_search(
                 &repo_info.repo_dir,
-                &pattern,
-                case_sensitive,
-                use_regex,
-                file_extensions.clone(),
+                &params.pattern,
+                params.case_sensitive,
+                params.use_regex,
+                params.file_extensions.clone(),
             )
             .await;
 
         // Format and return results
-        self.format_search_results(&search_result, &pattern, &repository)
+        self.format_search_results(&search_result, &params.pattern, &params.repository)
     }
 
     /// Parses a repository URL and prepares it for operations
@@ -743,6 +734,71 @@ impl GitHubService {
 
         update_result.unwrap()
     }
+}
+
+/// Parameters for GitHub repository code search (grep)
+///
+/// Contains all the parameters needed for configuring a code search request within a GitHub repository.
+/// This struct encapsulates repository and search parameters for the grep_repository method.
+///
+/// # Examples
+///
+/// ```
+/// use gitcodes_mcp::tools::gitcodes::GrepParams;
+///
+/// // Basic search with defaults
+/// let params = GrepParams {
+///    repository: "https://github.com/rust-lang/rust".to_string(),
+///    pattern: "fn main".to_string(),
+///    ref_name: None,
+///    case_sensitive: None,
+///    use_regex: None,
+///    file_extensions: None,
+///    exclude_dirs: None,
+/// };
+///
+/// // Advanced search with custom options
+/// let advanced_params = GrepParams {
+///    repository: "github:tokio-rs/tokio".to_string(),
+///    pattern: "async fn".to_string(),
+///    ref_name: Some("master".to_string()),
+///    case_sensitive: Some(true),
+///    use_regex: Some(true),
+///    file_extensions: Some(vec!["rs".to_string()]),
+///    exclude_dirs: Some(vec!["target".to_string(), "examples".to_string()]),
+/// };
+/// ```
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct GrepParams {
+    /// Repository URL (required) - supports GitHub formats:
+    /// - <https://github.com/user/repo>
+    /// - git@github.com:user/repo.git
+    /// - github:user/repo
+    pub repository: String,
+    
+    /// Branch or tag (optional, default is 'main' or 'master')
+    /// Specifies which branch or tag to search in
+    pub ref_name: Option<String>,
+    
+    /// Search pattern (required) - the text pattern to search for in the code
+    /// Supports regular expressions by default
+    pub pattern: String,
+    
+    /// Whether to be case-sensitive (optional, default is false)
+    /// When true, matching is exact with respect to letter case
+    pub case_sensitive: Option<bool>,
+    
+    /// Whether to use regex (optional, default is true)
+    /// Controls whether the pattern is interpreted as a regular expression or literal text
+    pub use_regex: Option<bool>,
+    
+    /// File extensions to search (optional, e.g., ["rs", "toml"])
+    /// Limits search to files with specified extensions
+    pub file_extensions: Option<Vec<String>>,
+    
+    /// Directories to exclude from search (optional, e.g., ["target", "node_modules"])
+    /// Skips specified directories during search
+    pub exclude_dirs: Option<Vec<String>>,
 }
 
 /// Sort options for GitHub repository search results
