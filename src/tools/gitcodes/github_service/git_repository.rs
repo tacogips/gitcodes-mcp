@@ -1,5 +1,18 @@
 use rand::Rng;
 
+/// Repository information after URL parsing and preparation
+#[derive(Debug)]
+pub struct RepositoryInfo {
+    /// GitHub username or organization
+    pub user: String,
+    /// Repository name
+    pub repo: String,
+    /// Local directory where repository is cloned
+    pub repo_dir: String,
+    /// Branch or tag name to use
+    pub ref_name: String,
+}
+
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
@@ -69,6 +82,52 @@ pub fn get_repo_dir(manager: &RepositoryManager, user: &str, repo: &str) -> Stri
 // Check if repository is already cloned
 pub async fn is_repo_cloned(_manager: &RepositoryManager, dir: &str) -> bool {
     tokio::fs::metadata(dir).await.is_ok()
+}
+
+/// Parses a repository URL and prepares it for operations
+///
+/// This function:
+/// 1. Extracts user and repo name from the URL
+/// 2. Creates or determines the repository directory
+/// 3. Ensures the repository is cloned or updated locally
+///
+/// # Parameters
+///
+/// * `repository` - The repository URL in any supported format
+/// * `ref_name` - Optional branch or tag name
+pub async fn parse_and_prepare_repository(
+    manager: &RepositoryManager,
+    repository: &str,
+    ref_name: Option<String>,
+) -> Result<RepositoryInfo, String> {
+    // Parse repository URL
+    let (user, repo) = match parse_repository_url(manager, repository) {
+        Ok(result) => result,
+        Err(e) => return Err(format!("Error: {}", e)),
+    };
+
+    // Default branch if not specified
+    let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
+
+    // Get a temporary directory for the repository
+    let repo_dir = get_repo_dir(manager, &user, &repo);
+
+    // Check if repo is already cloned
+    let is_cloned = is_repo_cloned(manager, &repo_dir).await;
+
+    // If repo is not cloned, clone it
+    if !is_cloned {
+        clone_repository(&repo_dir, &user, &repo, &ref_name).await?
+    } else {
+        update_repository(&repo_dir, &ref_name).await?
+    }
+
+    Ok(RepositoryInfo {
+        user,
+        repo,
+        repo_dir,
+        ref_name,
+    })
 }
 
 /// Clone a repository from GitHub

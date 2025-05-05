@@ -36,18 +36,7 @@ pub use params::*;
 
 use reqwest::Client;
 
-/// Repository information after URL parsing and preparation
-#[derive(Debug)]
-struct RepositoryInfo {
-    /// GitHub username or organization
-    user: String,
-    /// Repository name
-    repo: String,
-    /// Local directory where repository is cloned
-    repo_dir: String,
-    /// Branch or tag name to use
-    ref_name: String,
-}
+// Repository information struct has been moved to git_repository.rs
 
 /// Service for GitHub repository operations
 ///
@@ -158,10 +147,11 @@ impl GitHubService {
     /// 3. Results are formatted and returned
     pub async fn grep_repository(&self, params: GrepParams) -> String {
         // Parse repository information from URL
-        let repo_info = match self
-            .parse_and_prepare_repository(&params.repository, params.ref_name)
-            .await
-        {
+        let repo_info = match git_repository::parse_and_prepare_repository(
+            &self.repo_manager,
+            &params.repository, 
+            params.ref_name
+        ).await {
             Ok(info) => info,
             Err(e) => return e,
         };
@@ -180,47 +170,7 @@ impl GitHubService {
         code_search::format_search_results(&search_result, &params.pattern, &params.repository)
     }
 
-    /// Parses a repository URL and prepares it for operations
-    ///
-    /// This helper function:
-    /// 1. Extracts user and repo name from the URL
-    /// 2. Creates or determines the repository directory
-    /// 3. Ensures the repository is cloned or updated locally
-    async fn parse_and_prepare_repository(
-        &self,
-        repository: &str,
-        ref_name: Option<String>,
-    ) -> Result<RepositoryInfo, String> {
-        // Parse repository URL
-        let (user, repo) =
-            match git_repository::parse_repository_url(&self.repo_manager, repository) {
-                Ok(result) => result,
-                Err(e) => return Err(format!("Error: {}", e)),
-            };
-
-        // Default branch if not specified
-        let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
-
-        // Get a temporary directory for the repository
-        let repo_dir = git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
-
-        // Check if repo is already cloned
-        let is_cloned = git_repository::is_repo_cloned(&self.repo_manager, &repo_dir).await;
-
-        // If repo is not cloned, clone it
-        if !is_cloned {
-            git_repository::clone_repository(&repo_dir, &user, &repo, &ref_name).await?
-        } else {
-            git_repository::update_repository(&repo_dir, &ref_name).await?
-        }
-
-        Ok(RepositoryInfo {
-            user,
-            repo,
-            repo_dir,
-            ref_name,
-        })
-    }
+    // parse_and_prepare_repository method has been moved to git_repository.rs
 
     // Code search methods have been moved to code_search.rs
 
@@ -376,29 +326,18 @@ impl GitHubService {
     /// 2. Fetches all branches and tags
     /// 3. Formats the results into a readable format
     pub async fn list_repository_refs(&self, repository: String) -> String {
-        // Parse repository URL
-        let (user, repo) =
-            match git_repository::parse_repository_url(&self.repo_manager, &repository) {
-                Ok(result) => result,
-                Err(e) => return format!("Error: {}", e),
-            };
-
-        // Get a temporary directory for the repository
-        let repo_dir = git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
-
-        // Check if repo is already cloned
-        let is_cloned = git_repository::is_repo_cloned(&self.repo_manager, &repo_dir).await;
-
-        // If repo is not cloned, clone it
-        if !is_cloned {
-            match git_repository::clone_repository(&repo_dir, &user, &repo, "main").await {
-                Ok(_) => {}
-                Err(e) => return e,
-            }
-        }
+        // Parse repository information from URL
+        let repo_info = match git_repository::parse_and_prepare_repository(
+            &self.repo_manager, 
+            &repository, 
+            Some("main".to_string())
+        ).await {
+            Ok(info) => info,
+            Err(e) => return e,
+        };
 
         // Fetch repository refs using the extracted function
-        match self.fetch_repository_refs(&repo_dir, &user, &repo).await {
+        match self.fetch_repository_refs(&repo_info.repo_dir, &repo_info.user, &repo_info.repo).await {
             Ok(result) => result,
             Err(e) => format!("Failed to list refs: {}", e),
         }

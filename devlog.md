@@ -13,6 +13,19 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor Repository Management to Git Repository Module
+
+- Moved repository management functionality from `GitHubService` to `git_repository.rs`:
+  - Extracted `RepositoryInfo` struct to the module
+  - Moved `parse_and_prepare_repository` method from `GitHubService` to `git_repository` module
+  - Updated GitHubService methods to use the new consolidated function
+- Enhanced code organization by completing the separation of concerns between:
+  - Repository management (cloning, updating, info extraction)
+  - Service orchestration (high-level API)
+- Made the repository preparation more consistent across different methods
+- Improved readability by reducing redundancy in the code
+- Eliminated dead code warning for `RepositoryInfo` fields by making them public
+
 ### 2024-05-06: Refactor Code Search Functions to Separate Module
 
 - Created a new `code_search.rs` module for code search functionality:
