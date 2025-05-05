@@ -90,30 +90,14 @@ impl GitHubCodeTools {
     /// GitHub API has rate limits that vary based on authentication:
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
-    #[tool(description = "Search for GitHub repositories. Searches GitHub's API for repositories matching your query. Supports sorting by stars, forks, or update date, and pagination for viewing more results. Example usage: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"rust http client\"}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"game engine\", \"sort_by\": \"Stars\", \"order\": \"Descending\"}}`. With pagination: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"machine learning\", \"per_page\": 50, \"page\": 2}}`")]
+    #[tool(description = "Search for GitHub repositories. Searches GitHub's API for repositories matching your query. Supports sorting by stars, forks, or update date, and pagination for viewing more results. Example usage: `{\"name\": \"search_repositories\", \"arguments\": {\"params\": {\"query\": \"rust http client\"}}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"params\": {\"query\": \"game engine\", \"sort_by\": \"Stars\", \"order\": \"Descending\"}}}`. With pagination: `{\"name\": \"search_repositories\", \"arguments\": {\"params\": {\"query\": \"machine learning\", \"per_page\": 50, \"page\": 2}}}`")]
     async fn search_repositories(
         &self,
         #[tool(param)]
-        #[schemars(description = "Search query (required) - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'. Maximum length is 256 characters.")]
-        query: String,
-
-        #[tool(param)]
-        #[schemars(description = "How to sort results (optional, default is 'relevance'). Options: Stars (most starred), Forks (most forked), Updated (most recently updated). When unspecified, results are sorted by best match to the query.")]
-        sort_by: Option<SortOption>,
-
-        #[tool(param)]
-        #[schemars(description = "Sort order (optional, default is 'descending'). Options: Ascending (lowest to highest), Descending (highest to lowest). For date-based sorting like 'Updated', Descending means newest first.")]
-        order: Option<OrderOption>,
-
-        #[tool(param)]
-        #[schemars(description = "Results per page (optional, default is 30, max 100). Controls how many repositories are returned in a single response. Higher values provide more comprehensive results but may include less relevant items.")]
-        per_page: Option<u8>,
-
-        #[tool(param)]
-        #[schemars(description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages).")]
-        page: Option<u32>,
+        #[schemars(description = "Search parameters object containing query, sort options, and pagination settings.")]
+        params: SearchParams,
     ) -> String {
-        self.service.search_repositories(query, sort_by, order, per_page, page).await
+        self.service.search_repositories(params).await
     }
     
     /// Search code in a GitHub repository

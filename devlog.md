@@ -11,6 +11,16 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor Search Parameters to Use Structured Type
+
+- Changed `search_repositories` parameter from individual parameters to a unified `SearchParams` struct
+- Converted the existing `SearchParams` struct from an internal implementation detail to a public API parameter
+- Added proper documentation for each field with `#[schemars(description = "...")]` annotations
+- Updated `tool` description to show the new structured parameter format
+- Created an internal `InternalSearchParams` struct to maintain separation between API and implementation details
+- Modified the search URL construction to use the new structured parameter type
+- Updated example usage in tool documentation to demonstrate the new approach
+
 ### 2024-05-05: Remove Leftover Tool Attributes
 
 - Removed remaining `#[tool]` attributes from `GitHubService::search_repositories`

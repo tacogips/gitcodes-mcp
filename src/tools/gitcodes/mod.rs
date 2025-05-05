@@ -138,62 +138,62 @@ impl GitHubService {
     /// GitHub API has rate limits that vary based on authentication:
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
-    pub async fn search_repositories(
-        &self,
-        query: String,
-        sort_by: Option<SortOption>,
-        order: Option<OrderOption>,
-        per_page: Option<u8>,
-        page: Option<u32>,
-    ) -> String {
-        // Build search parameters
-        let search_params = self.build_search_params(sort_by, order, per_page, page);
+    pub async fn search_repositories(&self, params: SearchParams) -> String {
+        // Build search parameters for API request
+        let internal_params = self.build_internal_search_params(&params);
 
         // Construct the API URL
-        let url = self.construct_search_url(&query, &search_params);
+        let url = self.construct_search_url(&params.query, &internal_params);
 
         // Execute the search request
         self.execute_search_request(&url).await
     }
 
-    /// Builds the search parameters for repository search
+    /// Builds internal search parameters for repository search
     ///
-    /// Converts the user-provided search options into API parameters.
-    fn build_search_params(
-        &self,
-        sort_by: Option<SortOption>,
-        order: Option<OrderOption>,
-        per_page: Option<u8>,
-        page: Option<u32>,
-    ) -> SearchParams {
+    /// Converts the user-provided SearchParams into internal format for API request.
+    fn build_internal_search_params(&self, params: &SearchParams) -> InternalSearchParams {
         // Set up sort parameter
-        let sort = match &sort_by {
+        let sort = match &params.sort_by {
             Some(option) => option.to_str(),
             None => "", // Default is relevance
         };
 
         // Set up order parameter
-        let order_param = match order {
-            Some(option) => option.to_str(),
+        let order_param = match params.order {
+            Some(ref option) => option.to_str(),
             None => "desc", // Default is descending
         };
 
         // Ensure per_page is within limits
-        let per_page = per_page.unwrap_or(30).min(100);
-        let page = page.unwrap_or(1);
+        let per_page = params.per_page.unwrap_or(30).min(100);
+        let page = params.page.unwrap_or(1);
 
-        SearchParams {
+        InternalSearchParams {
             sort: sort.to_string(),
             order: order_param.to_string(),
             per_page,
             page,
         }
     }
+    
+    /// Internal search parameters for GitHub API requests
+    #[derive(Debug)]
+    struct InternalSearchParams {
+        /// Sort parameter for search results
+        sort: String,
+        /// Order parameter (asc or desc)
+        order: String,
+        /// Number of results per page
+        per_page: u8,
+        /// Page number
+        page: u32,
+    }
 
     /// Constructs the GitHub API URL for repository search
     ///
     /// Builds the complete URL with query parameters for the GitHub search API.
-    fn construct_search_url(&self, query: &str, params: &SearchParams) -> String {
+    fn construct_search_url(&self, query: &str, params: &InternalSearchParams) -> String {
         let mut url = format!(
             "https://api.github.com/search/repositories?q={}",
             urlencoding::encode(query)
@@ -769,14 +769,25 @@ impl OrderOption {
 /// Search parameters for GitHub repository search
 ///
 /// Contains all the parameters needed for configuring a repository search request.
-#[derive(Debug)]
-struct SearchParams {
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct SearchParams {
     /// Sort parameter for search results
-    sort: String,
+    #[schemars(description = "How to sort results (optional, default is 'relevance'). Options: Stars (most starred), Forks (most forked), Updated (most recently updated). When unspecified, results are sorted by best match to the query.")]
+    pub sort_by: Option<SortOption>,
+    
     /// Order parameter (asc or desc)
-    order: String,
+    #[schemars(description = "Sort order (optional, default is 'descending'). Options: Ascending (lowest to highest), Descending (highest to lowest). For date-based sorting like 'Updated', Descending means newest first.")]
+    pub order: Option<OrderOption>,
+    
     /// Number of results per page
-    per_page: u8,
+    #[schemars(description = "Results per page (optional, default is 30, max 100). Controls how many repositories are returned in a single response. Higher values provide more comprehensive results but may include less relevant items.")]
+    pub per_page: Option<u8>,
+    
     /// Page number
-    page: u32,
+    #[schemars(description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages).")]
+    pub page: Option<u32>,
+    
+    /// Search query for repositories
+    #[schemars(description = "Search query (required) - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'. Maximum length is 256 characters.")]
+    pub query: String,
 }

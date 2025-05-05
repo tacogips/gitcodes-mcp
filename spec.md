@@ -118,29 +118,28 @@ Uses the GitHub API to search for repositories.
 #### Input Parameters
 
 ```rust
-pub struct SearchRepositoriesRequest {
+pub struct SearchParams {
     // Search query (required)
     pub query: String,
     // How to sort results (optional, default is "relevance")
-    pub sort_by: Option<SortBy>,
+    pub sort_by: Option<SortOption>,
     // Sort order (optional, default is "descending")
-    pub order: Option<SortOrder>,
+    pub order: Option<OrderOption>,
     // Results per page (optional, default is 30, max 100)
     pub per_page: Option<u8>,
     // Result page number (optional, default is 1)
     pub page: Option<u32>,
 }
 
-pub enum SortBy {
-    Relevance,
-    Stars,
-    Forks,
-    Updated,
+pub enum SortOption {
+    Stars,   // Sort by number of stars (popularity)
+    Forks,   // Sort by number of forks (derived projects)
+    Updated, // Sort by most recently updated
 }
 
-pub enum SortOrder {
-    Ascending,
-    Descending,
+pub enum OrderOption {
+    Ascending,  // Sort in ascending order (lowest to highest, oldest to newest)
+    Descending, // Sort in descending order (highest to lowest, newest to oldest)
 }
 ````
 

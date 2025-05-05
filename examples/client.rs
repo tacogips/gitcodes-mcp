@@ -116,9 +116,11 @@ async fn stdio_client() -> Result<()> {
         "params": {
             "name": "search_repositories",
             "arguments": {
-                "query": "rust web framework",
-                "sort_by": "stars",
-                "per_page": 3
+                "params": {
+                    "query": "rust web framework",
+                    "sort_by": "stars",
+                    "per_page": 3
+                }
             }
         },
         "id": 3
@@ -369,9 +371,11 @@ async fn http_sse_client() -> Result<()> {
         "params": {
             "name": "search_repositories",
             "arguments": {
-                "query": "async runtime",
-                "sort_by": "stars",
-                "per_page": 5
+                "params": {
+                    "query": "async runtime",
+                    "sort_by": "stars",
+                    "per_page": 5
+                }
             }
         },
         "id": 2
