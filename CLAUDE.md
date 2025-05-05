@@ -159,3 +159,5 @@ The devlog update should include:
 - Any design decisions that were made
 - Implementation challenges and solutions
 - Tests that were added or modified
+
+IMPORTANT: When interpreting devlog.md to analyze code changes, be aware that the file may contain only changes made by AI agents. It may not include changes made directly by human programmers. This can lead to discrepancies between the current source code and what is documented in devlog.md. When creating a new devlog.md file, include a note stating that "This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the history documented here."

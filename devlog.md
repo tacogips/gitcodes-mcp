@@ -2,6 +2,8 @@
 
 This file documents the development process, architectural decisions, and implementation details for the GitCodes MCP project.
 
+**IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the history documented here.
+
 ## Structure
 
 - Each major change or feature should be documented with a date
