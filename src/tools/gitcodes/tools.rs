@@ -1,7 +1,33 @@
 // Wrapper implementation for GitHub tools using the MCP protocol
 use rmcp::{model::*, schemars, tool, ServerHandler};
 
-use super::{GitHubService, OrderOption, SortOption, SearchParams};
+use super::{GitHubService, OrderOption, SortOption};
+
+/// Search parameters for GitHub repository search
+///
+/// Contains all the parameters needed for configuring a repository search request.
+#[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct SearchParams {
+    /// Sort parameter for search results
+    #[schemars(description = "How to sort results (optional, default is 'relevance'). Options: Stars (most starred), Forks (most forked), Updated (most recently updated). When unspecified, results are sorted by best match to the query.")]
+    pub sort_by: Option<SortOption>,
+    
+    /// Order parameter (asc or desc)
+    #[schemars(description = "Sort order (optional, default is 'descending'). Options: Ascending (lowest to highest), Descending (highest to lowest). For date-based sorting like 'Updated', Descending means newest first.")]
+    pub order: Option<OrderOption>,
+    
+    /// Number of results per page
+    #[schemars(description = "Results per page (optional, default is 30, max 100). Controls how many repositories are returned in a single response. Higher values provide more comprehensive results but may include less relevant items.")]
+    pub per_page: Option<u8>,
+    
+    /// Page number
+    #[schemars(description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages).")]
+    pub page: Option<u32>,
+    
+    /// Search query for repositories
+    #[schemars(description = "Search query (required) - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'. Maximum length is 256 characters.")]
+    pub query: String,
+}
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 /// 
