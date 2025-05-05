@@ -14,10 +14,20 @@ pub struct GitHubCodeTools {
 }
 
 impl GitHubCodeTools {
-    /// Creates a new GitHubCodeTools instance wrapping the default GitHubService
-    pub fn new() -> Self {
+    /// Creates a new GitHubCodeTools instance with optional authentication
+    ///
+    /// # Authentication
+    /// 
+    /// Authentication can be provided in two ways:
+    /// 1. Explicitly via the `github_token` parameter (highest priority)
+    /// 2. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
+    ///
+    /// # Parameters
+    ///
+    /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
+    pub fn new(github_token: Option<String>) -> Self {
         Self {
-            service: GitHubService::new(),
+            service: GitHubService::new(github_token),
         }
     }
     
@@ -29,7 +39,7 @@ impl GitHubCodeTools {
 
 impl Default for GitHubCodeTools {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -53,10 +63,16 @@ impl ServerHandler for GitHubCodeTools {
 - `list_repository_refs`: List branches and tags for a repository
 
 ## Authentication
-To increase rate limits and access private repositories:
+You can authenticate in two ways:
+
+### Option 1: Environment Variable
 ```
 export GITCODE_MCP_GITHUB_TOKEN=your_github_token
 ```
+
+### Option 2: Programmatic via new() method
+Initialize with token using:
+GitHubCodeTools::new(Some(\"token\"))
 
 GitHub token is optional for public repositories but required for:
 - Higher rate limits (5,000 vs 60 requests/hour)

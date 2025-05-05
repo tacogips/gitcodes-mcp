@@ -14,7 +14,7 @@ impl SseServerApp {
 
     pub async fn serve(self) -> Result<()> {
         let sse_server = SseServer::serve(self.bind_addr).await?;
-        let cancellation_token = sse_server.with_service(GitHubCodeTools::new);
+        let cancellation_token = sse_server.with_service(|| GitHubCodeTools::new(None));
 
         // Wait for Ctrl+C signal to gracefully shutdown
         tokio::signal::ctrl_c().await?;

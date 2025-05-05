@@ -150,7 +150,23 @@ pub enum OrderOption {
 
 #### API Authentication
 
-- Personal access token provided via the `GITCODE_MCP_GITHUB_TOKEN` environment variable. This token is stored in memory when MCP starts and is not referenced from the environment variable thereafter
+There are two ways to provide authentication:
+
+1. **Environment Variable**:
+   - Personal access token provided via the `GITCODE_MCP_GITHUB_TOKEN` environment variable
+   - This token is stored in memory when MCP starts and is not referenced from the environment variable thereafter
+
+2. **Programmatic API**:
+   - Token can be provided directly when initializing `GitHubService` or `GitHubCodeTools`:
+   ```rust
+   // Direct initialization with token
+   let github_service = GitHubService::with_token(Some("your_github_token".to_string()));
+   
+   // Or with the wrapper class
+   let github_tools = GitHubCodeTools::with_token(Some("your_github_token".to_string()));
+   ```
+
+Authentication behavior:
 - If no token is provided, unauthenticated requests are used (with rate limits)
 - Unauthenticated requests: 60 requests/hour
 - Authenticated requests: 5,000 requests/hour

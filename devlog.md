@@ -11,6 +11,27 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Merge Authentication Methods in GitHubService
+
+- Refactored `GitHubService::new()` to accept an optional GitHub token parameter
+- Merged functionality from `with_token()` into the main constructor
+- Simplified the API by using a single method with flexible authentication options
+- Added token priority: explicit parameter takes precedence over environment variable
+- Updated `GitHubCodeTools` constructor to match the changes
+- Updated documentation and examples to reflect the unified approach
+- Enhanced maintainability by reducing duplicate code
+- This change maintains backward compatibility by supporting both authentication methods
+
+### 2024-05-06: Update GitHubService to Accept GitHub Token Parameter
+
+- Modified `GitHubService` to accept a GitHub token directly during initialization
+- Added a new `GitHubService::with_token()` method for explicit token configuration
+- Added a matching `GitHubCodeTools::with_token()` method to the wrapper class
+- Updated documentation to describe both authentication methods (environment variable and programmatic)
+- Enhanced user experience by providing flexibility in how authentication is configured
+- Updated the `get_info()` method to document both authentication approaches
+- This change maintains backward compatibility as the original approach (environment variable) still works
+
 ### 2024-05-06: Refactor construct_search_url Method to InternalSearchParams
 
 - Moved `construct_search_url` method from `GitHubService` to `InternalSearchParams`

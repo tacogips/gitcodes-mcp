@@ -7,22 +7,35 @@
 //!
 //! ## Authentication
 //!
-//! These tools support both authenticated and unauthenticated access to GitHub:
+//! These tools support both authenticated and unauthenticated access to GitHub.
+//! Authentication can be provided in two ways:
+//!
+//! ### 1. Environment Variable
 //!
 //! ```
 //! # Authentication is optional but recommended to avoid rate limiting
 //! export GITCODE_MCP_GITHUB_TOKEN=your_github_token
 //! ```
 //!
-//! ### GitHub Token (`GITCODE_MCP_GITHUB_TOKEN`)
+//! ### 2. Programmatic API
+//!
+//! ```rust
+//! // Provide a token directly when creating the service
+//! let github_service = GitHubService::with_token(Some("your_github_token".to_string()));
+//! 
+//! // Or when creating the tools wrapper
+//! let github_tools = GitHubCodeTools::with_token(Some("your_github_token".to_string()));
+//! ```
+//!
+//! ### GitHub Token
 //!
 //! - **Purpose**: Authenticates requests to GitHub API
 //! - **Requirement**: Optional, but strongly recommended to avoid rate limits
 //! - **Rate Limits**:
 //!   - Without token: 60 requests/hour (unauthenticated)
 //!   - With token: 5,000 requests/hour (authenticated)
-//! - **Usage**: Set as environment variable before starting the server
-//! - **Security**: Token is read once at startup and stored in memory
+//! - **Usage**: Set as environment variable or provide programmatically
+//! - **Security**: Token is stored in memory
 //! - **Permissions**: For private repositories, token must have `repo` scope
 //!
 //! ### When Token is NOT Required
@@ -87,7 +100,7 @@ pub use tools::GitHubCodeTools;
 
 impl Default for GitHubService {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -97,20 +110,28 @@ impl GitHubService {
     /// Initializes:
     /// - HTTP client for API requests
     /// - Repository manager for Git operations
-    /// - GitHub token from GITCODE_MCP_GITHUB_TOKEN environment variable (if available)
+    /// - GitHub token from the provided parameter or environment variable
     ///
     /// # Authentication
     ///
-    /// The GitHub token is read from the `GITCODE_MCP_GITHUB_TOKEN` environment variable.
-    /// If not provided, the system still works but with lower rate limits (60 requests/hour).
-    pub fn new() -> Self {
-        // Read GitHub token from environment variable
-        let github_token = std::env::var("GITCODE_MCP_GITHUB_TOKEN").ok();
+    /// Authentication can be provided in two ways:
+    /// 1. Explicitly via the `github_token` parameter (highest priority)
+    /// 2. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
+    ///
+    /// If no token is provided through either method, the system will work with 
+    /// lower rate limits (60 requests/hour vs 5,000 requests/hour).
+    ///
+    /// # Parameters
+    ///
+    /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
+    pub fn new(github_token: Option<String>) -> Self {
+        // Use provided token or fall back to environment variable
+        let token = github_token.or_else(|| std::env::var("GITCODE_MCP_GITHUB_TOKEN").ok());
 
         Self {
             client: Client::new(),
             repo_manager: RepositoryManager::new(),
-            github_token,
+            github_token: token,
         }
     }
     
