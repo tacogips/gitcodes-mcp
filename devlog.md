@@ -11,6 +11,15 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Code Structure Refactoring for Repository Management
+
+- Refactored the `RepositoryManager` implementation to address compilation errors
+- Moved method implementations from the struct to standalone functions to improve modularity
+- Fixed function signature issues in `git_repository.rs` and `mod.rs`
+- Updated method calls in `mod.rs` to use the refactored functions from `git_repository`
+- Properly exported functions across module boundaries to ensure visibility
+- Fixed the return type of `parse_repository_url` to use `String` instead of `str`
+
 ### 2024-05-04: Implement Lumin Integration for Code Search
 
 - Added `lumin` v1.0.3 dependency for file search functionality
