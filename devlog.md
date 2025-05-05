@@ -11,6 +11,18 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Refactor MCP Tool Implementation with Wrapper Pattern
+
+- Separated `#[tool(tool_box)]` implementation from `GitHubService`
+- Created a new `GitHubCodeTools` wrapper struct for MCP protocol integration
+- Moved tool annotations and handler implementation to the wrapper
+- Implemented a clean separation of concerns between:
+  - Core business logic in `GitHubService`
+  - MCP protocol integration in `GitHubCodeTools`
+- Updated transport implementations to use the wrapper
+- Fixed tool parameter handling in the wrapper
+- Made core service methods public for use by the wrapper
+
 ### 2024-05-05: Refactor GitHubService::grep_repository Method
 
 - Restructured the `grep_repository` method to improve modularity and readability
