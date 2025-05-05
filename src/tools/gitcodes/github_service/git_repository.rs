@@ -33,6 +33,68 @@ impl RepositoryManager {
             temp_dir_base: system_temp,
         }
     }
+    
+    /// Generate a unique directory name for the repository
+    pub fn get_repo_dir(&self, user: &str, repo: &str) -> String {
+        format!(
+            "{}/mcp_github_{}_{}_{}",
+            self.temp_dir_base,
+            user,
+            repo,
+            rand::thread_rng().gen::<u32>() % 10000
+        )
+    }
+    
+    /// Check if repository is already cloned
+    pub async fn is_repo_cloned(&self, dir: &str) -> bool {
+        tokio::fs::metadata(dir).await.is_ok()
+    }
+    
+    /// Parses a repository URL and prepares it for operations
+    ///
+    /// This method:
+    /// 1. Extracts user and repo name from the URL
+    /// 2. Creates or determines the repository directory
+    /// 3. Ensures the repository is cloned or updated locally
+    ///
+    /// # Parameters
+    ///
+    /// * `repository` - The repository URL in any supported format
+    /// * `ref_name` - Optional branch or tag name
+    pub async fn parse_and_prepare_repository(
+        &self,
+        repository: &str,
+        ref_name: Option<String>,
+    ) -> Result<RepositoryInfo, String> {
+        // Parse repository URL
+        let (user, repo) = match parse_repository_url(repository) {
+            Ok(result) => result,
+            Err(e) => return Err(format!("Error: {}", e)),
+        };
+
+        // Default branch if not specified
+        let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
+
+        // Get a temporary directory for the repository
+        let repo_dir = self.get_repo_dir(&user, &repo);
+
+        // Check if repo is already cloned
+        let is_cloned = self.is_repo_cloned(&repo_dir).await;
+
+        // If repo is not cloned, clone it
+        if !is_cloned {
+            clone_repository(&repo_dir, &user, &repo, &ref_name).await?
+        } else {
+            update_repository(&repo_dir, &ref_name).await?
+        }
+
+        Ok(RepositoryInfo {
+            user,
+            repo,
+            repo_dir,
+            ref_name,
+        })
+    }
 }
 
 impl Default for RepositoryManager {
@@ -65,67 +127,7 @@ pub fn parse_repository_url(url: &str) -> Result<(String, String), String> {
     Ok((parts[0].to_string(), parts[1].to_string()))
 }
 
-// Generate a unique directory name for the repository
-pub fn get_repo_dir(manager: &RepositoryManager, user: &str, repo: &str) -> String {
-    format!(
-        "{}/mcp_github_{}_{}_{}",
-        manager.temp_dir_base,
-        user,
-        repo,
-        rand::thread_rng().gen::<u32>() % 10000
-    )
-}
-
-// Check if repository is already cloned
-pub async fn is_repo_cloned(_manager: &RepositoryManager, dir: &str) -> bool {
-    tokio::fs::metadata(dir).await.is_ok()
-}
-
-/// Parses a repository URL and prepares it for operations
-///
-/// This function:
-/// 1. Extracts user and repo name from the URL
-/// 2. Creates or determines the repository directory
-/// 3. Ensures the repository is cloned or updated locally
-///
-/// # Parameters
-///
-/// * `repository` - The repository URL in any supported format
-/// * `ref_name` - Optional branch or tag name
-pub async fn parse_and_prepare_repository(
-    manager: &RepositoryManager,
-    repository: &str,
-    ref_name: Option<String>,
-) -> Result<RepositoryInfo, String> {
-    // Parse repository URL
-    let (user, repo) = match parse_repository_url(repository) {
-        Ok(result) => result,
-        Err(e) => return Err(format!("Error: {}", e)),
-    };
-
-    // Default branch if not specified
-    let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
-
-    // Get a temporary directory for the repository
-    let repo_dir = get_repo_dir(manager, &user, &repo);
-
-    // Check if repo is already cloned
-    let is_cloned = is_repo_cloned(manager, &repo_dir).await;
-
-    // If repo is not cloned, clone it
-    if !is_cloned {
-        clone_repository(&repo_dir, &user, &repo, &ref_name).await?
-    } else {
-        update_repository(&repo_dir, &ref_name).await?
-    }
-
-    Ok(RepositoryInfo {
-        user,
-        repo,
-        repo_dir,
-        ref_name,
-    })
-}
+// These functions have been converted to methods of RepositoryManager
 
 /// Clone a repository from GitHub
 ///

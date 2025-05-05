@@ -13,6 +13,19 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-06: Refactor Repository Manager Methods
+
+- Converted standalone functions in `git_repository.rs` to methods on the `RepositoryManager` struct:
+  - Moved `get_repo_dir` to a method on `RepositoryManager`
+  - Moved `is_repo_cloned` to a method on `RepositoryManager`
+  - Moved `parse_and_prepare_repository` to a method on `RepositoryManager`
+- Updated callers in the `GitHubService` class to use the new method-based approach
+- Improved the code organization by following object-oriented principles:
+  - Methods that operate on `RepositoryManager` state are now properly encapsulated
+  - Clear distinction between stateless utility functions and object methods
+- Simplified function signatures by removing the redundant manager parameter
+- Enhanced code readability and maintainability
+
 ### 2024-05-06: Refactor Repository Management to Git Repository Module
 
 - Moved repository management functionality from `GitHubService` to `git_repository.rs`:

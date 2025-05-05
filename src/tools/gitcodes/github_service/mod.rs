@@ -147,8 +147,7 @@ impl GitHubService {
     /// 3. Results are formatted and returned
     pub async fn grep_repository(&self, params: GrepParams) -> String {
         // Parse repository information from URL
-        let repo_info = match git_repository::parse_and_prepare_repository(
-            &self.repo_manager,
+        let repo_info = match self.repo_manager.parse_and_prepare_repository(
             &params.repository, 
             params.ref_name
         ).await {
@@ -327,8 +326,7 @@ impl GitHubService {
     /// 3. Formats the results into a readable format
     pub async fn list_repository_refs(&self, repository: String) -> String {
         // Parse repository information from URL
-        let repo_info = match git_repository::parse_and_prepare_repository(
-            &self.repo_manager, 
+        let repo_info = match self.repo_manager.parse_and_prepare_repository(
             &repository, 
             Some("main".to_string())
         ).await {
