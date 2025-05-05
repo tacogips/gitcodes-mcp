@@ -1,4 +1,4 @@
-use crate::tools::GitHubRepositoryRouter;
+use crate::tools::GitHubService;
 use anyhow::Result;
 use rmcp::transport::sse_server::SseServer;
 use std::net::SocketAddr;
@@ -14,7 +14,7 @@ impl SseServerApp {
 
     pub async fn serve(self) -> Result<()> {
         let sse_server = SseServer::serve(self.bind_addr).await?;
-        let cancellation_token = sse_server.with_service(GitHubRepositoryRouter::new);
+        let cancellation_token = sse_server.with_service(GitHubService::new);
 
         // Wait for Ctrl+C signal to gracefully shutdown
         tokio::signal::ctrl_c().await?;

@@ -58,23 +58,23 @@ impl Default for RepositoryManager {
     }
 }
 
-/// Main router for GitHub repository operations
+/// Service for GitHub repository operations
 ///
-/// This struct handles GitHub API requests and provides tools for:
+/// This struct provides integrated tools for GitHub operations:
 /// - Repository searching
-/// - Code searching within repositories
+/// - Code searching within repositories 
 /// - Branch and tag listing
 ///
 /// # Authentication
 ///
-/// The router handles GitHub authentication through the `GITCODE_MCP_GITHUB_TOKEN`
+/// The service handles GitHub authentication through the `GITCODE_MCP_GITHUB_TOKEN`
 /// environment variable. This token is:
 /// - Read once at startup and stored in memory
 /// - Used for all GitHub API requests
 /// - Optional, but recommended to avoid rate limiting (60 vs 5,000 requests/hour)
 /// - Required for accessing private repositories (with `repo` scope)
 #[derive(Clone)]
-pub struct GitHubRepositoryRouter {
+pub struct GitHubService {
     /// HTTP client for API requests
     pub client: Client,
     /// Manager for repository operations
@@ -83,15 +83,15 @@ pub struct GitHubRepositoryRouter {
     pub github_token: Option<String>,
 }
 
-impl Default for GitHubRepositoryRouter {
+impl Default for GitHubService {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[tool(tool_box)]
-impl GitHubRepositoryRouter {
-    /// Creates a new router instance
+impl GitHubService {
+    /// Creates a new GitHub service instance
     ///
     /// Initializes:
     /// - HTTP client for API requests
@@ -719,7 +719,7 @@ impl GitHubRepositoryRouter {
 }
 
 #[tool(tool_box)]
-impl ServerHandler for GitHubRepositoryRouter {
+impl ServerHandler for GitHubService {
     /// Provides information about this MCP server
     ///
     /// Returns server capabilities, protocol version, and usage instructions

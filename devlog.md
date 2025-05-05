@@ -11,6 +11,13 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-05: Rename GitHubRepositoryRouter to GitHubService
+
+- Renamed `GitHubRepositoryRouter` to `GitHubService` to better reflect its purpose as a service provider rather than a router
+- Removed "Router" terminology as the component doesn't perform routing functionality
+- Updated struct documentation to clarify its role as an integrated service for GitHub operations
+- Updated all references throughout the codebase (transport implementations, exports, etc.)
+
 ### 2024-05-05: Rename CargoDocRouter to GitHubRepositoryRouter
 
 - Renamed `CargoDocRouter` to `GitHubRepositoryRouter` to better reflect its purpose and functionality

@@ -1,3 +1,3 @@
 pub mod gitcodes;
 
-pub use gitcodes::GitHubRepositoryRouter;
+pub use gitcodes::GitHubService;
