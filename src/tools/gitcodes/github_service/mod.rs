@@ -26,10 +26,11 @@
 //! let github_service = GitHubService::new(Some("your_github_token".to_string()));
 //! ```
 
-use crate::tools::gitcodes::{RepositoryManager, git_repository};
 use lumin::{search, search::SearchOptions};
 use reqwest::Client;
 
+pub mod git_repository;
+pub use git_repository::*;
 pub mod params;
 pub use params::*;
 
@@ -235,7 +236,7 @@ impl GitHubService {
     ) -> Result<RepositoryInfo, String> {
         // Parse repository URL
         let (user, repo) =
-            match git_repository::parse_repository_url(&self.repo_manager, repository) {
+            match self::git_repository::parse_repository_url(&self.repo_manager, repository) {
                 Ok(result) => result,
                 Err(e) => return Err(format!("Error: {}", e)),
             };
@@ -244,10 +245,10 @@ impl GitHubService {
         let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
 
         // Get a temporary directory for the repository
-        let repo_dir = git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
+        let repo_dir = self::git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
 
         // Check if repo is already cloned
-        let is_cloned = git_repository::is_repo_cloned(&self.repo_manager, &repo_dir).await;
+        let is_cloned = self::git_repository::is_repo_cloned(&self.repo_manager, &repo_dir).await;
 
         // If repo is not cloned, clone it
         if !is_cloned {
@@ -505,16 +506,16 @@ impl GitHubService {
     pub async fn list_repository_refs(&self, repository: String) -> String {
         // Parse repository URL
         let (user, repo) =
-            match git_repository::parse_repository_url(&self.repo_manager, &repository) {
+            match self::git_repository::parse_repository_url(&self.repo_manager, &repository) {
                 Ok(result) => result,
                 Err(e) => return format!("Error: {}", e),
             };
 
         // Get a temporary directory for the repository
-        let repo_dir = git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
+        let repo_dir = self::git_repository::get_repo_dir(&self.repo_manager, &user, &repo);
 
         // Check if repo is already cloned
-        let is_cloned = git_repository::is_repo_cloned(&self.repo_manager, &repo_dir).await;
+        let is_cloned = self::git_repository::is_repo_cloned(&self.repo_manager, &repo_dir).await;
 
         // If repo is not cloned, clone it
         if !is_cloned {
