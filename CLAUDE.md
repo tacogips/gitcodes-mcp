@@ -27,6 +27,24 @@ When making significant changes, update both devlog.md and relevant Rustdoc comm
 - Lint: `cargo clippy`
 - Format: `cargo fmt`
 
+### Quieter Cargo Commands
+
+When executing Cargo commands to avoid sending excessive output to LLMs, use these environment variables:
+
+```bash
+CARGO_TERM_QUIET=true cargo build   # Reduces Cargo's own output
+CARGO_TERM_QUIET=true cargo check    # Suppresses progress output
+CARGO_TERM_QUIET=true cargo test     # For basic test runs
+
+# For nextest users (better test output control)
+CARGO_TERM_QUIET=true NEXTEST_STATUS_LEVEL=fail NEXTEST_FAILURE_OUTPUT=immediate_final cargo nextest run
+```
+
+These environment variables do the following:
+- `CARGO_TERM_QUIET=true`: Suppresses Cargo's own progress output
+- `NEXTEST_STATUS_LEVEL=fail`: Only show status output for failed tests
+- `NEXTEST_FAILURE_OUTPUT=immediate_final`: Shows failed test output both immediately and in the final summary
+
 ## Code Style Guidelines
 
 - Use Rust 2024 edition conventions

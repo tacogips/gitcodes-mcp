@@ -27,6 +27,7 @@ output_tests
 **/.direnv
 
 **.private.**
+**/.envrc.private
 
 result
 rust-sdk
