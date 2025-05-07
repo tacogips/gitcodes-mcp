@@ -37,14 +37,14 @@ CARGO_TERM_QUIET=true cargo check    # Suppresses progress output
 CARGO_TERM_QUIET=true cargo test     # For basic test runs
 
 # For nextest users (better test output control)
-CARGO_TERM_QUIET=true NEXTEST_STATUS_LEVEL=fail NEXTEST_FAILURE_OUTPUT=immediate_final NEXTEST_RUNNER_OPTS="--no-progress" cargo nextest run
+CARGO_TERM_QUIET=true NEXTEST_STATUS_LEVEL=fail NEXTEST_FAILURE_OUTPUT=immediate_final NEXTEST_HIDE_PROGRESS_BAR=1 cargo nextest run
 ```
 
 These environment variables do the following:
 - `CARGO_TERM_QUIET=true`: Suppresses Cargo's own progress output
 - `NEXTEST_STATUS_LEVEL=fail`: Only show status output for failed tests
 - `NEXTEST_FAILURE_OUTPUT=immediate_final`: Shows failed test output both immediately and in the final summary
-- `NEXTEST_RUNNER_OPTS="--no-progress"`: Disables the nextest progress bar completely
+- `NEXTEST_HIDE_PROGRESS_BAR=1`: Disables the nextest progress bar completely
 
 ## Code Style Guidelines
 
