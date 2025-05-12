@@ -13,6 +13,19 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-12: Rename GrepParams Field to Repository_Location
+
+- Renamed the `repository` field in `GrepParams` to `repository_location`:
+  - Provides a more descriptive and consistent field name
+  - Clarifies that the field contains a location (either URL or local path)
+  - Matches the actual type of the field (RepositoryLocation)
+- Updated all references to the field throughout the codebase:
+  - Modified `github_service::grep_repository` method to use the new field name
+  - Updated the tools.rs implementation to reflect the parameter name change
+  - Updated the API documentation and examples to maintain consistency
+- Updated all doctests and examples to reflect the new field name
+- Modified tool descriptions to reflect the parameter name change in API examples
+
 ### 2024-05-12: Improve Repository Location Type Safety with RepositoryLocation Enum
 
 - Enhanced the `GrepParams` struct to use `RepositoryLocation` enum instead of a String:

@@ -176,7 +176,7 @@ impl GitHubService {
         // Repository location is already in the correct type
         // Parse repository information from URL or local path
         let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &params.repository, 
+            &params.repository_location, 
             params.ref_name.clone()
         ).await {
             Ok(info) => info,

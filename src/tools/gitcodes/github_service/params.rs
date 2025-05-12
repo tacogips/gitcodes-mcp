@@ -69,7 +69,7 @@ pub struct SearchParams {
 ///
 /// // Basic search with defaults for GitHub URL
 /// let params = GrepParams {
-///    repository: RepositoryLocation::GitHubUrl("https://github.com/rust-lang/rust".to_string()),
+///    repository_location: RepositoryLocation::GitHubUrl("https://github.com/rust-lang/rust".to_string()),
 ///    pattern: "fn main".to_string(),
 ///    ref_name: None,
 ///    case_sensitive: None,
@@ -80,7 +80,7 @@ pub struct SearchParams {
 ///
 /// // Advanced search with custom options
 /// let advanced_params = GrepParams {
-///    repository: RepositoryLocation::GitHubUrl("github:tokio-rs/tokio".to_string()),
+///    repository_location: RepositoryLocation::GitHubUrl("github:tokio-rs/tokio".to_string()),
 ///    pattern: "async fn".to_string(),
 ///    ref_name: Some("master".to_string()),
 ///    case_sensitive: Some(true),
@@ -91,7 +91,7 @@ pub struct SearchParams {
 ///
 /// // Search in a local directory
 /// let local_params = GrepParams {
-///    repository: RepositoryLocation::LocalPath(PathBuf::from("/path/to/local/repo")),
+///    repository_location: RepositoryLocation::LocalPath(PathBuf::from("/path/to/local/repo")),
 ///    pattern: "struct Config".to_string(),
 ///    ref_name: None,
 ///    case_sensitive: Some(false),

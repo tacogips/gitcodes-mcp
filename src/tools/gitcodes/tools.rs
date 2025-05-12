@@ -194,7 +194,7 @@ impl GitHubCodeTools {
     /// 2. Code search is performed on the local files
     /// 3. Results are formatted and returned
     #[tool(
-        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. Example usage with GitHub: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With local path: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"/path/to/local/repo\", \"pattern\": \"fn main\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
+        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. Example usage with GitHub: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With local path: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"fn main\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
     )]
     async fn grep_repository(
         &self,
@@ -202,7 +202,7 @@ impl GitHubCodeTools {
         #[schemars(
             description = "Repository URL or local file path (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
-        repository: String,
+        repository_location: String,
 
         #[tool(param)]
         #[schemars(
@@ -241,14 +241,14 @@ impl GitHubCodeTools {
         exclude_dirs: Option<Vec<String>>,
     ) -> String {
         // Parse the repository string to a RepositoryLocation
-        let repository_location = match RepositoryLocation::from_str(&repository) {
+        let repo_location = match RepositoryLocation::from_str(&repository_location) {
             Ok(location) => location,
             Err(e) => return format!("Invalid repository location: {}", e),
         };
 
         // Create a GrepParams struct from the individual parameters
         let params = GrepParams {
-            repository_location,
+            repository_location: repo_location,
             ref_name,
             pattern,
             case_sensitive,
@@ -280,7 +280,7 @@ impl GitHubCodeTools {
     /// 2. Fetches all branches and tags
     /// 3. Formats the results into a readable format
     #[tool(
-        description = "List branches and tags for a GitHub repository. Clones the repository locally and retrieves all branches and tags. Returns a formatted list of available references. Example usage: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository\": \"https://github.com/rust-lang/rust\"}}`. Another example: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository\": \"github:tokio-rs/tokio\"}}`"
+        description = "List branches and tags for a GitHub repository. Clones the repository locally and retrieves all branches and tags. Returns a formatted list of available references. Example usage: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\"}}`. Another example: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\"}}`"
     )]
     async fn list_repository_refs(
         &self,
@@ -288,8 +288,8 @@ impl GitHubCodeTools {
         #[schemars(
             description = "Repository URL or local file path (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
-        repository: String,
+        repository_location: String,
     ) -> String {
-        self.service.list_repository_refs(repository).await
+        self.service.list_repository_refs(repository_location).await
     }
 }
