@@ -50,11 +50,12 @@
 //! All public repository operations work without authentication, but with
 //! significantly lower rate limits.
 
-pub mod git_service;
+pub mod github;
+pub mod gits;
 mod tools;
 
-pub use git_service::{
+pub use gits::{
     params::{GrepParams, OrderOption, SearchParams, SortOption},
-    GitHubService, RepositoryManager,
+    GitHubService, RemoteRepositoryService,
 };
 pub use tools::GitHubCodeTools;

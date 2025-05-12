@@ -1,43 +1,3 @@
-//! GitHub service for interacting with repositories and code search
-//!
-//! This module provides a service for:
-//! - Searching GitHub repositories
-//! - Searching code within repositories (grep functionality)
-//! - Listing branches and tags of repositories
-//!
-//! ## Authentication
-//!
-//! The service supports both authenticated and unauthenticated access to GitHub.
-//! Authentication can be provided in two ways:
-//!
-//! ### 1. Environment Variable
-//!
-//! ```bash
-//! # Authentication is optional but recommended to avoid rate limiting
-//! export GITCODE_MCP_GITHUB_TOKEN=your_github_token
-//! ```
-//!
-//! ### 2. Programmatic API
-//!
-//! ```no_run
-//! // Provide a token directly when creating the service
-//! use gitcodes_mcp::tools::gitcodes::git_service::GitHubService;
-//!
-//! let git_service = GitHubService::new(Some("your_github_token".to_string()), None);
-//! ```
-
-mod code_search;
-pub mod git_repository;
-pub mod github_api;
-mod local_repository;
-pub mod params;
-
-pub use git_repository::*;
-pub use params::*;
-
-use reqwest::Client;
-use std::path::{Path, PathBuf};
-
 // Repository information struct has been moved to git_repository.rs
 
 /// Service for GitHub repository operations
@@ -56,23 +16,21 @@ use std::path::{Path, PathBuf};
 /// - Optional, but recommended to avoid rate limiting (60 vs 5,000 requests/hour)
 /// - Required for accessing private repositories (with `repo` scope)
 #[derive(Clone)]
-pub struct GitHubService {
+pub struct GitRemoteRepositoryService {
     /// HTTP client for API requests
     pub client: Client,
-    /// Manager for repository operations
-    pub repo_manager: RepositoryManager,
     /// GitHub authentication token (if provided via GITCODE_MCP_GITHUB_TOKEN)
     pub github_token: Option<String>,
 }
 
-impl Default for GitHubService {
+impl Default for GitRemoteRepositoryService {
     fn default() -> Self {
         Self::with_default_cache_dir(None)
     }
 }
 
-impl GitHubService {
-    /// Creates a new GitHub service instance
+impl GitRemoteRepositoryService {
+    /// Creates a new Gitservice instance
     ///
     /// Initializes:
     /// - HTTP client for API requests
@@ -98,15 +56,8 @@ impl GitHubService {
     ///
     /// A new GitHubService instance or panics if the repository manager cannot be initialized.
     pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
-        // Initialize the repository manager with the provided repository cache directory or default
-        let repo_manager = match RepositoryManager::new(repository_cache_dir) {
-            Ok(manager) => manager,
-            Err(e) => panic!("Failed to initialize repository manager: {}", e),
-        };
-
         Self {
             client: Client::new(),
-            repo_manager,
             github_token,
         }
     }
@@ -153,48 +104,4 @@ impl GitHubService {
         // Execute the search request
         github_api::execute_search_request(&params, &self.client, self.github_token.as_ref()).await
     }
-
-    /// Search code in a GitHub repository or local directory
-    ///
-    /// This tool clones or updates the repository locally (for GitHub URLs) or uses
-    /// the local directory directly (for file paths), then performs a code search
-    /// using the specified pattern. It supports both public and private repositories.
-    ///
-    /// # Authentication
-    ///
-    /// - For public repositories: No authentication needed
-    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
-    /// - For local directories: No authentication needed
-    ///
-    /// # Implementation Note
-    ///
-    /// This tool uses a combination of git operations and the lumin search library:
-    /// 1. Repository is cloned or updated locally (for GitHub URLs) or a local directory is used directly
-    /// 2. Code search is performed on the files
-    /// 3. Returns raw search results without additional formatting
-    pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
-        // Repository location is already in the correct type
-        // Parse repository information from URL or local path
-        let repo_info = match self
-            .repo_manager
-            .parse_and_prepare_repository(&params.repository_location, params.ref_name.clone())
-            .await
-        {
-            Ok(info) => info,
-            Err(e) => return Err(e),
-        };
-
-        // Execute code search and return raw results
-        code_search::perform_code_search(
-            &repo_info.repo_dir,
-            &params.pattern,
-            params.case_sensitive,
-            params.use_regex,
-            params.file_extensions.clone(),
-        )
-        .await
-    }
-
-    // Now using git_repository functions instead of local implementations
-    // Functions have been moved to git_repository.rs
 }

@@ -1,13 +1,20 @@
+mod remote_repository_service;
+pub use remote_repository_service::*;
+
 use gix;
 use gix::bstr::ByteSlice;
 use gix::progress::Discard;
 use rand::Rng;
+use reqwest::Client;
 use rmcp::schemars;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
 use thiserror::Error;
+
+use super::local_repository::LocalRepository;
 
 /// Errors that can occur during git operations
 #[derive(Error, Debug)]
@@ -42,62 +49,16 @@ impl GitRef {
     }
 }
 
-/// Enum representing a repository location, either a GitHub URL or a local filesystem path
-#[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
-pub enum RepositoryLocation {
-    /// A GitHub repository URL (https://github.com/user/repo, git@github.com:user/repo.git, or github:user/repo)
-    GitHubUrl(String),
-    /// A local filesystem path
-    LocalPath(LocalRepository),
-}
-
-impl FromStr for RepositoryLocation {
-    type Err = String;
-
-    fn from_str(repo_location_str: &str) -> Result<Self, Self::Err> {
-        let sanitized_location = repo_location_str.trim();
-
-        // Check if it's a local path first
-        if Path::new(sanitized_location).exists() {
-            return Ok(RepositoryLocation::LocalPath(PathBuf::from(
-                sanitized_location,
-            )));
-        }
-
-        // Otherwise, treat it as a GitHub URL
-        if sanitized_location.starts_with("https://github.com/")
-            || sanitized_location.starts_with("git@github.com:")
-            || sanitized_location.starts_with("github:")
-        {
-            Ok(RepositoryLocation::GitHubUrl(
-                sanitized_location.to_string(),
-            ))
-        } else {
-            Err(format!(
-                "Invalid repository location: {}",
-                sanitized_location
-            ))
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct LocalRepositoryInfo {
-    pub remote_repository_info: Option<RemoteGitRepositoryInfo>,
-    /// Local directory where repository is cloned
-    pub repo_dir: PathBuf,
-}
-
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
 /// Uses a dedicated directory to store cloned repositories.
 #[derive(Clone)]
-pub struct RepositoryManager {
+pub struct RemoteRepositoryManager {
     pub(crate) repository_cache_dir_base: PathBuf,
 }
 
-impl RepositoryManager {
+impl RemoteRepositoryManager {
     /// Creates a new RepositoryManager instance with a custom repository cache directory
     ///
     /// # Parameters
@@ -213,7 +174,7 @@ impl RepositoryManager {
                         repo: repo.clone(),
                         ref_name: ref_name_clone.clone(),
                     };
-                    clone_repository(&repo_dir, &clone_params).await?
+                    self.clone_repository(&repo_dir, &clone_params).await?
                 } else {
                     // Convert Option<String> to GitRef
                     let ref_str = ref_name_clone.as_ref().map_or("main", |s| s.as_str());
@@ -231,138 +192,6 @@ impl RepositoryManager {
                 })
             }
         }
-    }
-
-    // parse_and_prepare_repository method has been moved to git_repository.rs
-
-    // Code search methods have been moved to code_search.rs
-
-    // Function to fetch repository refs (branches and tags)
-    async fn fetch_repository_refs(
-        &self,
-        remote_repository_info: RemoteGitRepositoryInfo,
-    ) -> Result<String, String> {
-        //unimplemented!()
-        // Change to the repository directory
-        //let current_dir = match std::env::current_dir() {
-        //    Ok(dir) => dir,
-        //    Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-        //};
-
-        //if let Err(e) = std::env::set_current_dir(&self.repository_cache_dir_base) {
-        //    return Err(format!("Failed to change directory: {}", e));
-        //}
-
-        //// First run git fetch to make sure we have all refs
-        //let fetch_status = std::process::Command::new("git")
-        //    .args(["fetch", "--all"])
-        //    .status();
-
-        //if let Err(e) = fetch_status {
-        //    let _ = std::env::set_current_dir(current_dir);
-        //    return Err(format!("Git fetch failed: {}", e));
-        //}
-
-        //if !fetch_status.unwrap().success() {
-        //    let _ = std::env::set_current_dir(current_dir);
-        //    return Err("Git fetch failed".to_string());
-        //}
-
-        //// Get branches
-        //let branches_output = std::process::Command::new("git")
-        //    .args(["branch", "-r"])
-        //    .output();
-
-        //let branches_output = match branches_output {
-        //    Ok(output) => output,
-        //    Err(e) => {
-        //        let _ = std::env::set_current_dir(current_dir);
-        //        return Err(format!("Failed to list branches: {}", e));
-        //    }
-        //};
-
-        //let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
-
-        //// Get tags
-        //let tags_output = std::process::Command::new("git").args(["tag"]).output();
-
-        //let tags_output = match tags_output {
-        //    Ok(output) => output,
-        //    Err(e) => {
-        //        let _ = std::env::set_current_dir(current_dir);
-        //        return Err(format!("Failed to list tags: {}", e));
-        //    }
-        //};
-
-        //let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
-
-        //// Change back to the original directory
-        //if let Err(e) = std::env::set_current_dir(current_dir) {
-        //    return Err(format!("Failed to restore directory: {}", e));
-        //}
-
-        //// Format the output
-        //let mut result = String::new();
-        //result.push_str(&format!(
-        //    "Repository: {}/{}
-
-        //",
-        //    user_clone, repo_clone
-        //));
-
-        //// Extract and format branches
-        //let branches: Vec<String> = branches_str
-        //    .lines()
-        //    .filter_map(|line| {
-        //        let line = line.trim();
-        //        if line.starts_with("origin/") && !line.contains("HEAD") {
-        //            Some(line.trim_start_matches("origin/").to_string())
-        //        } else {
-        //            None
-        //        }
-        //    })
-        //    .collect();
-
-        //// Extract and format tags
-        //let tags: Vec<String> = tags_str
-        //    .lines()
-        //    .map(|line| line.trim().to_string())
-        //    .filter(|line| !line.is_empty())
-        //    .collect();
-
-        //// Add branches section
-        //result.push_str(
-        //    "## Branches
-        //z",
-        //z    //);
-        //z    //if branches.is_empty() {
-        //z    //    result.push_str(
-        //z    //        "No branches found
-        //z",
-        //    );
-        //} else {
-        //    for branch in branches {
-        //        result.push_str(&format!("- {}\n", branch));
-        //    }
-        //}
-
-        //// Add tags section
-        //result.push_str(
-        //    " ## Tags ",
-        //);
-        //if tags.is_empty() {
-        //    result.push_str(
-        //        "No tags found
-        //zz",
-        //    );
-        //} else {
-        //    for tag in tags {
-        //        result.push_str(&format!("- {}\n", tag));
-        //    }
-        //}
-
-        //Ok(result)
-        unimplemented!()
     }
 
     // Parse repository URL to extract user and repo name
