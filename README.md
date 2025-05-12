@@ -51,12 +51,14 @@ cargo run --bin gitcodes http
 ```
 
 **Note**:
+
 - Authentication is **optional** but recommended to avoid rate limits
 - Without a token, you're limited to 60 requests/hour (vs 5,000/hour with a token)
 - All operations on public repositories work without a token
 - Private repositories require a token with the `repo` scope
 - The token is read once at startup and stored in memory
-```
+
+````
 
 ### Directly Testing Documentation Tools
 
@@ -84,7 +86,7 @@ cargo run --bin gitcodes test --tool lookup_crate --crate-name tokio --format te
 
 # Save output to a file
 cargo run --bin gitcodes test --tool lookup_crate --crate-name tokio --output tokio-docs.md
-```
+````
 
 By default, the HTTP server will listen on `http://127.0.0.1:8080/sse`.
 
@@ -170,3 +172,6 @@ This server implements the Model Context Protocol (MCP) which allows it to be ea
 ## License
 
 MIT License
+
+│ > git_repository.rsでstd::process::Command::new("git")を使用している箇所のうち、gitoxideで代替可能な処理をそちらを使用するようにして。必要であればcratedocsを確認して。 │
+│ think and output only in english。 │

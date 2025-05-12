@@ -246,6 +246,28 @@ Remember that documentation is part of the codebase and should be held to the sa
 - Make sure examples in documentation are correct and up-to-date
 - Keep code and documentation in sync
 
+### Test Handling Guidelines
+
+When working with tests:
+
+- NEVER simplify or remove test cases when tests fail - always fix the code to make tests pass
+- If tests are failing after multiple attempts to fix them, consult the user for further guidance
+- Add new tests for new functionality and edge cases
+- Ensure test coverage is maintained or improved when modifying code
+- When modifying test code, maintain or increase the strictness of the original tests
+- If a test case seems incorrect, discuss this with the user rather than modifying the test
+
+### User Communication Guidelines
+
+When working with user requests:
+
+- Seek clarification when instructions are ambiguous or incomplete
+- Ask detailed questions to understand the user's intent before implementing significant changes
+- For complex modifications, first understand the user's goal before proposing an implementation approach
+- Communicate trade-offs and alternatives when relevant
+- If unsure about a specific implementation detail, present options to the user rather than making assumptions
+- Proactively ask for additional context when it would help provide a better solution
+
 ### Documenting in devlog.md
 
 After implementing significant changes:
