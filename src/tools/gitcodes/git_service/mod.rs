@@ -29,6 +29,7 @@
 mod code_search;
 pub mod git_repository;
 pub mod github_api;
+mod local_repository;
 pub mod params;
 
 pub use git_repository::*;
