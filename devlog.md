@@ -15,6 +15,26 @@ This file documents the development process, architectural decisions, and implem
 
 ### Type System Improvements
 
+- **Clone Parameters Struct**: Created `GithubRepositoryInfo` to encapsulate user, repo, and ref_name parameters for repository cloning
+  - Pattern: Use structured types for parameter groups that are commonly used together
+  - Rationale: Improves code readability, reduces parameter count, and makes function signatures more maintainable
+  - Implementation:
+    ```rust
+    // Structured parameter type for clone_repository function
+    #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+    pub struct GithubRepositoryInfo {
+        pub user: String,
+        pub repo: String,
+        pub ref_name: String,
+    }
+    
+    // Updated function signature using the structured parameter
+    async fn clone_repository(repo_dir: &Path, params: &GithubRepositoryInfo) -> Result<(), String> { ... }
+    ```
+  - Apply this pattern for other parameter groups that are passed together frequently
+
+### Type System Improvements
+
 - **Repository Location Enum**: Changed `GrepParams.repository` and `list_repository_refs` parameter type from String to `RepositoryLocation` enum
   - Pattern: Use enums to represent distinct variants with different behaviors
   - Rationale: Strong type safety prevents runtime errors by making GitHub URLs vs local paths explicit

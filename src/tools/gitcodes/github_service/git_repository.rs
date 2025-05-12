@@ -173,7 +173,12 @@ impl RepositoryManager {
                 // If repo is not cloned, clone it
                 if !is_cloned {
                     // We've already matched this as GitHubUrl above, so no need to extract the URL again
-                    clone_repository(&repo_dir, &user, &repo, &ref_name).await?
+                    let clone_params = GithubRepositoryInfo {
+                        user: user.clone(),
+                        repo: repo.clone(),
+                        ref_name: ref_name.clone(),
+                    };
+                    clone_repository(&repo_dir, &clone_params).await?
                 } else {
                     update_repository(&repo_dir, &ref_name).await?
                 }
@@ -229,21 +234,73 @@ fn parse_repository_url(repo_location: &RepositoryLocation) -> Result<(String, S
 
 // These functions have been converted to methods of RepositoryManager
 
+/// Parameters for GitHub repository cloning
+///
+/// Contains all the parameters needed for cloning a GitHub repository.
+/// This struct encapsulates repository parameters for the clone_repository function.
+///
+/// # Examples
+///
+/// ```
+/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::GithubRepositoryInfo;
+///
+/// // Basic clone parameters
+/// let params = GithubRepositoryInfo {
+///     user: "rust-lang".to_string(),
+///     repo: "rust".to_string(),
+///     ref_name: "main".to_string(),
+/// };
+/// ```
+#[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+pub struct GithubRepositoryInfo {
+    /// GitHub username or organization
+    #[schemars(description = "The GitHub username or organization owning the repository. Must be the exact username as it appears in GitHub URLs.")]
+    pub user: String,
+    /// Repository name
+    #[schemars(description = "The name of the repository to clone. Must be the exact repository name as it appears in GitHub URLs.")]
+    pub repo: String,
+    /// Branch or tag name to checkout
+    #[schemars(description = "The branch or tag name to checkout after cloning. Defaults to 'main' if not specified.")]
+    pub ref_name: String,
+}
+
 /// Clone a repository from GitHub
 ///
 /// Creates a directory and performs a shallow clone of the specified repository.
+/// Uses a structured GithubRepositoryInfo object to encapsulate all required clone parameters.
 ///
 /// # Parameters
 ///
 /// * `repo_dir` - The directory where the repository should be cloned
-/// * `user` - GitHub username or organization
-/// * `repo` - Repository name
-/// * `ref_name` - Branch or tag name to checkout
+/// * `params` - GithubRepositoryInfo struct containing user, repo, and ref_name
+///
+/// # Returns
+///
+/// * `Result<(), String>` - Success or an error message if the clone operation fails
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::PathBuf;
+/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::{clone_repository, GithubRepositoryInfo};
+///
+/// async fn example() {
+///     let repo_dir = PathBuf::from("/tmp/example_repo");
+///     let params = GithubRepositoryInfo {
+///         user: "rust-lang".to_string(),
+///         repo: "rust".to_string(),
+///         ref_name: "main".to_string(),
+///     };
+///     
+///     match clone_repository(&repo_dir, &params).await {
+///         Ok(()) => println!("Repository cloned successfully"),
+///         Err(e) => eprintln!("Failed to clone repository: {}", e),
+///     }
+/// }
+/// ```
 async fn clone_repository(
     repo_dir: &Path,
-    user: &str,
-    repo: &str,
-    ref_name: &str,
+    params: &GithubRepositoryInfo,
 ) -> Result<(), String> {
     // Create directory if it doesn't exist
     if let Err(e) = tokio::fs::create_dir_all(repo_dir).await {
@@ -251,11 +308,11 @@ async fn clone_repository(
     }
 
     // Clone repository
-    let clone_url = format!("https://github.com/{}/{}.git", user, repo);
+    let clone_url = format!("https://github.com/{}/{}.git", params.user, params.repo);
 
     // Clone with git command
     let repo_dir_clone = repo_dir.to_string_lossy().to_string();
-    let ref_name_clone = ref_name.to_string();
+    let ref_name_clone = params.ref_name.clone();
     let clone_result = tokio::task::spawn_blocking(move || {
         let status = std::process::Command::new("git")
             .args([
