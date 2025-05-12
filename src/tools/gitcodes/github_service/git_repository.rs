@@ -173,7 +173,7 @@ impl RepositoryManager {
                 // If repo is not cloned, clone it
                 if !is_cloned {
                     // We've already matched this as GitHubUrl above, so no need to extract the URL again
-                    let clone_params = GithubRepositoryInfo {
+                    let clone_params = RemoteGitRepositoryInfo {
                         user: user.clone(),
                         repo: repo.clone(),
                         ref_name: ref_name.clone(),
@@ -242,17 +242,17 @@ fn parse_repository_url(repo_location: &RepositoryLocation) -> Result<(String, S
 /// # Examples
 ///
 /// ```
-/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::GithubRepositoryInfo;
+/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::RemoteGitRepositoryInfo;
 ///
 /// // Basic clone parameters
-/// let params = GithubRepositoryInfo {
+/// let params = RemoteGitRepositoryInfo {
 ///     user: "rust-lang".to_string(),
 ///     repo: "rust".to_string(),
 ///     ref_name: "main".to_string(),
 /// };
 /// ```
 #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
-pub struct GithubRepositoryInfo {
+pub struct RemoteGitRepositoryInfo {
     /// GitHub username or organization
     #[schemars(description = "The GitHub username or organization owning the repository. Must be the exact username as it appears in GitHub URLs.")]
     pub user: String,
@@ -267,12 +267,12 @@ pub struct GithubRepositoryInfo {
 /// Clone a repository from GitHub
 ///
 /// Creates a directory and performs a shallow clone of the specified repository.
-/// Uses a structured GithubRepositoryInfo object to encapsulate all required clone parameters.
+/// Uses a structured RemoteGitRepositoryInfo object to encapsulate all required clone parameters.
 ///
 /// # Parameters
 ///
 /// * `repo_dir` - The directory where the repository should be cloned
-/// * `params` - GithubRepositoryInfo struct containing user, repo, and ref_name
+/// * `params` - RemoteGitRepositoryInfo struct containing user, repo, and ref_name
 ///
 /// # Returns
 ///
@@ -282,11 +282,11 @@ pub struct GithubRepositoryInfo {
 ///
 /// ```no_run
 /// use std::path::PathBuf;
-/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::{clone_repository, GithubRepositoryInfo};
+/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::{clone_repository, RemoteGitRepositoryInfo};
 ///
 /// async fn example() {
 ///     let repo_dir = PathBuf::from("/tmp/example_repo");
-///     let params = GithubRepositoryInfo {
+///     let params = RemoteGitRepositoryInfo {
 ///         user: "rust-lang".to_string(),
 ///         repo: "rust".to_string(),
 ///         ref_name: "main".to_string(),
@@ -300,7 +300,7 @@ pub struct GithubRepositoryInfo {
 /// ```
 async fn clone_repository(
     repo_dir: &Path,
-    params: &GithubRepositoryInfo,
+    params: &RemoteGitRepositoryInfo,
 ) -> Result<(), String> {
     // Create directory if it doesn't exist
     if let Err(e) = tokio::fs::create_dir_all(repo_dir).await {

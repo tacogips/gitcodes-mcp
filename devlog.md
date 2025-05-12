@@ -15,21 +15,21 @@ This file documents the development process, architectural decisions, and implem
 
 ### Type System Improvements
 
-- **Clone Parameters Struct**: Created `GithubRepositoryInfo` to encapsulate user, repo, and ref_name parameters for repository cloning
+- **Clone Parameters Struct**: Created `RemoteGitRepositoryInfo` to encapsulate user, repo, and ref_name parameters for repository cloning
   - Pattern: Use structured types for parameter groups that are commonly used together
   - Rationale: Improves code readability, reduces parameter count, and makes function signatures more maintainable
   - Implementation:
     ```rust
     // Structured parameter type for clone_repository function
     #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
-    pub struct GithubRepositoryInfo {
+    pub struct RemoteGitRepositoryInfo {
         pub user: String,
         pub repo: String,
         pub ref_name: String,
     }
     
     // Updated function signature using the structured parameter
-    async fn clone_repository(repo_dir: &Path, params: &GithubRepositoryInfo) -> Result<(), String> { ... }
+    async fn clone_repository(repo_dir: &Path, params: &RemoteGitRepositoryInfo) -> Result<(), String> { ... }
     ```
   - Apply this pattern for other parameter groups that are passed together frequently
 
