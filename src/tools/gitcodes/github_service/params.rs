@@ -1,3 +1,4 @@
+use super::git_repository::RepositoryLocation;
 use rmcp::schemars;
 use strum::{AsRefStr, Display, EnumString};
 
@@ -63,10 +64,12 @@ pub struct SearchParams {
 ///
 /// ```
 /// use gitcodes_mcp::tools::gitcodes::github_service::params::GrepParams;
+/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::RepositoryLocation;
+/// use std::path::PathBuf;
 ///
-/// // Basic search with defaults
+/// // Basic search with defaults for GitHub URL
 /// let params = GrepParams {
-///    repository: "https://github.com/rust-lang/rust".to_string(),
+///    repository: RepositoryLocation::GitHubUrl("https://github.com/rust-lang/rust".to_string()),
 ///    pattern: "fn main".to_string(),
 ///    ref_name: None,
 ///    case_sensitive: None,
@@ -77,7 +80,7 @@ pub struct SearchParams {
 ///
 /// // Advanced search with custom options
 /// let advanced_params = GrepParams {
-///    repository: "github:tokio-rs/tokio".to_string(),
+///    repository: RepositoryLocation::GitHubUrl("github:tokio-rs/tokio".to_string()),
 ///    pattern: "async fn".to_string(),
 ///    ref_name: Some("master".to_string()),
 ///    case_sensitive: Some(true),
@@ -85,14 +88,25 @@ pub struct SearchParams {
 ///    file_extensions: Some(vec!["rs".to_string()]),
 ///    exclude_dirs: Some(vec!["target".to_string(), "examples".to_string()]),
 /// };
+///
+/// // Search in a local directory
+/// let local_params = GrepParams {
+///    repository: RepositoryLocation::LocalPath(PathBuf::from("/path/to/local/repo")),
+///    pattern: "struct Config".to_string(),
+///    ref_name: None,
+///    case_sensitive: Some(false),
+///    use_regex: None,
+///    file_extensions: Some(vec!["rs".to_string()]),
+///    exclude_dirs: None,
+/// };
 /// ```
 #[derive(Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub struct GrepParams {
-    /// Repository URL (required) - supports GitHub formats:
-    /// - <https://github.com/user/repo>
-    /// - git@github.com:user/repo.git
-    /// - github:user/repo
-    pub repository: String,
+    /// Repository location (required)
+    /// Can be either a GitHub URL or a local filesystem path
+    /// GitHub URL formats: https://github.com/user/repo, git@github.com:user/repo.git, github:user/repo
+    /// Local path: Direct path to a local directory
+    pub repository_location: RepositoryLocation,
 
     /// Branch or tag (optional, default is 'main' or 'master')
     /// Specifies which branch or tag to search in

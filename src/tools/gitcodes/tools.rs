@@ -1,9 +1,11 @@
-use rmcp::{model::*, schemars, tool, ServerHandler};
-use std::path::PathBuf;
 use super::github_service::{
+    git_repository::RepositoryLocation,
     params::{GrepParams, OrderOption, SearchParams, SortOption},
     GitHubService,
 };
+use rmcp::{model::*, schemars, tool, ServerHandler};
+use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
@@ -33,7 +35,7 @@ impl GitHubCodeTools {
             service: GitHubService::new(github_token, repository_cache_dir),
         }
     }
-    
+
     /// Creates a new GitHubCodeTools instance with default repository cache directory
     ///
     /// This is a convenience constructor that uses the system's temporary directory.
@@ -238,9 +240,15 @@ impl GitHubCodeTools {
         )]
         exclude_dirs: Option<Vec<String>>,
     ) -> String {
-        // Create a git_repositorys struct from the individual parameters
+        // Parse the repository string to a RepositoryLocation
+        let repository_location = match RepositoryLocation::from_str(&repository) {
+            Ok(location) => location,
+            Err(e) => return format!("Invalid repository location: {}", e),
+        };
+
+        // Create a GrepParams struct from the individual parameters
         let params = GrepParams {
-            repository,
+            repository_location,
             ref_name,
             pattern,
             case_sensitive,

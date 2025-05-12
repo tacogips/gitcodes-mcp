@@ -13,6 +13,24 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-12: Improve Repository Location Type Safety with RepositoryLocation Enum
+
+- Enhanced the `GrepParams` struct to use `RepositoryLocation` enum instead of a String:
+  - Changed `repository: String` to `repository: RepositoryLocation`
+  - This provides compile-time type safety for repository location handling
+  - Makes the distinction between GitHub URLs and local paths explicit
+- Updated the `git_repository.rs` module:
+  - Added schemars and serde derive macros to `RepositoryLocation` for JSON serialization/deserialization
+  - Ensures compatibility with the MCP tool interface
+- Modified `github_service::grep_repository` method:
+  - Removed the string-to-enum conversion since we now receive the enum directly
+  - Simplified the code by eliminating a potential error case
+- Updated the `tools.rs` module:
+  - Now converts the string input to `RepositoryLocation` before creating `GrepParams`
+  - Maintains backward compatibility with the existing API
+- Updated documentation and examples to reflect the new structure
+- All tests pass, ensuring backward compatibility
+
 ### 2024-05-12: Refactor Search Result Formatting in Code Search Module
 
 - Removed `format_search_results` function from `code_search.rs` module:

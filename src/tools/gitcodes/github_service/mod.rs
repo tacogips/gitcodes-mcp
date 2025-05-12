@@ -173,15 +173,10 @@ impl GitHubService {
     /// 2. Code search is performed on the files
     /// 3. Returns raw search results without additional formatting
     pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
-        // Parse the repository location string into our enum
-        let repo_location = match RepositoryLocation::from_str(&params.repository) {
-            Ok(location) => location,
-            Err(e) => return Err(e),
-        };
-        
+        // Repository location is already in the correct type
         // Parse repository information from URL or local path
         let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &repo_location, 
+            &params.repository, 
             params.ref_name.clone()
         ).await {
             Ok(info) => info,

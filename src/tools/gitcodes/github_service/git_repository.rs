@@ -1,9 +1,10 @@
 use rand::Rng;
+use rmcp::schemars;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// Enum representing a repository location, either a GitHub URL or a local filesystem path
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub enum RepositoryLocation {
     /// A GitHub repository URL (https://github.com/user/repo, git@github.com:user/repo.git, or github:user/repo)
     GitHubUrl(String),
