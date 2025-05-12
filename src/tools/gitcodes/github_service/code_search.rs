@@ -20,42 +20,33 @@ pub async fn perform_code_search(
     _use_regex: Option<bool>,
     _file_extensions: Option<Vec<String>>,
 ) -> Result<String, String> {
-    // Clone values for the thread
-    let repo_dir_clone = repo_dir.to_path_buf();
-    let pattern_clone = pattern.to_string();
+    // Create search options
+    let search_options = SearchOptions {
+        case_sensitive: case_sensitive.unwrap_or(false),
+        ..SearchOptions::default()
+    };
 
-    // Execute search in a blocking task
-    tokio::task::spawn_blocking(move || {
-        // Create search options
-        let search_options = SearchOptions {
-            case_sensitive: case_sensitive.unwrap_or(false),
-            ..SearchOptions::default()
-        };
+    // Execute the search
+    match search::search_files(
+        pattern,
+        repo_dir,
+        &search_options,
+    ) {
+        Ok(results) => {
+            // Format results
+            let mut output = String::new();
 
-        // Execute the search
-        match search::search_files(
-            &pattern_clone,
-            &repo_dir_clone,
-            &search_options,
-        ) {
-            Ok(results) => {
-                // Format results
-                let mut output = String::new();
-
-                for result in results {
-                    output.push_str(&format!(
-                        "{}:{}: {}\n",
-                        result.file_path.display(),
-                        result.line_number,
-                        result.line_content
-                    ));
-                }
-
-                Ok(output)
+            for result in results {
+                output.push_str(&format!(
+                    "{}:{}: {}\n",
+                    result.file_path.display(),
+                    result.line_number,
+                    result.line_content
+                ));
             }
-            Err(e) => Err(format!("Lumin search failed: {}", e)),
+
+            Ok(output)
         }
-    })
-    .await
-    .map_err(|e| format!("Search task failed: {}", e))?
+        Err(e) => Err(format!("Lumin search failed: {}", e)),
+    }
 }

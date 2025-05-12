@@ -508,7 +508,9 @@ Implemented the core functionality specified in `spec.md`:
 
 #### Concurrent Task Management
 
-- Had to handle moved values in async closures carefully, using cloning for strings passed to `tokio::task::spawn_blocking`
+- Use `tokio::task::spawn_blocking` only when executing truly blocking operations like system commands or filesystem operations
+- For git operations via CLI commands, spawn_blocking is appropriate as these are blocking system calls
+- For non-blocking operations like in-memory searches, avoid unnecessary overhead of spawn_blocking
 - Implemented proper error handling for CLI git commands with context-aware error messages
 - Created a repository manager to handle temporary directory management and repository state
 
