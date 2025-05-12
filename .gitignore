@@ -31,3 +31,5 @@ output_tests
 
 result
 rust-sdk
+
+**/.claude/settings.local.json

@@ -1,5 +1,35 @@
 use rand::Rng;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
+
+/// Enum representing a repository location, either a GitHub URL or a local filesystem path
+#[derive(Debug, Clone)]
+pub enum RepositoryLocation {
+    /// A GitHub repository URL (https://github.com/user/repo, git@github.com:user/repo.git, or github:user/repo)
+    GitHubUrl(String),
+    /// A local filesystem path
+    LocalPath(PathBuf),
+}
+
+impl FromStr for RepositoryLocation {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Check if it's a local path first
+        if Path::new(s).exists() {
+            return Ok(RepositoryLocation::LocalPath(PathBuf::from(s)));
+        }
+        
+        // Otherwise, treat it as a GitHub URL
+        if s.starts_with("https://github.com/") || 
+           s.starts_with("git@github.com:") || 
+           s.starts_with("github:") {
+            Ok(RepositoryLocation::GitHubUrl(s.to_string()))
+        } else {
+            Err(format!("Invalid repository location: {}", s))
+        }
+    }
+}
 
 /// Repository information after URL parsing and preparation
 #[derive(Debug)]
@@ -89,69 +119,76 @@ impl RepositoryManager {
     /// Parses a repository URL or local file path and prepares it for operations
     ///
     /// This method:
-    /// 1. Checks if the repository is a URL or local path
+    /// 1. Processes the repository location (URL or local path)
     /// 2. For URLs: Extracts user and repo name, clones/updates the repository
     /// 3. For local paths: Uses the path directly without cloning
     ///
     /// # Parameters
     ///
-    /// * `repository` - The repository URL or local file path
+    /// * `repo_location` - The repository location (either a GitHub URL or local file path)
     /// * `ref_name` - Optional branch or tag name (only used for URLs)
     pub async fn parse_and_prepare_repository(
         &self,
-        repository: &str,
+        repo_location: &RepositoryLocation,
         ref_name: Option<String>,
     ) -> Result<RepositoryInfo, String> {
-        // Check if it's a local path
-        if Path::new(repository).exists() {
-            // For local paths, use the path directly
-            let local_path = PathBuf::from(repository);
-            
-            if !local_path.is_dir() {
-                return Err(format!("Local path '{}' is not a directory", repository));
+        match repo_location {
+            RepositoryLocation::LocalPath(local_path) => {
+                // For local paths, use the path directly
+                if !local_path.is_dir() {
+                    return Err(format!("Local path '{}' is not a directory", local_path.display()));
+                }
+                
+                // For local repositories, we don't need to use ref_name
+                // Just use a placeholder or default
+                let actual_ref_name = ref_name.unwrap_or_else(|| "local".to_string());
+                
+                Ok(RepositoryInfo {
+                    user: "local".to_string(),
+                    repo: "repository".to_string(),
+                    repo_dir: local_path.clone(),
+                    ref_name: actual_ref_name,
+                })
+            },
+            RepositoryLocation::GitHubUrl(_) => {
+                // Handle GitHub repository URLs
+                // Parse repository URL
+                let (user, repo) = match parse_repository_url(repo_location) {
+                    Ok(result) => result,
+                    Err(e) => return Err(format!("Error: {}", e)),
+                };
+
+                // Default branch if not specified
+                let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
+
+                // Get a temporary directory for the repository
+                let repo_dir = self.get_repo_dir(&user, &repo);
+
+                // Check if repo is already cloned
+                let is_cloned = self.is_repo_cloned(&repo_dir).await;
+
+                // If repo is not cloned, clone it
+                if !is_cloned {
+                    // Extract the URL string for cloning
+                    let url = if let RepositoryLocation::GitHubUrl(url_str) = repo_location {
+                        url_str
+                    } else {
+                        unreachable!("Already matched as GitHubUrl")
+                    };
+                    
+                    clone_repository(&repo_dir, &user, &repo, &ref_name).await?
+                } else {
+                    update_repository(&repo_dir, &ref_name).await?
+                }
+
+                Ok(RepositoryInfo {
+                    user,
+                    repo,
+                    repo_dir,
+                    ref_name,
+                })
             }
-            
-            // For local repositories, we don't need to use ref_name
-            // Just use a placeholder or default
-            let actual_ref_name = ref_name.unwrap_or_else(|| "local".to_string());
-            
-            return Ok(RepositoryInfo {
-                user: "local".to_string(),
-                repo: "repository".to_string(),
-                repo_dir: local_path,
-                ref_name: actual_ref_name,
-            });
         }
-        
-        // Handle GitHub repository URLs
-        // Parse repository URL
-        let (user, repo) = match parse_repository_url(repository) {
-            Ok(result) => result,
-            Err(e) => return Err(format!("Error: {}", e)),
-        };
-
-        // Default branch if not specified
-        let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
-
-        // Get a temporary directory for the repository
-        let repo_dir = self.get_repo_dir(&user, &repo);
-
-        // Check if repo is already cloned
-        let is_cloned = self.is_repo_cloned(&repo_dir).await;
-
-        // If repo is not cloned, clone it
-        if !is_cloned {
-            clone_repository(&repo_dir, &user, &repo, &ref_name).await?
-        } else {
-            update_repository(&repo_dir, &ref_name).await?
-        }
-
-        Ok(RepositoryInfo {
-            user,
-            repo,
-            repo_dir,
-            ref_name,
-        })
     }
 }
 
@@ -162,33 +199,35 @@ impl Default for RepositoryManager {
 }
 
 // Parse repository URL to extract user and repo name
-fn parse_repository_url(url: &str) -> Result<(String, String), String> {
-    // Check if the input is a local file path
-    if Path::new(url).exists() {
-        // Return placeholder values for user and repo
-        return Ok(("local".to_string(), "repository".to_string()));
-    }
-    
-    let user_repo = if url.starts_with("https://github.com/") {
-        url.trim_start_matches("https://github.com/")
-            .trim_end_matches(".git")
-            .to_string()
-    } else if url.starts_with("git@github.com:") {
-        url.trim_start_matches("git@github.com:")
-            .trim_end_matches(".git")
-            .to_string()
-    } else if url.starts_with("github:") {
-        url.trim_start_matches("github:").to_string()
-    } else {
-        return Err("Invalid GitHub repository URL format".to_string());
-    };
+fn parse_repository_url(repo_location: &RepositoryLocation) -> Result<(String, String), String> {
+    match repo_location {
+        RepositoryLocation::LocalPath(_) => {
+            // Return placeholder values for user and repo for local paths
+            Ok(("local".to_string(), "repository".to_string()))
+        },
+        RepositoryLocation::GitHubUrl(url) => {
+            let user_repo = if url.starts_with("https://github.com/") {
+                url.trim_start_matches("https://github.com/")
+                    .trim_end_matches(".git")
+                    .to_string()
+            } else if url.starts_with("git@github.com:") {
+                url.trim_start_matches("git@github.com:")
+                    .trim_end_matches(".git")
+                    .to_string()
+            } else if url.starts_with("github:") {
+                url.trim_start_matches("github:").to_string()
+            } else {
+                return Err("Invalid GitHub repository URL format".to_string());
+            };
 
-    let parts: Vec<&str> = user_repo.split('/').collect();
-    if parts.len() != 2 {
-        return Err("Invalid GitHub repository URL format".to_string());
-    }
+            let parts: Vec<&str> = user_repo.split('/').collect();
+            if parts.len() != 2 {
+                return Err("Invalid GitHub repository URL format".to_string());
+            }
 
-    Ok((parts[0].to_string(), parts[1].to_string()))
+            Ok((parts[0].to_string(), parts[1].to_string()))
+        }
+    }
 }
 
 // These functions have been converted to methods of RepositoryManager

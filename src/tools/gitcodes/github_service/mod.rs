@@ -153,27 +153,35 @@ impl GitHubService {
         github_api::execute_search_request(&params, &self.client, self.github_token.as_ref()).await
     }
 
-    /// Search code in a GitHub repository
+    /// Search code in a GitHub repository or local directory
     ///
-    /// This tool clones or updates the repository locally, then performs a code search
+    /// This tool clones or updates the repository locally (for GitHub URLs) or uses
+    /// the local directory directly (for file paths), then performs a code search
     /// using the specified pattern. It supports both public and private repositories.
     ///
     /// # Authentication
     ///
     /// - For public repositories: No authentication needed
     /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    /// - For local directories: No authentication needed
     ///
     /// # Implementation Note
     ///
     /// This tool uses a combination of git operations and the lumin search library:
-    /// 1. Repository is cloned or updated locally
-    /// 2. Code search is performed on the local files
+    /// 1. Repository is cloned or updated locally (for GitHub URLs) or a local directory is used directly
+    /// 2. Code search is performed on the files
     /// 3. Results are formatted and returned
     pub async fn grep_repository(&self, params: GrepParams) -> String {
-        // Parse repository information from URL
+        // Parse the repository location string into our enum
+        let repo_location = match RepositoryLocation::from_str(&params.repository) {
+            Ok(location) => location,
+            Err(e) => return e,
+        };
+        
+        // Parse repository information from URL or local path
         let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &params.repository, 
-            params.ref_name
+            &repo_location, 
+            params.ref_name.clone()
         ).await {
             Ok(info) => info,
             Err(e) => return e,
@@ -332,26 +340,33 @@ impl GitHubService {
         Ok(result)
     }
 
-    /// List branches and tags for a GitHub repository
+    /// List branches and tags for a GitHub repository or local git directory
     ///
     /// This tool retrieves a list of all branches and tags for the specified repository.
-    /// It supports both public and private repositories.
+    /// It supports both public and private repositories as well as local git directories.
     ///
     /// # Authentication
     ///
     /// - For public repositories: No authentication needed
     /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    /// - For local directories: No authentication needed
     ///
     /// # Implementation Note
     ///
     /// This tool:
-    /// 1. Clones or updates the repository locally
+    /// 1. Clones or updates the repository locally (for GitHub URLs) or uses the local directory directly
     /// 2. Fetches all branches and tags
     /// 3. Formats the results into a readable format
     pub async fn list_repository_refs(&self, repository: String) -> String {
-        // Parse repository information from URL
+        // Parse the repository location string into our enum
+        let repo_location = match RepositoryLocation::from_str(&repository) {
+            Ok(location) => location,
+            Err(e) => return e,
+        };
+        
+        // Parse repository information from URL or local path
         let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &repository, 
+            &repo_location, 
             Some("main".to_string())
         ).await {
             Ok(info) => info,

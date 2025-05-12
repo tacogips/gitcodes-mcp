@@ -1,5 +1,6 @@
 use lumin::{search, search::SearchOptions};
 use std::path::Path;
+use super::git_repository::RepositoryLocation;
 
 /// Performs a code search on a prepared repository
 ///
@@ -76,9 +77,12 @@ pub fn format_search_results(
     pattern: &str,
     repository: &str,
 ) -> String {
-    // Determine if the repository is a local path or a GitHub URL
-    let is_local_path = Path::new(repository).exists();
-    let location_type = if is_local_path { "local directory" } else { "repository" };
+    // Parse the repository location to determine what message to display
+    let location_type = match RepositoryLocation::from_str(repository) {
+        Ok(RepositoryLocation::LocalPath(_)) => "local directory",
+        Ok(RepositoryLocation::GitHubUrl(_)) => "repository",
+        Err(_) => "location", // Generic fallback if parsing fails
+    };
     
     match search_result {
         Ok(search_output) => {
