@@ -26,9 +26,9 @@
 //! let github_service = GitHubService::new(Some("your_github_token".to_string()), None);
 //! ```
 
+mod code_search;
 pub mod git_repository;
 pub mod github_api;
-mod code_search;
 pub mod params;
 
 pub use git_repository::*;
@@ -102,14 +102,14 @@ impl GitHubService {
             Ok(manager) => manager,
             Err(e) => panic!("Failed to initialize repository manager: {}", e),
         };
-        
+
         Self {
             client: Client::new(),
             repo_manager,
             github_token,
         }
     }
-    
+
     /// Creates a new GitHub service instance with the default repository cache directory
     ///
     /// This is a convenience constructor that uses the system's temporary directory
@@ -174,10 +174,11 @@ impl GitHubService {
     pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
         // Repository location is already in the correct type
         // Parse repository information from URL or local path
-        let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &params.repository_location, 
-            params.ref_name.clone()
-        ).await {
+        let repo_info = match self
+            .repo_manager
+            .parse_and_prepare_repository(&params.repository_location, params.ref_name.clone())
+            .await
+        {
             Ok(info) => info,
             Err(e) => return Err(e),
         };
@@ -191,145 +192,6 @@ impl GitHubService {
             params.file_extensions.clone(),
         )
         .await
-    }
-
-    // parse_and_prepare_repository method has been moved to git_repository.rs
-
-    // Code search methods have been moved to code_search.rs
-
-    // Function to fetch repository refs (branches and tags)
-    async fn fetch_repository_refs(
-        &self,
-        repo_dir: &Path,
-        user: &str,
-        repo: &str,
-    ) -> Result<String, String> {
-        // Get branches and tags
-        let repo_dir_clone = repo_dir.to_string_lossy().to_string();
-        let user_clone = user.to_string();
-        let repo_clone = repo.to_string();
-
-        // Change to the repository directory
-        let current_dir = match std::env::current_dir() {
-            Ok(dir) => dir,
-            Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-        };
-
-        if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
-            return Err(format!("Failed to change directory: {}", e));
-        }
-
-        // First run git fetch to make sure we have all refs
-        let fetch_status = std::process::Command::new("git")
-            .args(["fetch", "--all"])
-            .status();
-
-        if let Err(e) = fetch_status {
-            let _ = std::env::set_current_dir(current_dir);
-            return Err(format!("Git fetch failed: {}", e));
-        }
-
-        if !fetch_status.unwrap().success() {
-            let _ = std::env::set_current_dir(current_dir);
-            return Err("Git fetch failed".to_string());
-        }
-
-        // Get branches
-        let branches_output = std::process::Command::new("git")
-            .args(["branch", "-r"])
-            .output();
-
-        let branches_output = match branches_output {
-            Ok(output) => output,
-            Err(e) => {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Failed to list branches: {}", e));
-            }
-        };
-
-        let branches_str = String::from_utf8_lossy(&branches_output.stdout).to_string();
-
-        // Get tags
-        let tags_output = std::process::Command::new("git").args(["tag"]).output();
-
-        let tags_output = match tags_output {
-            Ok(output) => output,
-            Err(e) => {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Failed to list tags: {}", e));
-            }
-        };
-
-        let tags_str = String::from_utf8_lossy(&tags_output.stdout).to_string();
-
-        // Change back to the original directory
-        if let Err(e) = std::env::set_current_dir(current_dir) {
-            return Err(format!("Failed to restore directory: {}", e));
-        }
-
-        // Format the output
-        let mut result = String::new();
-        result.push_str(&format!(
-            "Repository: {}/{}
-
-",
-            user_clone, repo_clone
-        ));
-
-        // Extract and format branches
-        let branches: Vec<String> = branches_str
-            .lines()
-            .filter_map(|line| {
-                let line = line.trim();
-                if line.starts_with("origin/") && !line.contains("HEAD") {
-                    Some(line.trim_start_matches("origin/").to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        // Extract and format tags
-        let tags: Vec<String> = tags_str
-            .lines()
-            .map(|line| line.trim().to_string())
-            .filter(|line| !line.is_empty())
-            .collect();
-
-        // Add branches section
-        result.push_str(
-            "## Branches
-",
-        );
-        if branches.is_empty() {
-            result.push_str(
-                "No branches found
-",
-            );
-        } else {
-            for branch in branches {
-                result.push_str(&format!("- {}\n", branch));
-            }
-        }
-
-        // Add tags section
-        result.push_str(
-            "
-## Tags
-",
-        );
-        if tags.is_empty() {
-            result.push_str(
-                "No tags found
-",
-            );
-        } else {
-            for tag in tags {
-                result.push_str(&format!("- {}\n", tag));
-            }
-        }
-
-        Ok(result)
     }
 
     /// List branches and tags for a GitHub repository or local git directory
@@ -351,16 +213,17 @@ impl GitHubService {
     /// 3. Formats the results into a readable format
     pub async fn list_repository_refs(&self, repository_location: RepositoryLocation) -> String {
         // Parse repository information from URL or local path
-        let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &repository_location, 
-            Some("main".to_string())
-        ).await {
+        let repo_info = match self
+            .repo_manager
+            .parse_and_prepare_repository(&repository_location, Some("main".to_string()))
+            .await
+        {
             Ok(info) => info,
             Err(e) => return e,
         };
 
         // Fetch repository refs using the extracted function
-        match self.fetch_repository_refs(&repo_info.repo_dir, &repo_info.user, &repo_info.repo).await {
+        match fetch_repository_refs(&repo_info.repo_dir, &repo_info.user, &repo_info.repo).await {
             Ok(result) => result,
             Err(e) => format!("Failed to list refs: {}", e),
         }
