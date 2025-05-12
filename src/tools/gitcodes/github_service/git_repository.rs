@@ -15,19 +15,21 @@ pub enum RepositoryLocation {
 impl FromStr for RepositoryLocation {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(repo_location_str: &str) -> Result<Self, Self::Err> {
+        let sanitized_location = repo_location_str.trim();
+        
         // Check if it's a local path first
-        if Path::new(s).exists() {
-            return Ok(RepositoryLocation::LocalPath(PathBuf::from(s)));
+        if Path::new(sanitized_location).exists() {
+            return Ok(RepositoryLocation::LocalPath(PathBuf::from(sanitized_location)));
         }
         
         // Otherwise, treat it as a GitHub URL
-        if s.starts_with("https://github.com/") || 
-           s.starts_with("git@github.com:") || 
-           s.starts_with("github:") {
-            Ok(RepositoryLocation::GitHubUrl(s.to_string()))
+        if sanitized_location.starts_with("https://github.com/") || 
+           sanitized_location.starts_with("git@github.com:") || 
+           sanitized_location.starts_with("github:") {
+            Ok(RepositoryLocation::GitHubUrl(sanitized_location.to_string()))
         } else {
-            Err(format!("Invalid repository location: {}", s))
+            Err(format!("Invalid repository location: {}", sanitized_location))
         }
     }
 }
