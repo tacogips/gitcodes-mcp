@@ -192,13 +192,13 @@ impl GitHubCodeTools {
     /// 2. Code search is performed on the local files
     /// 3. Results are formatted and returned
     #[tool(
-        description = "Search code in a GitHub repository. Clones the repository locally and searches for pattern matches in the code. Supports public and private repositories, branch/tag selection, and regex search. Example usage: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"https://github.com/serde-rs/serde\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
+        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. Example usage with GitHub: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With local path: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"/path/to/local/repo\", \"pattern\": \"fn main\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
     )]
     async fn grep_repository(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', or 'github:user/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope."
+            description = "Repository URL or local file path (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
         repository: String,
 
@@ -275,7 +275,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', or 'github:user/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope."
+            description = "Repository URL or local file path (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
         repository: String,
     ) -> String {

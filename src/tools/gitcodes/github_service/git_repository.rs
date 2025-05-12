@@ -86,22 +86,44 @@ impl RepositoryManager {
         tokio::fs::metadata(dir).await.is_ok()
     }
     
-    /// Parses a repository URL and prepares it for operations
+    /// Parses a repository URL or local file path and prepares it for operations
     ///
     /// This method:
-    /// 1. Extracts user and repo name from the URL
-    /// 2. Creates or determines the repository directory
-    /// 3. Ensures the repository is cloned or updated locally
+    /// 1. Checks if the repository is a URL or local path
+    /// 2. For URLs: Extracts user and repo name, clones/updates the repository
+    /// 3. For local paths: Uses the path directly without cloning
     ///
     /// # Parameters
     ///
-    /// * `repository` - The repository URL in any supported format
-    /// * `ref_name` - Optional branch or tag name
+    /// * `repository` - The repository URL or local file path
+    /// * `ref_name` - Optional branch or tag name (only used for URLs)
     pub async fn parse_and_prepare_repository(
         &self,
         repository: &str,
         ref_name: Option<String>,
     ) -> Result<RepositoryInfo, String> {
+        // Check if it's a local path
+        if Path::new(repository).exists() {
+            // For local paths, use the path directly
+            let local_path = PathBuf::from(repository);
+            
+            if !local_path.is_dir() {
+                return Err(format!("Local path '{}' is not a directory", repository));
+            }
+            
+            // For local repositories, we don't need to use ref_name
+            // Just use a placeholder or default
+            let actual_ref_name = ref_name.unwrap_or_else(|| "local".to_string());
+            
+            return Ok(RepositoryInfo {
+                user: "local".to_string(),
+                repo: "repository".to_string(),
+                repo_dir: local_path,
+                ref_name: actual_ref_name,
+            });
+        }
+        
+        // Handle GitHub repository URLs
         // Parse repository URL
         let (user, repo) = match parse_repository_url(repository) {
             Ok(result) => result,
@@ -141,6 +163,12 @@ impl Default for RepositoryManager {
 
 // Parse repository URL to extract user and repo name
 fn parse_repository_url(url: &str) -> Result<(String, String), String> {
+    // Check if the input is a local file path
+    if Path::new(url).exists() {
+        // Return placeholder values for user and repo
+        return Ok(("local".to_string(), "repository".to_string()));
+    }
+    
     let user_repo = if url.starts_with("https://github.com/") {
         url.trim_start_matches("https://github.com/")
             .trim_end_matches(".git")

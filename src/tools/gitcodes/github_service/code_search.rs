@@ -69,24 +69,28 @@ pub async fn perform_code_search(
 ///
 /// * `search_result` - The raw search result to format
 /// * `pattern` - The search pattern that was used
-/// * `repository` - The repository URL that was searched
+/// * `repository` - The repository URL or local file path that was searched
 //TODO(tacogips) should return Result<String,String>
 pub fn format_search_results(
     search_result: &Result<String, String>,
     pattern: &str,
     repository: &str,
 ) -> String {
+    // Determine if the repository is a local path or a GitHub URL
+    let is_local_path = Path::new(repository).exists();
+    let location_type = if is_local_path { "local directory" } else { "repository" };
+    
     match search_result {
         Ok(search_output) => {
             if search_output.trim().is_empty() {
                 format!(
-                    "No matches found for pattern '{}' in repository {}",
-                    pattern, repository
+                    "No matches found for pattern '{}' in {} {}",
+                    pattern, location_type, repository
                 )
             } else {
                 format!(
-                    "Search results for '{}' in repository {}:\n\n{}",
-                    pattern, repository, search_output
+                    "Search results for '{}' in {} {}:\n\n{}",
+                    pattern, location_type, repository, search_output
                 )
             }
         }
