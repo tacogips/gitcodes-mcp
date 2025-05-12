@@ -22,6 +22,7 @@ use reqwest::Client;
 ///
 /// ```
 /// use gitcodes_mcp::tools::gitcodes::github_service::params::{SearchParams, SortOption, OrderOption};
+/// use gitcodes_mcp::tools::gitcodes::github_service::github_api::construct_search_url;
 ///
 /// let params = SearchParams {
 ///     query: "rust web framework".to_string(),
@@ -34,7 +35,7 @@ use reqwest::Client;
 /// let url = construct_search_url(&params);
 /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
 /// ```
-fn construct_search_url(param: &SearchParams) -> String {
+pub fn construct_search_url(param: &SearchParams) -> String {
     // Set up sort parameter using Default implementation
     let default_sort = SortOption::default();
     let sort = param.sort_by.as_ref().unwrap_or(&default_sort).to_str();

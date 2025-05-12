@@ -249,7 +249,10 @@ impl GitHubCodeTools {
             exclude_dirs,
         };
 
-        self.service.grep_repository(params).await
+        match self.service.grep_repository(params).await {
+            Ok(result) => result,
+            Err(error) => format!("Search failed: {}", error),
+        }
     }
 
     /// List branches and tags for a GitHub repository

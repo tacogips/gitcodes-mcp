@@ -169,13 +169,7 @@ impl RepositoryManager {
 
                 // If repo is not cloned, clone it
                 if !is_cloned {
-                    // Extract the URL string for cloning
-                    let url = if let RepositoryLocation::GitHubUrl(url_str) = repo_location {
-                        url_str
-                    } else {
-                        unreachable!("Already matched as GitHubUrl")
-                    };
-                    
+                    // We've already matched this as GitHubUrl above, so no need to extract the URL again
                     clone_repository(&repo_dir, &user, &repo, &ref_name).await?
                 } else {
                     update_repository(&repo_dir, &ref_name).await?

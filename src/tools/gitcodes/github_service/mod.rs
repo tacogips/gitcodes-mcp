@@ -23,11 +23,11 @@
 //! // Provide a token directly when creating the service
 //! use gitcodes_mcp::tools::gitcodes::github_service::GitHubService;
 //!
-//! let github_service = GitHubService::new(Some("your_github_token".to_string()));
+//! let github_service = GitHubService::new(Some("your_github_token".to_string()), None);
 //! ```
 
 pub mod git_repository;
-mod github_api;
+pub mod github_api;
 mod code_search;
 pub mod params;
 
@@ -36,6 +36,7 @@ pub use params::*;
 
 use reqwest::Client;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 // Repository information struct has been moved to git_repository.rs
 
@@ -170,12 +171,12 @@ impl GitHubService {
     /// This tool uses a combination of git operations and the lumin search library:
     /// 1. Repository is cloned or updated locally (for GitHub URLs) or a local directory is used directly
     /// 2. Code search is performed on the files
-    /// 3. Results are formatted and returned
-    pub async fn grep_repository(&self, params: GrepParams) -> String {
+    /// 3. Returns raw search results without additional formatting
+    pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
         // Parse the repository location string into our enum
         let repo_location = match RepositoryLocation::from_str(&params.repository) {
             Ok(location) => location,
-            Err(e) => return e,
+            Err(e) => return Err(e),
         };
         
         // Parse repository information from URL or local path
@@ -184,21 +185,18 @@ impl GitHubService {
             params.ref_name.clone()
         ).await {
             Ok(info) => info,
-            Err(e) => return e,
+            Err(e) => return Err(e),
         };
 
-        // Execute code search
-        let search_result = code_search::perform_code_search(
+        // Execute code search and return raw results
+        code_search::perform_code_search(
             &repo_info.repo_dir,
             &params.pattern,
             params.case_sensitive,
             params.use_regex,
             params.file_extensions.clone(),
         )
-        .await;
-
-        // Format and return results
-        code_search::format_search_results(&search_result, &params.pattern, &params.repository)
+        .await
     }
 
     // parse_and_prepare_repository method has been moved to git_repository.rs

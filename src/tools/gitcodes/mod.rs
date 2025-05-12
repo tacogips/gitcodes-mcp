@@ -23,10 +23,10 @@
 //! // Provide a token directly when creating the service
 //! use gitcodes_mcp::tools::gitcodes::{github_service::GitHubService, GitHubCodeTools};
 //!
-//! let github_service = GitHubService::new(Some("your_github_token".to_string()));
+//! let github_service = GitHubService::new(Some("your_github_token".to_string()), None);
 //!
 //! // Or when creating the tools wrapper
-//! let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()));
+//! let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()), None);
 //! ```
 //!
 //! ### GitHub Token

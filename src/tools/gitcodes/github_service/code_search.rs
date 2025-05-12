@@ -1,6 +1,5 @@
 use lumin::{search, search::SearchOptions};
 use std::path::Path;
-use super::git_repository::RepositoryLocation;
 
 /// Performs a code search on a prepared repository
 ///
@@ -59,45 +58,4 @@ pub async fn perform_code_search(
     })
     .await
     .map_err(|e| format!("Search task failed: {}", e))?
-}
-
-/// Formats the search results for output
-///
-/// This function takes the raw search results and formats them into
-/// a user-friendly message.
-///
-/// # Parameters
-///
-/// * `search_result` - The raw search result to format
-/// * `pattern` - The search pattern that was used
-/// * `repository` - The repository URL or local file path that was searched
-//TODO(tacogips) should return Result<String,String>
-pub fn format_search_results(
-    search_result: &Result<String, String>,
-    pattern: &str,
-    repository: &str,
-) -> String {
-    // Parse the repository location to determine what message to display
-    let location_type = match RepositoryLocation::from_str(repository) {
-        Ok(RepositoryLocation::LocalPath(_)) => "local directory",
-        Ok(RepositoryLocation::GitHubUrl(_)) => "repository",
-        Err(_) => "location", // Generic fallback if parsing fails
-    };
-    
-    match search_result {
-        Ok(search_output) => {
-            if search_output.trim().is_empty() {
-                format!(
-                    "No matches found for pattern '{}' in {} {}",
-                    pattern, location_type, repository
-                )
-            } else {
-                format!(
-                    "Search results for '{}' in {} {}:\n\n{}",
-                    pattern, location_type, repository, search_output
-                )
-            }
-        }
-        Err(e) => format!("Search failed: {}", e),
-    }
 }

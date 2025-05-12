@@ -13,6 +13,23 @@ This file documents the development process, architectural decisions, and implem
 
 ## Recent Changes
 
+### 2024-05-12: Refactor Search Result Formatting in Code Search Module
+
+- Removed `format_search_results` function from `code_search.rs` module:
+  - Function was extracting the raw search results and adding explanatory text
+  - This formatting should be handled at a higher level of abstraction
+- Modified `GitHubService::grep_repository` to return unformatted data:
+  - Changed return type from `String` to `Result<String, String>`
+  - Now passes through raw search results directly to caller
+  - Eliminates unnecessary formatting in the lower level
+- Updated `tools.rs` grep_repository function to handle the new return type:
+  - Added match statement to handle the Result return type
+  - Preserves user-friendly error messages when search fails
+- Improved adherence to separation of concerns:
+  - `code_search.rs` now focuses only on performing the search
+  - Formatting/presentation logic belongs at the higher application layer
+  - Higher-level modules can format results as needed for various use cases
+
 ### 2024-05-06: Rename and Improve Repository Cache Directory Configuration
 
 - Renamed fields and parameters for better semantic clarity:
