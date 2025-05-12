@@ -2,6 +2,27 @@ use rand::Rng;
 use rmcp::schemars;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use gix;
+use thiserror::Error;
+
+/// Errors that can occur during git operations
+#[derive(Error, Debug)]
+pub enum GitError {
+    #[error("Git clone error: {0}")]
+    Clone(#[from] gix::clone::Error),
+    
+    #[error("Git fetch error: {0}")]
+    Fetch(String),
+    
+    #[error("Git checkout error: {0}")]
+    Checkout(String),
+    
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    
+    #[error("Git operation error: {0}")]
+    Other(String),
+}
 
 /// Enum representing a repository location, either a GitHub URL or a local filesystem path
 #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
@@ -303,42 +324,32 @@ async fn clone_repository(
     params: &RemoteGitRepositoryInfo,
 ) -> Result<(), String> {
     // Create directory if it doesn't exist
-    if let Err(e) = tokio::fs::create_dir_all(repo_dir).await {
+    if let Err(e) = std::fs::create_dir_all(repo_dir) {
         return Err(format!("Failed to create directory: {}", e));
     }
 
     // Clone repository
     let clone_url = format!("https://github.com/{}/{}.git", params.user, params.repo);
-
-    // Clone with git command
-    let repo_dir_clone = repo_dir.to_string_lossy().to_string();
-    let ref_name_clone = params.ref_name.clone();
-    let clone_result = tokio::task::spawn_blocking(move || {
-        let status = std::process::Command::new("git")
-            .args([
-                "clone",
-                "--depth=1",
-                "--branch",
-                &ref_name_clone,
-                &clone_url,
-                &repo_dir_clone,
-            ])
-            .status();
-
-        match status {
-            Ok(exit_status) if exit_status.success() => Ok(()),
-            Ok(exit_status) => Err(format!("Git clone failed with status: {}", exit_status)),
-            Err(e) => Err(format!("Failed to execute git clone: {}", e)),
-        }
-    })
-    .await;
-
-    // Handle errors during cloning
-    if let Err(e) = clone_result {
-        return Err(format!("Failed to run git clone: {}", e));
+    
+    // Configure clone options with depth=1 and branch to match our original git command
+    let mut process = gix::clone::PrepareFetch::new(
+        &clone_url, 
+        repo_dir, 
+        gix::clone::PrepareType::Shallow,
+    )
+    .branch_to_checkout(&params.ref_name);
+    
+    // Execute the clone operation
+    match process.fetch_only(gix::progress::Discard) {
+        Ok(fetch_ok) => {
+            // Clone was successful
+            match fetch_ok.repository {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("Repository preparation failed: {}", e)),
+            }
+        },
+        Err(e) => Err(format!("Git clone failed: {}", e)),
     }
-
-    clone_result.unwrap()
 }
 
 /// Update an existing repository
@@ -350,75 +361,56 @@ async fn clone_repository(
 /// * `repo_dir` - The directory containing the repository
 /// * `ref_name` - Branch or tag name to checkout
 async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String> {
-    // Repository exists, update it
-    let repo_dir_clone = repo_dir.to_string_lossy().to_string();
-    let ref_name_clone = ref_name.to_string();
-    let update_result = tokio::task::spawn_blocking(move || {
-        // Change to the repository directory
-        let current_dir = match std::env::current_dir() {
-            Ok(dir) => dir,
-            Err(e) => return Err(format!("Failed to get current directory: {}", e)),
-        };
-
-        if let Err(e) = std::env::set_current_dir(&repo_dir_clone) {
-            return Err(format!("Failed to change directory: {}", e));
-        }
-
-        // Fetch updates
-        let fetch_status = std::process::Command::new("git")
-            .args(["fetch", "--depth=1", "origin"])
-            .status();
-
-        if let Err(e) = fetch_status {
-            let _ = std::env::set_current_dir(current_dir);
-            return Err(format!("Git fetch failed: {}", e));
-        }
-
-        if !fetch_status.unwrap().success() {
-            let _ = std::env::set_current_dir(current_dir);
-            return Err("Git fetch failed".to_string());
-        }
-
-        // Try to checkout the requested branch
-        let checkout_status = std::process::Command::new("git")
-            .args(["checkout", &ref_name_clone])
-            .status();
-
-        if let Err(e) = checkout_status {
-            let _ = std::env::set_current_dir(current_dir);
-            return Err(format!("Git checkout failed: {}", e));
-        }
-
-        if !checkout_status.unwrap().success() {
-            // Try origin/branch_name
-            let origin_checkout = std::process::Command::new("git")
-                .args(["checkout", &format!("origin/{}", ref_name_clone)])
-                .status();
-
-            if let Err(e) = origin_checkout {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Git checkout failed: {}", e));
-            }
-
-            if !origin_checkout.unwrap().success() {
-                let _ = std::env::set_current_dir(current_dir);
-                return Err(format!("Branch/tag not found: {}", ref_name_clone));
-            }
-        }
-
-        // Change back to the original directory
-        if let Err(e) = std::env::set_current_dir(current_dir) {
-            return Err(format!("Failed to restore directory: {}", e));
-        }
-
-        Ok(())
-    })
-    .await;
-
-    // Handle update errors
-    if let Err(e) = update_result {
-        return Err(format!("Failed to update repository: {}", e));
+    // Open the existing repository
+    let repo = match gix::open(repo_dir) {
+        Ok(repo) => repo,
+        Err(e) => return Err(format!("Failed to open repository: {}", e)),
+    };
+    
+    // Fetch the latest changes
+    if let Err(e) = remote_fetch(&repo) {
+        return Err(format!("Failed to fetch updates: {}", e));
     }
+    
+    // Checkout the branch or tag
+    // Try to find the reference directly
+    let maybe_ref = repo.try_find_reference(ref_name);
+    if let Ok(Some(reference)) = maybe_ref {
+        // Reference exists, try to follow and peel it
+        if let Ok(_) = reference.peel_to_id_in_place() {
+            return Ok(());
+        }
+    }
+    
+    // Try with origin/ prefix if direct reference wasn't found
+    let origin_ref_name = format!("refs/remotes/origin/{}", ref_name);
+    let maybe_origin_ref = repo.try_find_reference(&origin_ref_name);
+    if let Ok(Some(reference)) = maybe_origin_ref {
+        // Origin reference exists, try to follow and peel it
+        if let Ok(_) = reference.peel_to_id_in_place() {
+            return Ok(());
+        }
+    }
+    
+    Err(format!("Branch/tag not found: {}", ref_name))
+}
 
-    update_result.unwrap()
+/// Fetch updates from the remote
+fn remote_fetch(repo: &gix::Repository) -> Result<(), String> {
+    // Find the 'origin' remote
+    let remote = match repo.find_remote("origin") {
+        Ok(remote) => remote,
+        Err(e) => return Err(format!("Could not find origin remote: {}", e)),
+    };
+    
+    // Configure fetch
+    let mut prepare_fetch = remote.prepare_fetch();
+    prepare_fetch.depth(1); // Shallow fetch
+    
+    // Execute fetch
+    prepare_fetch
+        .fetch(gix::progress::Discard)
+        .map_err(|e| format!("Fetch failed: {}", e))?;
+    
+    Ok(())
 }

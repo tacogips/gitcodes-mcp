@@ -38,6 +38,8 @@ html2md = "0.2.14"
 lumin = "0.1.5"
 strum = { version = "0.25", features = ["derive"] }
 gitoxide = "0.44.0"
+gix = "0.72.1"
+thiserror = "2.0"
 
 [dev-dependencies]
 # Testing utilities
