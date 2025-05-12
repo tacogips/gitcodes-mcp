@@ -11,57 +11,76 @@ This file documents the development process, architectural decisions, and implem
 - Document any significant refactorings or architecture changes
 - Note any dependencies added or removed with rationale
 
-## Recent Changes
+## Key Changes
 
-### 2024-05-12: Rename GrepParams Field to Repository_Location
+### Type System Improvements
 
-- Renamed the `repository` field in `GrepParams` to `repository_location`:
-  - Provides a more descriptive and consistent field name
-  - Clarifies that the field contains a location (either URL or local path)
-  - Matches the actual type of the field (RepositoryLocation)
-- Updated all references to the field throughout the codebase:
-  - Modified `github_service::grep_repository` method to use the new field name
-  - Updated the tools.rs implementation to reflect the parameter name change
-  - Updated the API documentation and examples to maintain consistency
-- Updated all doctests and examples to reflect the new field name
-- Modified tool descriptions to reflect the parameter name change in API examples
+- **Repository Location Enum**: Changed `GrepParams.repository` field type from String to `RepositoryLocation` enum
+  - Pattern: Use enums to represent distinct variants with different behaviors
+  - Rationale: Strong type safety prevents runtime errors by making GitHub URLs vs local paths explicit
+  - Implementation: 
+    ```rust
+    // Example of the enum pattern to use:
+    pub enum RepositoryLocation {
+        GitHubUrl(String),
+        LocalPath(PathBuf),
+    }
+    
+    // Include FromStr for string conversion:
+    impl FromStr for RepositoryLocation { ... }
+    
+    // Ensure serialization support:
+    #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+    ```
+  - Future extension: This pattern can be expanded to support other source types (GitLab, BitBucket, etc.)
 
-### 2024-05-12: Improve Repository Location Type Safety with RepositoryLocation Enum
+- **Field Naming Clarity**: Renamed `repository` field to `repository_location`
+  - Pattern: Field names should reflect both their type and purpose
+  - Rationale: Descriptive naming improves code readability and self-documents the API
+  - Implementation guidance: When field type is an enum, include the enum name in the field name
+  - Apply consistently in:
+    - Struct definitions
+    - Function parameters 
+    - Tool parameter descriptions
+    - API documentation
 
-- Enhanced the `GrepParams` struct to use `RepositoryLocation` enum instead of a String:
-  - Changed `repository: String` to `repository: RepositoryLocation`
-  - This provides compile-time type safety for repository location handling
-  - Makes the distinction between GitHub URLs and local paths explicit
-- Updated the `git_repository.rs` module:
-  - Added schemars and serde derive macros to `RepositoryLocation` for JSON serialization/deserialization
-  - Ensures compatibility with the MCP tool interface
-- Modified `github_service::grep_repository` method:
-  - Removed the string-to-enum conversion since we now receive the enum directly
-  - Simplified the code by eliminating a potential error case
-- Updated the `tools.rs` module:
-  - Now converts the string input to `RepositoryLocation` before creating `GrepParams`
-  - Maintains backward compatibility with the existing API
-- Updated documentation and examples to reflect the new structure
-- All tests pass, ensuring backward compatibility
+### Architecture Patterns
 
-### 2024-05-12: Refactor Search Result Formatting in Code Search Module
+- **Separation of Concerns**: Refactored search result formatting
+  - Pattern: Lower-level modules should return raw data; formatting belongs in UI/API layers
+  - Rationale: Makes components more reusable and simplifies testing
+  - Implementation:
+    ```rust
+    // Prefer this pattern in service methods:
+    pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
+        // Return raw results without formatting
+    }
+    
+    // Let the API layer handle formatting:
+    match self.service.grep_repository(params).await {
+        Ok(result) => format_for_display(result),
+        Err(error) => format!("Search failed: {}", error),
+    }
+    ```
+  - Apply this pattern when adding new API methods
 
-- Removed `format_search_results` function from `code_search.rs` module:
-  - Function was extracting the raw search results and adding explanatory text
-  - This formatting should be handled at a higher level of abstraction
-- Modified `GitHubService::grep_repository` to return unformatted data:
-  - Changed return type from `String` to `Result<String, String>`
-  - Now passes through raw search results directly to caller
-  - Eliminates unnecessary formatting in the lower level
-- Updated `tools.rs` grep_repository function to handle the new return type:
-  - Added match statement to handle the Result return type
-  - Preserves user-friendly error messages when search fails
-- Improved adherence to separation of concerns:
-  - `code_search.rs` now focuses only on performing the search
-  - Formatting/presentation logic belongs at the higher application layer
+- **Error Propagation**: Use Result types for operations that can fail
+  - Pattern: Return `Result<T, E>` instead of raw values when errors are possible
+  - Rationale: Makes error handling explicit and ensures errors aren't lost
+  - Implementation:
+    ```rust
+    // Preferred pattern for public methods:
+    pub async fn operation_name(&self) -> Result<SuccessType, ErrorType> {
+        match potentially_failing_operation() {
+            Ok(value) => Ok(value),
+            Err(e) => Err(format!("Descriptive error: {}", e)),
+        }
+    }
+    ```
+  - Apply this pattern consistently in all service methods
   - Higher-level modules can format results as needed for various use cases
 
-### 2024-05-06: Rename and Improve Repository Cache Directory Configuration
+### Repository Cache Directory Configuration
 
 - Renamed fields and parameters for better semantic clarity:
   - Changed `temp_dir_base` to `repository_cache_dir_base` in RepositoryManager
@@ -78,7 +97,7 @@ This file documents the development process, architectural decisions, and implem
   - Field names in structs
   - Messages in logging statements
 
-### 2024-05-06: Add Custom Temporary Directory Configuration
+### Custom Temporary Directory Configuration
 
 - Added option to configure custom temporary directory for repository storage:
   - Modified `RepositoryManager::new()` to accept an optional PathBuf for temp_dir_base
@@ -98,7 +117,7 @@ This file documents the development process, architectural decisions, and implem
   - Added check to verify the path is a directory and not a file
   - Added write permission verification using a test file
 
-### 2024-05-06: Improve Type Safety with Path and PathBuf
+### Type Safety with Path and PathBuf
 
 - Replaced string path representations with proper Path and PathBuf types:
   - Changed `repo_dir` in `RepositoryInfo` from `String` to `PathBuf`
@@ -114,7 +133,7 @@ This file documents the development process, architectural decisions, and implem
   - More robust path manipulation using standard library functions
 - Eliminated potential path handling bugs and edge cases
 
-### 2024-05-06: Improve Encapsulation by Removing Unnecessary Public Modifiers
+### Encapsulation and Access Control
 
 - Restricted visibility of internal helper functions in the `git_repository` module:
   - Changed `parse_repository_url` from `pub fn` to `fn`
@@ -130,7 +149,7 @@ This file documents the development process, architectural decisions, and implem
   - Made code changes easier by reducing public contract
   - Followed the principle of least privilege
 
-### 2024-05-06: Refactor Repository Manager Methods
+### Refactor Repository Manager Methods
 
 - Converted standalone functions in `git_repository.rs` to methods on the `RepositoryManager` struct:
   - Moved `get_repo_dir` to a method on `RepositoryManager`
@@ -143,7 +162,7 @@ This file documents the development process, architectural decisions, and implem
 - Simplified function signatures by removing the redundant manager parameter
 - Enhanced code readability and maintainability
 
-### 2024-05-06: Refactor Repository Management to Git Repository Module
+### Refactor Repository Management to Git Repository Module
 
 - Moved repository management functionality from `GitHubService` to `git_repository.rs`:
   - Extracted `RepositoryInfo` struct to the module
@@ -156,7 +175,7 @@ This file documents the development process, architectural decisions, and implem
 - Improved readability by reducing redundancy in the code
 - Eliminated dead code warning for `RepositoryInfo` fields by making them public
 
-### 2024-05-06: Refactor Code Search Functions to Separate Module
+### Refactor Code Search Functions to Separate Module
 
 - Created a new `code_search.rs` module for code search functionality:
   - Extracted `perform_code_search` function from `GitHubService` class
@@ -172,7 +191,7 @@ This file documents the development process, architectural decisions, and implem
   - `mod.rs` for service orchestration
 - Maintained all functionality while improving code maintainability
 
-### 2024-05-06: Refactor Git Repository Functions to Separate Module
+### Refactor Git Repository Functions to Separate Module
 
 - Extracted repository operations from `GitHubService` to `git_repository.rs`:
   - Moved `clone_repository` function to the `git_repository` module as mentioned in the TODO comment
@@ -186,7 +205,7 @@ This file documents the development process, architectural decisions, and implem
 - Enhanced maintainability by eliminating duplicate code
 - Completed refactoring mentioned in TODO comment
 
-### 2024-05-06: Refactor GitHub API Functions to Separate Module
+### Refactor GitHub API Functions to Separate Module
 
 - Moved API-related functionality from `GitHubService` to a separate `github_api.rs` module:
   - Extracted `construct_search_url` function from `SearchParams` implementation
@@ -202,7 +221,7 @@ This file documents the development process, architectural decisions, and implem
 - Maintained documentation for the extracted API methods
 - Improved modularity and maintainability by grouping related functionality
 
-### 2024-05-06: Move Git Repository Manager to GitHub Service Package
+### Move Git Repository Manager to GitHub Service Package
 
 - Moved `git_repository.rs` from `gitcodes` directory to `github_service` directory
 - Reorganized imports and function calls to use the relocated module
@@ -213,7 +232,7 @@ This file documents the development process, architectural decisions, and implem
 - Improved code organization by keeping related components together
 - Enhanced maintainability with a more consistent module structure
 
-### 2024-05-06: Refactor GitHub Service Components into Separate Package
+### Refactor GitHub Service Components into Separate Package
 
 - Created a dedicated `github_service` directory under `gitcodes` to improve code organization
 - Moved parameter-related structs and enums to a separate `params.rs` file:
@@ -228,7 +247,7 @@ This file documents the development process, architectural decisions, and implem
 - Enhanced code organization by following better separation of concerns
 - Improved code maintainability by grouping related components
 
-### 2024-05-06: Create GrepParams Struct for Code Search
+### Create GrepParams Struct for Code Search
 
 - Created a new `GrepParams` struct for code search parameters
 - Refactored `GitHubService::grep_repository()` to use the structured parameter type
@@ -239,7 +258,7 @@ This file documents the development process, architectural decisions, and implem
 - Followed the same pattern used for the SearchParams refactoring
 - Added comprehensive Rustdoc comments for better developer experience
 
-### 2024-05-06: Merge SearchParams and Eliminate InternalSearchParams
+### Merge SearchParams and Eliminate InternalSearchParams
 
 - Consolidated search parameter handling by removing `InternalSearchParams` struct
 - Moved functionality directly into `SearchParams` implementation
@@ -250,7 +269,7 @@ This file documents the development process, architectural decisions, and implem
 - Reduced code duplication and improved type safety
 - Removed internal parameter conversion, making the code more maintainable
 
-### 2024-05-06: Add Command Line GitHub Token Configuration
+### Add Command Line GitHub Token Configuration
 
 - Added `--github-token` parameter to command line interface using clap
 - Created option for passing GitHub token directly through command line arguments
@@ -264,7 +283,7 @@ This file documents the development process, architectural decisions, and implem
 - Added tracing information to log when command line token is used
 - Ensured backward compatibility with all existing authentication methods
 
-### 2024-05-06: Merge Authentication Methods in GitHubService
+### Merge Authentication Methods in GitHubService
 
 - Refactored `GitHubService::new()` to accept an optional GitHub token parameter
 - Merged functionality from `with_token()` into the main constructor
@@ -275,7 +294,7 @@ This file documents the development process, architectural decisions, and implem
 - Enhanced maintainability by reducing duplicate code
 - This change maintains backward compatibility by supporting both authentication methods
 
-### 2024-05-06: Update GitHubService to Accept GitHub Token Parameter
+### Update GitHubService to Accept GitHub Token Parameter
 
 - Modified `GitHubService` to accept a GitHub token directly during initialization
 - Added a new `GitHubService::with_token()` method for explicit token configuration
@@ -285,7 +304,7 @@ This file documents the development process, architectural decisions, and implem
 - Updated the `get_info()` method to document both authentication approaches
 - This change maintains backward compatibility as the original approach (environment variable) still works
 
-### 2024-05-06: Refactor construct_search_url Method to InternalSearchParams
+### Refactor construct_search_url Method to InternalSearchParams
 
 - Moved `construct_search_url` method from `GitHubService` to `InternalSearchParams`
 - Updated reference in `GitHubService::search_repositories` to use the new method
@@ -293,14 +312,14 @@ This file documents the development process, architectural decisions, and implem
 - Enhanced code organization by following the principle that methods should be on the data they operate on
 - Made the API more intuitive as the search parameters now directly construct their URL representation
 
-### 2024-05-06: Refactor build_internal_search_params to Use InternalSearchParams::new
+### Refactor build_internal_search_params to Use InternalSearchParams::new
 
 - Modified `build_internal_search_params` method to use the `InternalSearchParams::new()` constructor
 - Updated comments in the method to be more concise and descriptive
 - Improved code maintainability by using proper constructor pattern
 - Removed redundant comment about ensuring per_page limits as this is now handled in the constructor
 
-### 2024-05-06: Add InternalSearchParams Constructor Method
+### Add InternalSearchParams Constructor Method
 
 - Added a new `InternalSearchParams::new()` constructor method to improve encapsulation and code clarity
 - Constructor method now handles GitHub API limit validation (capping per_page at 100)
@@ -308,7 +327,7 @@ This file documents the development process, architectural decisions, and implem
 - Improved code maintainability by centralizing parameter validation and initialization logic
 - Enhanced documentation with clearer parameter descriptions
 
-### 2024-05-06: Implement Default Trait for Enums
+### Implement Default Trait for Enums
 
 - Implemented `Default` trait for `SortOption` and `OrderOption` enums
 - Added `Relevance` variant to `SortOption` with empty string serialization
@@ -316,7 +335,7 @@ This file documents the development process, architectural decisions, and implem
 - Removed hardcoded default values ("", "desc") in favor of type-safe defaults
 - Improved code maintainability by centralizing default value definitions in the enum types
 
-### 2024-05-06: Add strum for Enum String Conversion
+### Add strum for Enum String Conversion
 
 - Added `strum` crate as a dependency for simplifying enum-to-string conversions
 - Applied derive macros to `SortOption` and `OrderOption` enums:
@@ -331,7 +350,7 @@ This file documents the development process, architectural decisions, and implem
 - Fixed lifetime issues by removing the `'static` constraint
 - Maintained backward compatibility with existing API pattern
 
-### 2024-05-06: Refactor Search Parameters to Use Structured Type
+### Refactor Search Parameters to Use Structured Type
 
 - Changed `search_repositories` parameter from individual parameters to a unified `SearchParams` struct
 - Converted the existing `SearchParams` struct from an internal implementation detail to a public API parameter
@@ -341,21 +360,21 @@ This file documents the development process, architectural decisions, and implem
 - Modified the search URL construction to use the new structured parameter type
 - Updated example usage in tool documentation to demonstrate the new approach
 
-### 2024-05-05: Remove Leftover Tool Attributes
+### Remove Leftover Tool Attributes
 
 - Removed remaining `#[tool]` attributes from `GitHubService::search_repositories`
 - Cleaned up unused imports (`tool`, `schemars`) from `mod.rs`
 - Fixed formatting issues in the module
 - Completed the proper separation of core functionality and MCP tool interface
 
-### 2024-05-05: Reorganize Git Repository Code Structure
+### Reorganize Git Repository Code Structure
 
 - Moved `RepositoryManager` struct from `mod.rs` to `git_repository.rs`
 - Made `temp_dir_base` field module-private with `pub(crate)` visibility
 - Improved encapsulation by keeping Git-related functionality in its dedicated file
 - Better organization of code following separation of concerns principles
 
-### 2024-05-05: Refactor MCP Tool Implementation with Wrapper Pattern
+### Refactor MCP Tool Implementation with Wrapper Pattern
 
 - Separated `#[tool(tool_box)]` implementation from `GitHubService`
 - Created a new `GitHubCodeTools` wrapper struct for MCP protocol integration
@@ -367,7 +386,7 @@ This file documents the development process, architectural decisions, and implem
 - Fixed tool parameter handling in the wrapper
 - Made core service methods public for use by the wrapper
 
-### 2024-05-05: Refactor GitHubService::grep_repository Method
+### Refactor GitHubService::grep_repository Method
 
 - Restructured the `grep_repository` method to improve modularity and readability
 - Created helper methods to handle specific responsibilities:
@@ -378,7 +397,7 @@ This file documents the development process, architectural decisions, and implem
 - Improved error handling with more consistent Result return types
 - Enhanced documentation for each helper method
 
-### 2024-05-05: Refactor RepositoryManager Creation
+### Refactor RepositoryManager Creation
 
 - Moved `new_repository_manager()` function to a proper `RepositoryManager::new()` method
 - Enhanced object-oriented design by implementing constructor directly on the struct
@@ -386,7 +405,7 @@ This file documents the development process, architectural decisions, and implem
 - Removed redundant standalone function from `git_repository.rs`
 - Improved code organization and adherence to Rust idioms
 
-### 2024-05-05: Refactor Enum String Conversion to Methods
+### Refactor Enum String Conversion to Methods
 
 - Added `to_str()` methods to `SortOption` and `OrderOption` enums 
 - Encapsulated string conversion logic within the enum types
@@ -394,7 +413,7 @@ This file documents the development process, architectural decisions, and implem
 - Enhanced code maintainability by centralizing conversion logic
 - Followed Rust best practices by implementing behavior directly on types
 
-### 2024-05-05: Refactor GitHubService::search_repositories for Better Modularity
+### Refactor GitHubService::search_repositories for Better Modularity
 
 - Refactored `search_repositories` method into smaller, focused helper methods
 - Created `SearchParams` struct to encapsulate search configuration
@@ -405,21 +424,21 @@ This file documents the development process, architectural decisions, and implem
 - Improved code organization and maintainability while preserving functionality
 - Enhanced code documentation with more detailed method descriptions
 
-### 2024-05-05: Rename GitHubRepositoryRouter to GitHubService
+### Rename GitHubRepositoryRouter to GitHubService
 
 - Renamed `GitHubRepositoryRouter` to `GitHubService` to better reflect its purpose as a service provider rather than a router
 - Removed "Router" terminology as the component doesn't perform routing functionality
 - Updated struct documentation to clarify its role as an integrated service for GitHub operations
 - Updated all references throughout the codebase (transport implementations, exports, etc.)
 
-### 2024-05-05: Rename CargoDocRouter to GitHubRepositoryRouter
+### Rename CargoDocRouter to GitHubRepositoryRouter
 
 - Renamed `CargoDocRouter` to `GitHubRepositoryRouter` to better reflect its purpose and functionality
 - Updated all references across the codebase to use the new name
 - Removed mentions of planned Rust crate documentation in router documentation
 - Updated imports and usages in transport implementations
 
-### 2024-05-05: Code Structure Refactoring for Repository Management
+### Code Structure Refactoring for Repository Management
 
 - Refactored the `RepositoryManager` implementation to address compilation errors
 - Moved method implementations from the struct to standalone functions to improve modularity
@@ -428,20 +447,20 @@ This file documents the development process, architectural decisions, and implem
 - Properly exported functions across module boundaries to ensure visibility
 - Fixed the return type of `parse_repository_url` to use `String` instead of `str`
 
-### 2024-05-04: Implement Lumin Integration for Code Search
+### Implement Lumin Integration for Code Search
 
 - Added `lumin` v1.0.3 dependency for file search functionality
 - Replaced direct git grep command execution with lumin's search API
 - Improved code organization and error handling in the code search functionality
 - Aligned implementation with the original specification in spec.md
 
-### 2024-05-04: Dependency Documentation Update
+### Dependency Documentation Update
 
 - Confirmed the removal of `lumin` dependency as documented in the implementation challenges
 - Noted the discrepancy between spec.md (which references lumin) and the actual implementation
 - Verified that direct git command execution is used instead of lumin for grepping
 
-### 2024-05-01: Initial Implementation of Model Context Protocol for GitHub
+### Initial Implementation of Model Context Protocol for GitHub
 
 Implemented the core functionality specified in `spec.md`:
 
@@ -494,7 +513,7 @@ Implemented the core functionality specified in `spec.md`:
    - Implemented graceful fallbacks for commands that might fail
    - Added proper resource cleanup in error cases
 
-### 2024-05-05: GitHub Authentication Documentation
+### GitHub Authentication Documentation
 
 Added detailed documentation regarding the use of the `GITCODE_MCP_GITHUB_TOKEN` environment variable:
 
