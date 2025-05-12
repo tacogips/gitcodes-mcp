@@ -21,8 +21,8 @@ use reqwest::Client;
 /// # Examples
 ///
 /// ```
-/// use gitcodes_mcp::tools::gitcodes::github_service::params::{SearchParams, SortOption, OrderOption};
-/// use gitcodes_mcp::tools::gitcodes::github_service::github_api::construct_search_url;
+/// use gitcodes_mcp::tools::gitcodes::git_service::params::{SearchParams, SortOption, OrderOption};
+/// use gitcodes_mcp::tools::gitcodes::git_service::github_api::construct_search_url;
 ///
 /// let params = SearchParams {
 ///     query: "rust web framework".to_string(),

@@ -16,9 +16,11 @@ This file documents the development process, architectural decisions, and implem
 ### Type System Improvements
 
 - **Clone Parameters Struct**: Created `RemoteGitRepositoryInfo` to encapsulate user, repo, and ref_name parameters for repository cloning
+
   - Pattern: Use structured types for parameter groups that are commonly used together
   - Rationale: Improves code readability, reduces parameter count, and makes function signatures more maintainable
   - Implementation:
+
     ```rust
     // Structured parameter type for clone_repository function
     #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
@@ -27,31 +29,35 @@ This file documents the development process, architectural decisions, and implem
         pub repo: String,
         pub ref_name: String,
     }
-    
+
     // Updated function signature using the structured parameter
     async fn clone_repository(repo_dir: &Path, params: &RemoteGitRepositoryInfo) -> Result<(), String> { ... }
     ```
+
   - Apply this pattern for other parameter groups that are passed together frequently
 
 ### Type System Improvements
 
 - **Repository Location Enum**: Changed `GrepParams.repository` and `list_repository_refs` parameter type from String to `RepositoryLocation` enum
+
   - Pattern: Use enums to represent distinct variants with different behaviors
   - Rationale: Strong type safety prevents runtime errors by making GitHub URLs vs local paths explicit
-  - Implementation: 
+  - Implementation:
+
     ```rust
     // Example of the enum pattern to use:
     pub enum RepositoryLocation {
         GitHubUrl(String),
         LocalPath(PathBuf),
     }
-    
+
     // Include FromStr for string conversion:
     impl FromStr for RepositoryLocation { ... }
-    
+
     // Ensure serialization support:
     #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
     ```
+
   - Future extension: This pattern can be expanded to support other source types (GitLab, BitBucket, etc.)
 
 - **Field Naming Clarity**: Renamed `repository` field to `repository_location`
@@ -60,28 +66,31 @@ This file documents the development process, architectural decisions, and implem
   - Implementation guidance: When field type is an enum, include the enum name in the field name
   - Apply consistently in:
     - Struct definitions
-    - Function parameters 
+    - Function parameters
     - Tool parameter descriptions
     - API documentation
 
 ### Architecture Patterns
 
 - **Separation of Concerns**: Refactored search result formatting
+
   - Pattern: Lower-level modules should return raw data; formatting belongs in UI/API layers
   - Rationale: Makes components more reusable and simplifies testing
   - Implementation:
+
     ```rust
     // Prefer this pattern in service methods:
     pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
         // Return raw results without formatting
     }
-    
+
     // Let the API layer handle formatting:
     match self.service.grep_repository(params).await {
         Ok(result) => format_for_display(result),
         Err(error) => format!("Search failed: {}", error),
     }
     ```
+
   - Apply this pattern when adding new API methods
 
 - **Error Propagation**: Use Result types for operations that can fail
@@ -204,10 +213,10 @@ This file documents the development process, architectural decisions, and implem
 - Updated the `grep_repository` method to use the new functions
 - Improved initialization of SearchOptions using struct initialization rather than mutation
 - Enhanced code organization by following better separation of concerns:
-  - `params.rs` for data structures 
+  - `params.rs` for data structures
   - `github_api.rs` for API interaction logic
   - `git_repository.rs` for Git operations
-  - `code_search.rs` for code search logic 
+  - `code_search.rs` for code search logic
   - `mod.rs` for service orchestration
 - Maintained all functionality while improving code maintainability
 
@@ -235,7 +244,7 @@ This file documents the development process, architectural decisions, and implem
 - Simplified token handling in the `GitHubService::new` function
 - Added TODO comments for future improvements, including proper error handling using `anyhow::Result<String>`
 - Enhanced code organization by following better separation of concerns:
-  - `params.rs` for data structures 
+  - `params.rs` for data structures
   - `github_api.rs` for API interaction logic
   - `mod.rs` for service orchestration
 - Maintained documentation for the extracted API methods
@@ -243,9 +252,9 @@ This file documents the development process, architectural decisions, and implem
 
 ### Move Git Repository Manager to GitHub Service Package
 
-- Moved `git_repository.rs` from `gitcodes` directory to `github_service` directory
+- Moved `git_repository.rs` from `gitcodes` directory to `git_service` directory
 - Reorganized imports and function calls to use the relocated module
-- Updated `github_service/mod.rs` to export and use the git repository functionality
+- Updated `git_service/mod.rs` to export and use the git repository functionality
 - Modified the main `gitcodes/mod.rs` to re-export the repository manager
 - Ensured backward compatibility with existing API
 - Completed the restructuring of all GitHub-related components into a single package
@@ -254,13 +263,13 @@ This file documents the development process, architectural decisions, and implem
 
 ### Refactor GitHub Service Components into Separate Package
 
-- Created a dedicated `github_service` directory under `gitcodes` to improve code organization
+- Created a dedicated `git_service` directory under `gitcodes` to improve code organization
 - Moved parameter-related structs and enums to a separate `params.rs` file:
   - `SearchParams` struct and methods
   - `GrepParams` struct and methods
   - `SortOption` enum
   - `OrderOption` enum
-- Moved service implementation to `github_service/mod.rs`
+- Moved service implementation to `git_service/mod.rs`
 - Updated imports and exports throughout the codebase
 - Modified documentation to reflect the new module structure
 - Maintained backward compatibility with existing API
@@ -427,7 +436,7 @@ This file documents the development process, architectural decisions, and implem
 
 ### Refactor Enum String Conversion to Methods
 
-- Added `to_str()` methods to `SortOption` and `OrderOption` enums 
+- Added `to_str()` methods to `SortOption` and `OrderOption` enums
 - Encapsulated string conversion logic within the enum types
 - Simplified `build_search_params()` function by using these methods
 - Enhanced code maintainability by centralizing conversion logic
@@ -485,11 +494,13 @@ This file documents the development process, architectural decisions, and implem
 Implemented the core functionality specified in `spec.md`:
 
 1. **GitHub Repository Search Tool**
+
    - Created a tool to search for repositories using the GitHub API
    - Implemented sorting, pagination, and proper error handling
    - Added authentication support via GitHub token
 
 2. **GitHub Repository Code Grep Tool**
+
    - Implemented code search functionality using git clone and git grep
    - Added support for regex search, case sensitivity options
    - Created repository cloning and update logic with proper state management
@@ -502,7 +513,7 @@ Implemented the core functionality specified in `spec.md`:
 
 #### Dependency Management Issues
 
-- Initially attempted to use `git2` and `gitoxide` libraries, but encountered dependency conflicts with `libgit2-sys` and `lumin` 
+- Initially attempted to use `git2` and `gitoxide` libraries, but encountered dependency conflicts with `libgit2-sys` and `lumin`
 - Switched to using direct git command execution via `std::process::Command` for simplicity and to avoid dependency issues
 - Removed `git2` and `gitoxide` from direct dependencies to resolve build errors
 
@@ -519,14 +530,16 @@ Implemented the core functionality specified in `spec.md`:
 - Encountered OpenSSL dependency issues during build
 - Modified `reqwest` configuration to use `default-features = false` to avoid requiring OpenSSL
 
-### Architecture Decisions 
+### Architecture Decisions
 
 1. **Repository Management**
+
    - Created a `RepositoryManager` class to handle git repository operations
    - Used a unique naming scheme for temporary directories to prevent conflicts
    - Added proper cleanup and error handling for repository operations
 
 2. **Response Format**
+
    - Simplified return values to use strings instead of complex JSON structures
    - Added formatted output for search results and repository information
 
@@ -559,10 +572,12 @@ Added detailed documentation regarding the use of the `GITCODE_MCP_GITHUB_TOKEN`
 ### Future Improvements
 
 1. **Security Enhancements**
+
    - Add credential management for authenticated git operations
    - Implement proper token handling and security for GitHub API requests
-   
+
 2. **Performance Optimizations**
+
    - Add caching for repository operations to reduce git command calls
    - Implement smarter code search algorithms to handle large repositories
 

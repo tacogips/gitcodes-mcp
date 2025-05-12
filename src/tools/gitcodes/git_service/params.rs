@@ -10,7 +10,7 @@ use strum::{AsRefStr, Display, EnumString};
 /// # Examples
 ///
 /// ```
-/// use gitcodes_mcp::tools::gitcodes::github_service::params::{SearchParams, SortOption, OrderOption};
+/// use gitcodes_mcp::tools::gitcodes::git_service::params::{SearchParams, SortOption, OrderOption};
 ///
 /// // Basic search with defaults
 /// let params = SearchParams {
@@ -63,8 +63,8 @@ pub struct SearchParams {
 /// # Examples
 ///
 /// ```
-/// use gitcodes_mcp::tools::gitcodes::github_service::params::GrepParams;
-/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::RepositoryLocation;
+/// use gitcodes_mcp::tools::gitcodes::git_service::params::GrepParams;
+/// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::RepositoryLocation;
 /// use std::path::PathBuf;
 ///
 /// // Basic search with defaults for GitHub URL

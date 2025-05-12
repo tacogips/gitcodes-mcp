@@ -161,20 +161,24 @@ pub enum OrderOption {
 There are two ways to provide authentication:
 
 1. **Environment Variable**:
+
    - Personal access token provided via the `GITCODE_MCP_GITHUB_TOKEN` environment variable
    - This token is stored in memory when MCP starts and is not referenced from the environment variable thereafter
 
 2. **Programmatic API**:
+
    - Token can be provided directly when initializing `GitHubService` or `GitHubCodeTools`:
+
    ```rust
    // Direct initialization with token
-   let github_service = GitHubService::new(Some("your_github_token".to_string()));
-   
+   let git_service = GitHubService::new(Some("your_github_token".to_string()));
+
    // Or with the wrapper class
    let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()));
    ```
 
 Authentication behavior:
+
 - If no token is provided, unauthenticated requests are used (with rate limits)
 - Unauthenticated requests: 60 requests/hour
 - Authenticated requests: 5,000 requests/hour
@@ -325,8 +329,8 @@ pub struct GrepParams {
    - If not cloned:
      - Perform a shallow clone using the RemoteGitRepositoryInfo (`--depth=1`)
      - Checkout the specified branch/tag
-4. Use the lumin crate to perform code search
-5. Return results in the standard response format
+5. Use the lumin crate to perform code search
+6. Return results in the standard response format
 
 #### Temporary Directory Management
 

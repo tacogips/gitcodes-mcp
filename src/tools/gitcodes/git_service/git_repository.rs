@@ -538,7 +538,7 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use std::path::PathBuf;
-    /// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::{clone_repository, RemoteGitRepositoryInfo};
+    /// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::{clone_repository, RemoteGitRepositoryInfo};
     ///
     /// async fn example() {
     ///     let repo_dir = PathBuf::from("/tmp/example_repo");
@@ -667,7 +667,7 @@ impl Default for RepositoryManager {
 /// # Examples
 ///
 /// ```
-/// use gitcodes_mcp::tools::gitcodes::github_service::git_repository::RemoteGitRepositoryInfo;
+/// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::RemoteGitRepositoryInfo;
 ///
 /// // Basic clone parameters
 /// let params = RemoteGitRepositoryInfo {

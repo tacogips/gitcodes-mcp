@@ -21,9 +21,9 @@
 //!
 //! ```no_run
 //! // Provide a token directly when creating the service
-//! use gitcodes_mcp::tools::gitcodes::{github_service::GitHubService, GitHubCodeTools};
+//! use gitcodes_mcp::tools::gitcodes::{git_service::GitHubService, GitHubCodeTools};
 //!
-//! let github_service = GitHubService::new(Some("your_github_token".to_string()), None);
+//! let git_service = GitHubService::new(Some("your_github_token".to_string()), None);
 //!
 //! // Or when creating the tools wrapper
 //! let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()), None);
@@ -50,8 +50,11 @@
 //! All public repository operations work without authentication, but with
 //! significantly lower rate limits.
 
-pub mod github_service;
+pub mod git_service;
 mod tools;
 
-pub use github_service::{GitHubService, RepositoryManager, params::{SearchParams, SortOption, OrderOption, GrepParams}};
+pub use git_service::{
+    params::{GrepParams, OrderOption, SearchParams, SortOption},
+    GitHubService, RepositoryManager,
+};
 pub use tools::GitHubCodeTools;
