@@ -194,41 +194,6 @@ impl GitHubService {
         .await
     }
 
-    /// List branches and tags for a GitHub repository or local git directory
-    ///
-    /// This tool retrieves a list of all branches and tags for the specified repository.
-    /// It supports both public and private repositories as well as local git directories.
-    ///
-    /// # Authentication
-    ///
-    /// - For public repositories: No authentication needed
-    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
-    /// - For local directories: No authentication needed
-    ///
-    /// # Implementation Note
-    ///
-    /// This tool:
-    /// 1. Clones or updates the repository locally (for GitHub URLs) or uses the local directory directly
-    /// 2. Fetches all branches and tags
-    /// 3. Formats the results into a readable format
-    pub async fn list_repository_refs(&self, repository_location: RepositoryLocation) -> String {
-        // Parse repository information from URL or local path
-        let repo_info = match self
-            .repo_manager
-            .parse_and_prepare_repository(&repository_location, Some("main".to_string()))
-            .await
-        {
-            Ok(info) => info,
-            Err(e) => return e,
-        };
-
-        // Fetch repository refs using the extracted function
-        match fetch_repository_refs(&repo_info.repo_dir, &repo_info.user, &repo_info.repo).await {
-            Ok(result) => result,
-            Err(e) => format!("Failed to list refs: {}", e),
-        }
-    }
-
     // Now using git_repository functions instead of local implementations
     // Functions have been moved to git_repository.rs
 }

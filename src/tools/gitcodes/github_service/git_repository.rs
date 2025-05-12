@@ -28,6 +28,20 @@ pub enum GitError {
     Other(String),
 }
 
+pub struct GitRef(String);
+
+impl GitRef {
+    /// Creates a new GitRef from a string
+    pub fn new<S: Into<String>>(s: S) -> Self {
+        GitRef(s.into())
+    }
+
+    /// Returns the underlying string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Enum representing a repository location, either a GitHub URL or a local filesystem path
 #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
 pub enum RepositoryLocation {
@@ -69,7 +83,7 @@ impl FromStr for RepositoryLocation {
 
 #[derive(Debug)]
 pub struct LocalRepositoryInfo {
-    pub repository_info: RemoteGitRepositoryInfo,
+    pub remote_repository_info: Option<RemoteGitRepositoryInfo>,
     /// Local directory where repository is cloned
     pub repo_dir: PathBuf,
 }
@@ -182,10 +196,8 @@ impl RepositoryManager {
                 }
 
                 Ok(LocalRepositoryInfo {
-                    user: "local".to_string(),
-                    repo: "repository".to_string(),
-                    repo_dir: local_path.clone(),
-                    ref_name,
+                    remote_repository_info: None,
+                    repo_dir: local_path.to_path_buf(),
                 })
             }
             RepositoryLocation::GitHubUrl(_) => {
@@ -196,33 +208,38 @@ impl RepositoryManager {
                     Err(e) => return Err(format!("Error: {}", e)),
                 };
 
-                // Default branch if not specified
-                let ref_name = ref_name.unwrap_or_else(|| "main".to_string());
-
                 // Get a temporary directory for the repository
                 let repo_dir = self.get_repo_dir(&user, &repo);
 
                 // Check if repo is already cloned
                 let is_cloned = self.is_repo_cloned(&repo_dir).await;
 
+                // Clone ref_name once at the beginning to avoid ownership issues
+                let ref_name_clone = ref_name.clone();
+                
                 // If repo is not cloned, clone it
                 if !is_cloned {
                     // We've already matched this as GitHubUrl above, so no need to extract the URL again
                     let clone_params = RemoteGitRepositoryInfo {
                         user: user.clone(),
                         repo: repo.clone(),
-                        ref_name: ref_name.clone(),
+                        ref_name: ref_name_clone.clone(),
                     };
                     clone_repository(&repo_dir, &clone_params).await?
                 } else {
-                    update_repository(&repo_dir, &ref_name).await?
+                    // Convert Option<String> to GitRef
+                    let ref_str = ref_name_clone.as_ref().map_or("main", |s| s.as_str());
+                    let git_ref = GitRef::new(ref_str);
+                    update_repository(&repo_dir, &git_ref).await?
                 }
-
-                Ok(RepositoryInfo {
-                    user,
-                    repo,
+                
+                Ok(LocalRepositoryInfo {
+                    remote_repository_info: Some(RemoteGitRepositoryInfo {
+                        user,
+                        repo,
+                        ref_name: ref_name_clone,
+                    }),
                     repo_dir,
-                    ref_name,
                 })
             }
         }
@@ -314,6 +331,16 @@ pub struct RemoteGitRepositoryInfo {
     pub repo: String,
     /// Branch or tag name to checkout
     pub ref_name: Option<String>,
+}
+
+impl RemoteGitRepositoryInfo {
+    /// Returns a GitRef for the reference name
+    pub fn git_ref(&self) -> GitRef {
+        match &self.ref_name {
+            Some(ref_name) => GitRef::new(ref_name),
+            None => GitRef::new("main"),
+        }
+    }
 }
 
 /// Clone a repository from GitHub
@@ -452,8 +479,8 @@ async fn clone_repository(repo_dir: &Path, params: &RemoteGitRepositoryInfo) -> 
 /// # Parameters
 ///
 /// * `repo_dir` - The directory containing the repository
-/// * `ref_name` - Branch or tag name to checkout
-async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String> {
+/// * `git_ref` - Branch or tag name to checkout as a GitRef
+async fn update_repository(repo_dir: &Path, git_ref: &GitRef) -> Result<(), String> {
     // Open the existing repository
     let repo = gix::open(repo_dir).map_err(|e| format!("Failed to open repository: {}", e))?;
 
@@ -488,7 +515,7 @@ async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String
     let _ = fetch_outcome;
 
     // Try to find the reference directly (local branch)
-    let local_ref_name = format!("refs/heads/{}", ref_name);
+    let local_ref_name = format!("refs/heads/{}", git_ref.as_str());
     let maybe_ref = repo.try_find_reference(&local_ref_name);
     if let Ok(Some(mut reference)) = maybe_ref {
         // Reference exists, try to follow and peel it
@@ -498,7 +525,7 @@ async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String
     }
 
     // Try with origin/ prefix if direct reference wasn't found
-    let origin_ref_name = format!("refs/remotes/origin/{}", ref_name);
+    let origin_ref_name = format!("refs/remotes/origin/{}", git_ref.as_str());
     let maybe_origin_ref = repo.try_find_reference(&origin_ref_name);
     if let Ok(Some(mut reference)) = maybe_origin_ref {
         // Origin reference exists, try to follow and peel it
@@ -508,7 +535,7 @@ async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String
     }
 
     // If we're looking for a tag
-    let tag_ref_name = format!("refs/tags/{}", ref_name);
+    let tag_ref_name = format!("refs/tags/{}", git_ref.as_str());
     let maybe_tag_ref = repo.try_find_reference(&tag_ref_name);
     if let Ok(Some(mut reference)) = maybe_tag_ref {
         // Tag reference exists, try to follow and peel it
@@ -517,7 +544,7 @@ async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String
         }
     }
 
-    Err(format!("Branch/tag not found: {}", ref_name))
+    Err(format!("Branch/tag not found: {}", git_ref.as_str()))
 }
 
 // parse_and_prepare_repository method has been moved to git_repository.rs
@@ -652,4 +679,39 @@ async fn fetch_repository_refs(repo_dir: &Path, user: &str, repo: &str) -> Resul
     }
 
     Ok(result)
+}
+
+/// List branches and tags for a GitHub repository or local git directory
+///
+/// This tool retrieves a list of all branches and tags for the specified repository.
+/// It supports both public and private repositories as well as local git directories.
+///
+/// # Authentication
+///
+/// - For public repositories: No authentication needed
+/// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+/// - For local directories: No authentication needed
+///
+/// # Implementation Note
+///
+/// This tool:
+/// 1. Clones or updates the repository locally (for GitHub URLs) or uses the local directory directly
+/// 2. Fetches all branches and tags
+/// 3. Formats the results into a readable format
+pub async fn list_repository_refs(&self, repository_location: RepositoryLocation) -> String {
+    // Parse repository information from URL or local path
+    let repo_info = match self
+        .repo_manager
+        .parse_and_prepare_repository(&repository_location, Some("main".to_string()))
+        .await
+    {
+        Ok(info) => info,
+        Err(e) => return e,
+    };
+
+    // Fetch repository refs using the extracted function
+    match fetch_repository_refs(&repo_info.repo_dir, &repo_info.user, &repo_info.repo).await {
+        Ok(result) => result,
+        Err(e) => format!("Failed to list refs: {}", e),
+    }
 }
