@@ -2,7 +2,11 @@ use rand::Rng;
 use rmcp::schemars;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::num::NonZeroU32;
+use std::process::Command;
 use gix;
+use gix::bstr::ByteSlice;
+use gix::progress::Discard;
 use thiserror::Error;
 
 /// Errors that can occur during git operations
@@ -328,27 +332,84 @@ async fn clone_repository(
         return Err(format!("Failed to create directory: {}", e));
     }
 
-    // Clone repository
+    // Build the clone URL
     let clone_url = format!("https://github.com/{}/{}.git", params.user, params.repo);
     
-    // Configure clone options with depth=1 and branch to match our original git command
-    let mut process = gix::clone::PrepareFetch::new(
-        &clone_url, 
-        repo_dir, 
-        gix::clone::PrepareType::Shallow,
-    )
-    .branch_to_checkout(&params.ref_name);
+    // Create a repository using gitoxide
+    // First convert to byte slice for parsing
+    let url_bstr = clone_url.as_bytes().as_bstr();
     
-    // Execute the clone operation
-    match process.fetch_only(gix::progress::Discard) {
-        Ok(fetch_ok) => {
-            // Clone was successful
-            match fetch_ok.repository {
-                Ok(_) => Ok(()),
-                Err(e) => Err(format!("Repository preparation failed: {}", e)),
-            }
-        },
-        Err(e) => Err(format!("Git clone failed: {}", e)),
+    // Parse the URL using gix's URL parser
+    let url = gix::url::parse(url_bstr)
+        .map_err(|e| format!("Failed to parse URL: {}", e))?;
+        
+    // Create options for the clone operation
+    let mut clone_options = gix::clone::PrepareFetch::default();
+    
+    // Set up shallow clone
+    let depth = NonZeroU32::new(1).unwrap();
+    clone_options.remote_configuration.fetch_options.shallow = Some(gix::remote::fetch::Shallow::DepthAtRemote(depth));
+    
+    // Create a new repository (with worktree) at the specified path
+    let repo = gix::create_with_options(
+        repo_dir,
+        gix::create::Kind::WithWorktree,
+        gix::create::Options::default()
+    ).map_err(|e| format!("Failed to create repository: {}", e))?;
+    
+    // Add a remote named "origin" pointing to the GitHub repository
+    let mut remote = repo.remote_add("origin", clone_url.as_str())
+        .map_err(|e| format!("Failed to add remote: {}", e))?;
+    
+    // Fetch from the remote to get the branch data
+    let progress = Discard;
+    let refspecs = Vec::new(); // Empty refspecs means fetch defaults (usually all branches)
+    let fetch_result = remote.fetch_with_options(
+        &refspecs,
+        Some(&clone_options.remote_configuration.fetch_options),
+        Some(&progress)
+    ).map_err(|e| format!("Failed to fetch repository: {}", e))?;
+    
+    // Now check out the specified branch
+    // First try to find the reference
+    let ref_name_full = format!("refs/remotes/origin/{}", params.ref_name);
+    
+    // Try to find the requested branch or tag
+    let found_ref = repo.try_find_reference(&ref_name_full)
+        .map_err(|e| format!("Failed to find reference: {}", e))?;
+    
+    if let Some(found_ref) = found_ref {
+        // We found the branch, now create a local branch pointing to it
+        let local_branch = format!("refs/heads/{}", params.ref_name);
+        
+        // Get the commit ID from the remote reference
+        let commit_id = found_ref.peel_to_id()
+            .map_err(|e| format!("Failed to resolve reference: {}", e))?;
+        
+        // Create local branch
+        repo.reference_create(
+            &local_branch,
+            commit_id.detach(),
+            false,
+            format!("Clone: Setting up branch '{}'", params.ref_name)
+        ).map_err(|e| format!("Failed to create branch: {}", e))?;
+        
+        // Success! Branch is set up
+        Ok(())
+    } else {
+        // Branch wasn't found, but the repository is cloned
+        // Let's try to check if it's a tag
+        let tag_ref = format!("refs/tags/{}", params.ref_name);
+        let found_tag = repo.try_find_reference(&tag_ref)
+            .map_err(|e| format!("Failed to find tag: {}", e))?;
+        
+        if found_tag.is_some() {
+            // We found a tag, that's fine
+            Ok(())
+        } else {
+            // Neither branch nor tag found
+            Err(format!("Branch or tag '{}' not found", params.ref_name))
+        }
     }
 }
 
@@ -362,22 +423,42 @@ async fn clone_repository(
 /// * `ref_name` - Branch or tag name to checkout
 async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String> {
     // Open the existing repository
-    let repo = match gix::open(repo_dir) {
-        Ok(repo) => repo,
-        Err(e) => return Err(format!("Failed to open repository: {}", e)),
-    };
+    let repo = gix::open(repo_dir)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
     
-    // Fetch the latest changes
-    if let Err(e) = remote_fetch(&repo) {
-        return Err(format!("Failed to fetch updates: {}", e));
-    }
+    // Find the origin remote
+    let remote = repo.find_remote("origin")
+        .map_err(|e| format!("Could not find origin remote: {}", e))?;
     
-    // Checkout the branch or tag
-    // Try to find the reference directly
-    let maybe_ref = repo.try_find_reference(ref_name);
-    if let Ok(Some(reference)) = maybe_ref {
+    // Configure fetch operation
+    let depth = NonZeroU32::new(1).unwrap();
+    let shallow = gix::remote::fetch::Shallow::DepthAtRemote(depth);
+    
+    // Prepare the fetch params
+    let mut remote_ref_specs = Vec::new(); // Empty means fetch default refs
+    let progress = Discard;
+    
+    // Create a transport for the fetch
+    let transport = remote.connect(gix::remote::Direction::Fetch)
+        .map_err(|e| format!("Failed to connect to remote: {}", e))?;
+    
+    // Create fetch delegate with our shallow config
+    let mut delegate = transport.new_fetch_delegate();
+    delegate.shallow_setting = Some(shallow);
+    
+    // Perform the fetch
+    let fetch_outcome = delegate.fetch(&remote_ref_specs, &progress)
+        .map_err(|e| format!("Fetch failed: {}", e))?;
+    
+    // We don't need the fetch outcome details, just check for success
+    let _ = fetch_outcome;
+    
+    // Try to find the reference directly (local branch)
+    let local_ref_name = format!("refs/heads/{}", ref_name);
+    let maybe_ref = repo.try_find_reference(&local_ref_name);
+    if let Ok(Some(mut reference)) = maybe_ref {
         // Reference exists, try to follow and peel it
-        if let Ok(_) = reference.peel_to_id_in_place() {
+        if reference.peel_to_id_in_place().is_ok() {
             return Ok(());
         }
     }
@@ -385,9 +466,19 @@ async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String
     // Try with origin/ prefix if direct reference wasn't found
     let origin_ref_name = format!("refs/remotes/origin/{}", ref_name);
     let maybe_origin_ref = repo.try_find_reference(&origin_ref_name);
-    if let Ok(Some(reference)) = maybe_origin_ref {
+    if let Ok(Some(mut reference)) = maybe_origin_ref {
         // Origin reference exists, try to follow and peel it
-        if let Ok(_) = reference.peel_to_id_in_place() {
+        if reference.peel_to_id_in_place().is_ok() {
+            return Ok(());
+        }
+    }
+    
+    // If we're looking for a tag
+    let tag_ref_name = format!("refs/tags/{}", ref_name);
+    let maybe_tag_ref = repo.try_find_reference(&tag_ref_name);
+    if let Ok(Some(mut reference)) = maybe_tag_ref {
+        // Tag reference exists, try to follow and peel it
+        if reference.peel_to_id_in_place().is_ok() {
             return Ok(());
         }
     }
@@ -395,22 +486,3 @@ async fn update_repository(repo_dir: &Path, ref_name: &str) -> Result<(), String
     Err(format!("Branch/tag not found: {}", ref_name))
 }
 
-/// Fetch updates from the remote
-fn remote_fetch(repo: &gix::Repository) -> Result<(), String> {
-    // Find the 'origin' remote
-    let remote = match repo.find_remote("origin") {
-        Ok(remote) => remote,
-        Err(e) => return Err(format!("Could not find origin remote: {}", e)),
-    };
-    
-    // Configure fetch
-    let mut prepare_fetch = remote.prepare_fetch();
-    prepare_fetch.depth(1); // Shallow fetch
-    
-    // Execute fetch
-    prepare_fetch
-        .fetch(gix::progress::Discard)
-        .map_err(|e| format!("Fetch failed: {}", e))?;
-    
-    Ok(())
-}
