@@ -48,8 +48,20 @@ pub enum RepositoryLocation {
     /// A GitHub repository URL (https://github.com/user/repo, git@github.com:user/repo.git, or github:user/repo)
     GitHubUrl(String),
     /// A local filesystem path
-    LocalPath(PathBuf),
+    LocalPath(LocalRepository),
 }
+
+pub struct LocalRepository(PathBuf);
+impl LocalRepository{
+    /// Generate a unique directory name for the repository
+    fn new_local_repository_to_clone(
+        repository_cache_dir_base:&Path, user: &str, repo: &str) -> Repository {
+        let random_suffix = rand::thread_rng().gen::<u32>() % 10000;
+        let dir_name = format!("mcp_github_{}_{}_{}", user, repo, random_suffix);
+        repository_cache_dir_base.join(dir_name)
+    }
+}
+
 
 impl FromStr for RepositoryLocation {
     type Err = String;
@@ -157,15 +169,8 @@ impl RepositoryManager {
         Self::new(None).expect("Failed to initialize with system temporary directory")
     }
 
-    /// Generate a unique directory name for the repository
-    fn get_repo_dir(&self, user: &str, repo: &str) -> PathBuf {
-        let random_suffix = rand::thread_rng().gen::<u32>() % 10000;
-        let dir_name = format!("mcp_github_{}_{}_{}", user, repo, random_suffix);
-        self.repository_cache_dir_base.join(dir_name)
-    }
-
     /// Check if repository is already cloned
-    async fn is_repo_cloned(&self, dir: &Path) -> bool {
+    async fn is_local_repo_exists(&self, dir: &Path) -> bool {
         tokio::fs::metadata(dir).await.is_ok()
     }
 
@@ -212,13 +217,13 @@ impl RepositoryManager {
                 let repo_dir = self.get_repo_dir(&user, &repo);
 
                 // Check if repo is already cloned
-                let is_cloned = self.is_repo_cloned(&repo_dir).await;
+                let already_fetched = self.is_local_repo_exists(&repo_dir).await;
 
                 // Clone ref_name once at the beginning to avoid ownership issues
                 let ref_name_clone = ref_name.clone();
 
                 // If repo is not cloned, clone it
-                if !is_cloned {
+                if !already_fetched {
                     // We've already matched this as GitHubUrl above, so no need to extract the URL again
                     let clone_params = RemoteGitRepositoryInfo {
                         user: user.clone(),
