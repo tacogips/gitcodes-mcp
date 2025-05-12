@@ -288,7 +288,7 @@ impl GitHubCodeTools {
         #[schemars(
             description = "Repository URL or local file path (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
-        repository_location: String,
+        repository_location: RepositoryLocation,
     ) -> String {
         self.service.list_repository_refs(repository_location).await
     }

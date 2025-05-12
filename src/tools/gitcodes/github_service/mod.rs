@@ -36,7 +36,6 @@ pub use params::*;
 
 use reqwest::Client;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 // Repository information struct has been moved to git_repository.rs
 
@@ -350,16 +349,10 @@ impl GitHubService {
     /// 1. Clones or updates the repository locally (for GitHub URLs) or uses the local directory directly
     /// 2. Fetches all branches and tags
     /// 3. Formats the results into a readable format
-    pub async fn list_repository_refs(&self, repository: String) -> String {
-        // Parse the repository location string into our enum
-        let repo_location = match RepositoryLocation::from_str(&repository) {
-            Ok(location) => location,
-            Err(e) => return e,
-        };
-        
+    pub async fn list_repository_refs(&self, repository_location: RepositoryLocation) -> String {
         // Parse repository information from URL or local path
         let repo_info = match self.repo_manager.parse_and_prepare_repository(
-            &repo_location, 
+            &repository_location, 
             Some("main".to_string())
         ).await {
             Ok(info) => info,

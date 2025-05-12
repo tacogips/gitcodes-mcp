@@ -15,7 +15,7 @@ This file documents the development process, architectural decisions, and implem
 
 ### Type System Improvements
 
-- **Repository Location Enum**: Changed `GrepParams.repository` field type from String to `RepositoryLocation` enum
+- **Repository Location Enum**: Changed `GrepParams.repository` and `list_repository_refs` parameter type from String to `RepositoryLocation` enum
   - Pattern: Use enums to represent distinct variants with different behaviors
   - Rationale: Strong type safety prevents runtime errors by making GitHub URLs vs local paths explicit
   - Implementation: 
