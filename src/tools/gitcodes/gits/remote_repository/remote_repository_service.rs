@@ -5,11 +5,11 @@ use std::path::PathBuf;
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
 /// Uses a dedicated directory to store cloned repositories.
 #[derive(Clone)]
-pub struct RemoteRepositoryManager {
+pub struct RepositoryManager {
     pub(crate) local_repository_dir_base: PathBuf,
 }
 
-impl RemoteRepositoryManager {
+impl RepositoryManager {
     /// Creates a new RepositoryManager instance with a custom repository cache directory
     ///
     /// # Parameters

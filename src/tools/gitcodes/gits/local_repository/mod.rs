@@ -13,19 +13,19 @@ use uuid;
 pub struct LocalRepository(PathBuf);
 impl LocalRepository {
     /// Generate a 12-character hash value from a UUID
-    /// 
+    ///
     /// Takes the first 6 characters and last 6 characters of a UUID and combines them
     /// to create a 12-character hash value.
-    fn generate_uuid_hash() -> String {
+    fn generate_repository_hash() -> String {
         // Generate a UUID and combine its first and last parts
         // Full UUID format is: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
         let uuid = uuid::Uuid::new_v4();
         let uuid_str = uuid.to_string(); // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-        
+
         // Take first 6 chars (from first segment) and last 6 chars (from last segment)
-        let first_part = &uuid_str[0..6];        // First 6 chars of the first segment
-        let last_part = &uuid_str[uuid_str.len()-6..]; // Last 6 chars of the last segment
-        
+        let first_part = &uuid_str[0..6]; // First 6 chars of the first segment
+        let last_part = &uuid_str[uuid_str.len() - 6..]; // Last 6 chars of the last segment
+
         // Combine to create a 12-char hash
         format!("{}{}", first_part, last_part)
     }
@@ -36,7 +36,7 @@ impl LocalRepository {
         user: &str,
         repo: &str,
     ) -> Self {
-        let hash_value = Self::generate_uuid_hash();
+        let hash_value = Self::generate_repository_hash();
         let dir_name = format!("mcp_gitcodes_{}_{}_{}", user, repo, hash_value);
 
         Self(repository_cache_dir_base.join(dir_name))
