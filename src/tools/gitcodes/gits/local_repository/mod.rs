@@ -11,7 +11,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use uuid;
 
-use super::code_search;
+use super::{code_search, RemoteGitRepositoryInfo, RepositoryLocation};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
@@ -22,7 +22,7 @@ impl LocalRepository {
     ///
     /// Takes the first 6 characters and last 6 characters of a UUID and combines them
     /// to create a 12-character hash value.
-    fn generate_repository_hash() -> String {
+    fn generate_repository_hash(remote_repository_info: &RemoteGitRepositoryInfo) -> String {
         // Generate a UUID and combine its first and last parts
         // Full UUID format is: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
         let uuid = uuid::Uuid::new_v4();
@@ -35,14 +35,22 @@ impl LocalRepository {
         // Combine to create a 12-char hash
         format!("{}{}", first_part, last_part)
     }
+    /// if this validation is failed, it may means it just not cloned the git repository yet, otherwise someting wrong
+    pub fn validate(&self) -> Result<(), String> {
+        // For local paths, use the path directly
+        if !self.repository_location.is_dir() {
+            return Err(format!(
+                "Local path '{}' is not a directory",
+                self.repository_location.display()
+            ));
+        }
+        //TODO(check is git)
+        Ok(())
+    }
 
     /// Generate a unique directory name for the repository using UUID
-    pub fn new_local_repository_to_clone(
-        repository_cache_dir_base: &Path,
-        user: &str,
-        repo: &str,
-    ) -> Self {
-        let hash_value = Self::generate_repository_hash();
+    pub fn new_local_repository_to_clone(remote_repository_info: RemoteGitRepositoryInfo) -> Self {
+        let hash_value = Self::generate_repository_hash(&remote_repository_info);
         let dir_name = format!("mcp_gitcodes_{}_{}_{}", user, repo, hash_value);
 
         Self::new(dir_name)
@@ -51,9 +59,9 @@ impl LocalRepository {
     /// Generate a unique directory name for the repository
     pub fn new(repository_location: PathBuf) -> Self {
         //TODO(tacogips) check the path is valid
-        Ok(Self {
+        Self {
             repository_location,
-        })
+        }
     }
 
     /// Check if repository is already cloned

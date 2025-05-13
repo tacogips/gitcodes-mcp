@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::tools::gitcodes::gits::{local_repository::LocalRepository, RepositoryLocation};
+
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
@@ -82,23 +84,14 @@ impl RepositoryManager {
     /// * `ref_name` - Optional branch or tag name (only used for URLs)
     pub async fn parse_and_prepare_repository(
         &self,
-        repo_location: &RemoteRepositoryLocation,
+        repo_location: RepositoryLocation,
         ref_name: Option<String>,
-    ) -> Result<LocalRepositoryInfo, String> {
+    ) -> Result<LocalRepository, String> {
         match repo_location {
             RepositoryLocation::LocalPath(local_path) => {
-                // For local paths, use the path directly
-                if !local_path.is_dir() {
-                    return Err(format!(
-                        "Local path '{}' is not a directory",
-                        local_path.display()
-                    ));
-                }
+                local_path.validate()?;
 
-                Ok(LocalRepositoryInfo {
-                    remote_repository_info: None,
-                    repo_dir: local_path.to_path_buf(),
-                })
+                Ok(local_path.clone())
             }
             RepositoryLocation::GitHubUrl(_) => {
                 // Handle GitHub repository URLs

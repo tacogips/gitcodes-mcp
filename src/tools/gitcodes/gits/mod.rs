@@ -26,8 +26,6 @@
 //! let git_service = GitHubService::new(Some("your_github_token".to_string()), None);
 //! ```
 
-mod code_search;
-pub mod github_api;
 mod local_repository;
 pub mod remote_repository;
 
