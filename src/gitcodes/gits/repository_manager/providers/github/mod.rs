@@ -151,7 +151,7 @@ impl GithubClient {
 /// Sort options for GitHub repository search results
 ///
 /// Controls how repository search results are ordered in the response.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
+#[derive(Debug, Serialize, Deserialize, Display, EnumString, AsRefStr)]
 #[strum(serialize_all = "lowercase")]
 pub enum GithubSortOption {
     /// No specific sort, use GitHub's default relevance sorting
@@ -564,17 +564,17 @@ pub(crate) fn parse_github_repository_url(url: &str) -> Result<GithubRemoteInfo,
     if parts.len() != 2 {
         return Err("Invalid GitHub repository URL format".to_string());
     }
-    
+
     let user = parts[0].to_string();
     let repo = parts[1].to_string();
-    
+
     // Create RemoteGitRepositoryInfo with extracted user and repo
     let repo_info = RemoteGitRepositoryInfo {
         user,
         repo,
         ref_name: None, // Default to None for ref_name
     };
-    
+
     // Create and return GithubRemoteInfo
     Ok(GithubRemoteInfo {
         url: url.to_string(),

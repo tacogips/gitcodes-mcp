@@ -3,7 +3,7 @@ use crate::tools::gitcodes::gits::repository_manager::providers::github::{
 };
 use anyhow::{anyhow, Result};
 
-enum GitRemoteRepository {
+pub enum GitRemoteRepository {
     Github(GithubRemoteInfo),
 }
 

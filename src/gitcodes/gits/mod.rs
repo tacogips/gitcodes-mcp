@@ -42,7 +42,7 @@ use std::{
 /// Enum representing a repository location, either a GitHub URL or a local filesystem path
 #[derive(Debug, Clone, serde::Deserialize)]
 pub enum RepositoryLocation {
-    RemoteRepository(GitProvider),
+    RemoteRepository(GitRemoteRepository),
     /// A local filesystem path
     LocalPath(LocalRepository),
 }
