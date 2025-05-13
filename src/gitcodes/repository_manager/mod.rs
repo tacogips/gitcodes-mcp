@@ -13,11 +13,15 @@ use crate::gitcodes::local_repository::LocalRepository;
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
-/// Uses a dedicated directory to store cloned repositories.
+/// Uses a dedicated directory to store cloned repositories. Each RepositoryManager
+/// instance has a unique process_id to differentiate it from others running in parallel.
 #[derive(Clone)]
 pub struct RepositoryManager {
     pub github_token: Option<String>,
     pub local_repository_cache_dir_base: PathBuf,
+    /// Unique identifier for this repository manager instance
+    /// Used to differentiate between multiple processes using the same repositories
+    pub process_id: String,
 }
 
 impl RepositoryManager {
@@ -25,6 +29,7 @@ impl RepositoryManager {
     ///
     /// # Parameters
     ///
+    /// * `github_token` - Optional GitHub token for authentication
     /// * `repository_cache_dir` - Optional custom path for storing repositories.
     ///                            If None, the system's temporary directory is used.
     ///
@@ -54,18 +59,38 @@ impl RepositoryManager {
             ));
         }
 
+        // Generate a unique process ID for this repository manager instance
+        let process_id = Self::generate_process_id();
+
         Ok(Self {
             github_token,
             local_repository_cache_dir_base,
+            process_id,
         })
     }
 
     /// Creates a new RepositoryManager with the system's default cache directory
     ///
     /// This is a convenience method that creates a RepositoryManager with the
-    /// system's temporary directory as the repository cache location.
+    /// system's temporary directory as the repository cache location and a newly
+    /// generated unique process ID.
     pub fn with_default_cache_dir() -> Self {
         Self::new(None, None).expect("Failed to initialize with system temporary directory")
+    }
+    
+    /// Generates a unique process ID for this repository manager instance
+    ///
+    /// This creates a unique identifier that can be used to differentiate between
+    /// multiple processes using the same repositories. The ID combines a random UUID
+    /// with the current process ID for maximum uniqueness.
+    fn generate_process_id() -> String {
+        use std::process;
+        use uuid::Uuid;
+        
+        let pid = process::id();
+        let uuid = Uuid::new_v4();
+        
+        format!("{}_{}", pid, uuid.simple())
     }
 
     pub async fn prepare_repository(
@@ -133,9 +158,13 @@ impl RepositoryManager {
         remote_repository: &GitRemoteRepository,
     ) -> Result<LocalRepository, String> {
         // Create a unique local repository directory based on the remote repository info
-        let local_repo = LocalRepository::new_local_repository_to_clone(match remote_repository {
-            GitRemoteRepository::Github(github_info) => github_info.repo_info.clone(),
-        });
+        // Include the process_id to differentiate between multiple processes
+        let local_repo = LocalRepository::new_local_repository_to_clone(
+            match remote_repository {
+                GitRemoteRepository::Github(github_info) => github_info.repo_info.clone(),
+            },
+            Some(&self.process_id)
+        );
 
         // Ensure the destination directory doesn't exist already
         let repo_dir = local_repo.get_repository_dir();
@@ -185,7 +214,7 @@ impl RepositoryManager {
         // Get the URL from the remote repository
         let clone_url = remote_repository.clone_url();
         let ref_name = remote_repository.get_ref_name();
-        
+
         tracing::info!(
             "Cloning repository from {} to {}{}",
             clone_url,
@@ -196,19 +225,29 @@ impl RepositoryManager {
                 .unwrap_or_default()
         );
 
-        // Get authenticated URL (includes token if applicable)
-        let auth_url = remote_repository.get_authenticated_url(self.github_token.as_ref());
+        // Setup authentication for GitHub if token is available
+        let mut auth_url = clone_url.clone();
+        if let Some(token) = &self.github_token {
+            // Add token to URL for authentication if it's a GitHub HTTPS URL
+            if clone_url.starts_with("https://github.com") {
+                auth_url = format!(
+                    "https://{}:x-oauth-basic@{}",
+                    token,
+                    clone_url.trim_start_matches("https://")
+                );
+            }
+        }
 
         // Initialize repository creation options
+        use gix::clone::PrepareFetch;
         use gix::create::Kind;
         use gix::open::Options as OpenOptions;
-        use gix::clone::PrepareFetch;
-        
+
         // Initialize a repo for fetching
         let mut fetch = match PrepareFetch::new(
             auth_url.as_str(),
             repo_dir,
-            Kind::WithWorktree,  // We want a standard clone with worktree
+            Kind::WithWorktree, // We want a standard clone with worktree
             gix::create::Options::default(),
             OpenOptions::default(),
         ) {
@@ -227,7 +266,7 @@ impl RepositoryManager {
         // Set up shallow clone
         let depth = NonZeroU32::new(1).unwrap();
         fetch = fetch.with_shallow(Shallow::DepthAtRemote(depth));
-        
+
         // Clone the repository
         match fetch.fetch_then_checkout(&mut Discard, &gix::interrupt::IS_INTERRUPTED) {
             Ok((mut checkout, _fetch_outcome)) => {

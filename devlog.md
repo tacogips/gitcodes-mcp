@@ -314,10 +314,47 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
 - Cache directories follow a deterministic naming pattern based on repository owner and name
 - Cache strategy includes:
   - Hash-based directory naming for consistency
+  - Process-specific identifiers in directory names to avoid conflicts
   - Automatic reuse of existing repositories
   - Validation of repository integrity before reuse
   - Cleanup of invalid repositories
 - Custom cache directory configuration is supported via initialization parameters
+
+### Process-Specific Identifiers Pattern
+
+- **Pattern:** Add unique process identifiers to shared resources
+- **Example:** `RepositoryManager` includes a `process_id` field used in clone paths
+- **Implementation:**
+  ```rust
+  // In RepositoryManager
+  fn generate_process_id() -> String {
+      use std::process;
+      use uuid::Uuid;
+      
+      let pid = process::id();
+      let uuid = Uuid::new_v4();
+      
+      format!("{}-{}", pid, uuid.simple())
+  }
+  
+  // In LocalRepository
+  pub fn new_local_repository_to_clone(
+      remote_repository_info: GitRemoteRepositoryInfo, 
+      process_id: Option<&str>
+  ) -> Self {
+      // Include process_id in directory name if provided
+      let dir_name = if let Some(pid) = process_id {
+          format!("mcp_gitcodes_{}_{}_{}_pid{}", 
+                 remote_repository_info.user, 
+                 remote_repository_info.repo, 
+                 hash_value, pid)
+      } else { /* ... */ }
+      
+      // Rest of the implementation
+  }
+  ```
+- **Benefits:** Prevents resource conflicts when multiple processes use the same codebase
+- **When to apply:** For file system operations, shared resource access, parallel processing
 
 ### Authentication Methods
 

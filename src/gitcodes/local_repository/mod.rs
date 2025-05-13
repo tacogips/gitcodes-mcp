@@ -83,12 +83,31 @@ impl LocalRepository {
     }
 
     /// Generate a unique directory name for the repository based on its information
-    pub fn new_local_repository_to_clone(remote_repository_info: GitRemoteRepositoryInfo) -> Self {
+    /// and the manager's process ID
+    ///
+    /// # Parameters
+    ///
+    /// * `remote_repository_info` - Information about the remote repository
+    /// * `process_id` - Optional unique process ID from the repository manager
+    ///                  Used to differentiate between multiple processes
+    pub fn new_local_repository_to_clone(
+        remote_repository_info: GitRemoteRepositoryInfo, 
+        process_id: Option<&str>
+    ) -> Self {
         let hash_value = Self::generate_repository_hash(&remote_repository_info);
-        let dir_name = format!(
-            "mcp_gitcodes_{}_{}_{}",
-            remote_repository_info.user, remote_repository_info.repo, hash_value
-        );
+        
+        // Include process_id in directory name if provided
+        let dir_name = if let Some(pid) = process_id {
+            format!(
+                "mcp_gitcodes_{}_{}_{}_pid{}",
+                remote_repository_info.user, remote_repository_info.repo, hash_value, pid
+            )
+        } else {
+            format!(
+                "mcp_gitcodes_{}_{}_{}" ,
+                remote_repository_info.user, remote_repository_info.repo, hash_value
+            )
+        };
 
         let mut repo_dir = std::env::temp_dir();
         repo_dir.push(dir_name);
