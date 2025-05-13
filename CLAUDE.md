@@ -268,7 +268,7 @@ When working with tests:
 - If a test case seems incorrect, discuss this with the user rather than modifying the test
 
 The following repositories are available for testing this library. These repositories will not be modified except for testing purposes:
-- https://github.com/tacogips/gitcodes-mcp-test-1
+- https://github.com/tacogips/gitcodes-mcp-test-1 (public repository, does not require GitHub token for access)
 
 ### User Communication Guidelines
 
