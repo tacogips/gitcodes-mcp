@@ -122,7 +122,7 @@ impl RepositoryManager {
     async fn clone_repository(
         &self,
         remote_repository: &GitRemoteRepository,
-    ) -> Result<(), String> {
+    ) -> Result<LocalRepository, String> {
         let repo_dir = self.local_repository_cache_dir_base;
         // Create directory if it doesn't exist
         if let Err(e) = std::fs::create_dir_all(repo_dir) {
