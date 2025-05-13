@@ -18,20 +18,20 @@ use reqwest::Client;
 /// - Optional, but recommended to avoid rate limiting (60 vs 5,000 requests/hour)
 /// - Required for accessing private repositories (with `repo` scope)
 #[derive(Clone)]
-pub struct GitRemoteRepositoryClient {
+pub struct GithubRemoteRepositoryClient {
     /// HTTP client for API requests
     pub client: Client,
     /// GitHub authentication token (if provided via GITCODE_MCP_GITHUB_TOKEN)
     pub github_token: Option<String>,
 }
 
-impl Default for GitRemoteRepositoryClient {
+impl Default for GithubRemoteRepositoryClient {
     fn default() -> Self {
         Self::with_default_cache_dir(None)
     }
 }
 
-impl GitRemoteRepositoryClient {
+impl GithubRemoteRepositoryClient {
     /// Creates a new Gitservice instance
     ///
     /// Initializes:
@@ -83,27 +83,5 @@ impl GitRemoteRepositoryClient {
         } else {
             "Unauthenticated GitHub API access (60 requests/hour limit). Set GITCODE_MCP_GITHUB_TOKEN for higher limits.".to_string()
         }
-    }
-
-    /// Search for GitHub repositories using the GitHub API
-    ///
-    /// This method searches for repositories on GitHub based on the provided query.
-    /// It supports sorting, pagination, and uses GitHub's search API.
-    ///
-    /// # Authentication
-    ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
-    /// - Without a token, limited to 60 requests/hour
-    /// - With a token, allows 5,000 requests/hour
-    ///
-    /// # Rate Limiting
-    ///
-    /// GitHub API has rate limits that vary based on authentication:
-    /// - Unauthenticated: 60 requests/hour
-    /// - Authenticated: 5,000 requests/hour
-    pub async fn search_repositories(&self, params: SearchParams) -> String {
-        //TODO(tacogips) this method should return anyhow::Result<String> instead of String
-        // Execute the search request
-        github_api::execute_search_request(&params, &self.client, self.github_token.as_ref()).await
     }
 }

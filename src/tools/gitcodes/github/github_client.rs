@@ -117,6 +117,28 @@ impl GithubClient {
             Err(e) => format!("Failed to read response body: {}", e),
         }
     }
+
+    /// Search for GitHub repositories using the GitHub API
+    ///
+    /// This method searches for repositories on GitHub based on the provided query.
+    /// It supports sorting, pagination, and uses GitHub's search API.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour
+    /// - With a token, allows 5,000 requests/hour
+    ///
+    /// # Rate Limiting
+    ///
+    /// GitHub API has rate limits that vary based on authentication:
+    /// - Unauthenticated: 60 requests/hour
+    /// - Authenticated: 5,000 requests/hour
+    pub async fn search_repositories(&self, params: GithubSearchParams) -> String {
+        //TODO(tacogips) this method should return anyhow::Result<String> instead of String
+        // Execute the search request
+        self.execute_search_request(&params).await
+    }
 }
 
 /// Sort options for GitHub repository search results
