@@ -16,22 +16,9 @@ impl GitRemoteRepository {
         }
     }
     fn clone_url(&self) -> String {
-
-        //TODO imple
-    }
-}
-
-pub struct GitRef(String);
-
-impl GitRef {
-    /// Creates a new GitRef from a string
-    pub fn new<S: Into<String>>(s: S) -> Self {
-        GitRef(s.into())
-    }
-
-    /// Returns the underlying string value
-    pub fn as_str(&self) -> &str {
-        &self.0
+        match self {
+            GitRemoteRepository::Github(github_info) => github_info.clone_url.clone(),
+        }
     }
 }
 
@@ -81,15 +68,5 @@ pub struct GitRemoteRepositoryInfo {
     /// Repository name
     pub repo: String,
     /// Branch or tag name to checkout
-    pub ref_name: Option<String>,
-}
-
-impl GitRemoteRepositoryInfo {
-    /// Returns a GitRef for the reference name
-    pub fn git_ref(&self) -> GitRef {
-        match &self.ref_name {
-            Some(ref_name) => GitRef::new(ref_name),
-            None => GitRef::new("main"),
-        }
-    }
+    pub ref_name_str: Option<String>,
 }

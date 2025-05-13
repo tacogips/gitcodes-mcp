@@ -5,7 +5,7 @@ use strum::{AsRefStr, Display, EnumString};
 use crate::gitcodes::repository_manager::GitRemoteRepositoryInfo;
 
 pub struct GithubRemoteInfo {
-    url: String,
+    pub clone_url: String,
     repo_info: GitRemoteRepositoryInfo,
 }
 
@@ -84,11 +84,31 @@ impl GithubClient {
         url
     }
 
-    /// Executes a GitHub API search request
+    //TODO(tacogips) implthis
+    pub async fn get_default_branch(
+        &self,
+        get_default_branch_param: String, //TODO create new param struct
+    ) -> String {
+        unimplemented!()
+    }
+
+    /// Search for GitHub repositories using the GitHub API
     ///
-    /// Sends the HTTP request to the GitHub API and handles the response.
-    //TODO(tacogips) this method should return Result<String,String> instead of String
-    pub async fn execute_search_request(&self, param: &GithubSearchParams) -> String {
+    /// This method searches for repositories on GitHub based on the provided query.
+    /// It supports sorting, pagination, and uses GitHub's search API.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour
+    /// - With a token, allows 5,000 requests/hour
+    ///
+    /// # Rate Limiting
+    ///
+    /// GitHub API has rate limits that vary based on authentication:
+    /// - Unauthenticated: 60 requests/hour
+    /// - Authenticated: 5,000 requests/hour
+    pub async fn search_repositories(&self, params: GithubSearchParams) -> String {
         let url = Self::construct_search_url(param);
         // Set up the API request
         let mut req_builder = self.client.get(url).header(
@@ -123,28 +143,6 @@ impl GithubClient {
             Ok(text) => text,
             Err(e) => format!("Failed to read response body: {}", e),
         }
-    }
-
-    /// Search for GitHub repositories using the GitHub API
-    ///
-    /// This method searches for repositories on GitHub based on the provided query.
-    /// It supports sorting, pagination, and uses GitHub's search API.
-    ///
-    /// # Authentication
-    ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
-    /// - Without a token, limited to 60 requests/hour
-    /// - With a token, allows 5,000 requests/hour
-    ///
-    /// # Rate Limiting
-    ///
-    /// GitHub API has rate limits that vary based on authentication:
-    /// - Unauthenticated: 60 requests/hour
-    /// - Authenticated: 5,000 requests/hour
-    pub async fn search_repositories(&self, params: GithubSearchParams) -> String {
-        //TODO(tacogips) this method should return anyhow::Result<String> instead of String
-        // Execute the search request
-        self.execute_search_request(&params).await
     }
 }
 
@@ -577,7 +575,7 @@ pub(crate) fn parse_github_repository_url(url: &str) -> Result<GithubRemoteInfo,
 
     // Create and return GithubRemoteInfo
     Ok(GithubRemoteInfo {
-        url: url.to_string(),
+        clone_url: url.to_string(),
         repo_info,
     })
 }
