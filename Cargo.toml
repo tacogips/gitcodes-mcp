@@ -50,3 +50,8 @@ mockito = "1.2"
 [[bin]]
 name = "gitcodes-mcp"
 path = "src/bin/gitcodes.rs"
+
+# CLI binary for terminal use
+[[bin]]
+name = "gitcodes"
+path = "src/bin/gitcodes_cli.rs"
