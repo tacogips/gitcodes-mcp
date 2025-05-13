@@ -1,9 +1,11 @@
 use lumin::search;
-use serde_json::{json, to_string_pretty};
 use std::path::PathBuf;
 
 use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
 use crate::gitcodes::repository_manager::RepositoryLocation;
+
+mod search_result;
+pub use search_result::CodeSearchResult;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
@@ -192,7 +194,7 @@ impl LocalRepository {
     ///
     /// # Returns
     ///
-    /// * `Result<String, String>` - JSON results or an error message
+    /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
     ///
     /// # Examples
     ///
@@ -220,7 +222,7 @@ impl LocalRepository {
     ///
     /// let results = search_code(params).await?;
     /// ```
-    pub async fn search_code(&self, params: CodeSearchParams) -> Result<Vec<String>, String> {
+    pub async fn search_code(&self, params: CodeSearchParams) -> Result<CodeSearchResult, String> {
         // Validate the repository before searching
         if let Err(e) = self.validate() {
             return Err(format!("Repository validation failed: {}", e));
@@ -245,7 +247,6 @@ impl LocalRepository {
             params.exclude_dirs,
         )
         .await
-        .map(|results_json| vec![results_json])
     }
 
     /// Performs a code search on a prepared repository
@@ -262,14 +263,14 @@ impl LocalRepository {
     ///
     /// # Returns
     ///
-    /// * `String` - JSON string of search results
+    /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
     pub async fn perform_code_search(
         &self,
         pattern: &str,
         case_sensitive: bool,
         file_extensions: Option<Vec<String>>,
         exclude_dirs: Option<Vec<String>>,
-    ) -> Result<String, String> {
+    ) -> Result<CodeSearchResult, String> {
         // Configure search options
         let search_options = search::SearchOptions {
             case_sensitive,
@@ -300,19 +301,15 @@ impl LocalRepository {
 
         // Directory exclusion is now handled via SearchOptions exclude_glob
 
-        // Convert results to JSON
-        let json_results = json!({
-            "matches": all_results,
-            "pattern": pattern,
-            "repository": repo_path.display().to_string(),
-            "case_sensitive": case_sensitive,
-            "file_extensions": file_extensions,
-            "exclude_dirs": exclude_dirs,
-        });
-
-        // Stringify the JSON
-        to_string_pretty(&json_results)
-            .map_err(|e| format!("Failed to convert search results to JSON: {}", e))
+        // Create a CodeSearchResult
+        Ok(CodeSearchResult::new(
+            all_results,
+            pattern,
+            repo_path.to_path_buf(),
+            case_sensitive,
+            file_extensions,
+            exclude_dirs,
+        ))
     }
 
     /// Generate a 12-character hash value from repository information

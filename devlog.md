@@ -6,6 +6,47 @@ This file documents the architectural decisions and implementation patterns for 
 
 ## Type System Patterns
 
+### Structured Return Types over JSON Strings
+
+- **Pattern:** Use structured types with proper serialization support instead of returning JSON strings
+- **Example:** Changed `search_code` to return a proper `CodeSearchResult` struct instead of a JSON string
+- **Implementation:**
+  ```rust
+  // Instead of:
+  pub async fn perform_code_search(...) -> Result<String, String> {
+      // Process search and format as JSON string
+      let json_results = json!({
+          "matches": all_results,
+          "pattern": pattern,
+          // ... other fields
+      });
+      to_string_pretty(&json_results)
+  }
+  
+  // Use structured type:
+  pub async fn perform_code_search(...) -> Result<CodeSearchResult, String> {
+      // Process search
+      Ok(CodeSearchResult::new(
+          all_results,
+          pattern,
+          repo_path,
+          case_sensitive,
+          file_extensions,
+          exclude_dirs
+      ))
+  }
+  
+  // With a helper method for backward compatibility if needed:
+  impl CodeSearchResult {
+      pub fn to_json(&self) -> Result<String, String> {
+          serde_json::to_string_pretty(self)
+              .map_err(|e| format!("Failed to convert search results to JSON: {}", e))
+      }
+  }
+  ```
+- **Benefits:** Type safety, easier to use in consuming code, better abstraction, better documentation
+- **When to apply:** When returning complex structured data that might be processed further before serialization
+
 ### Use Native Types Over Single-Field Wrappers
 
 - **Pattern:** Replace wrapper types with native Rust types when they don't add significant behavior

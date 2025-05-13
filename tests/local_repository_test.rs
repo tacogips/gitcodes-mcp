@@ -51,26 +51,18 @@ async fn test_search_code_basic_pattern() {
     // Execute the search
     let results = local_repo.search_code(params).await.expect("Search failed");
     
-    // Should have at least one result (from bin/main.rs)
-    assert!(!results.is_empty(), "No search results found");
-    
-    // Parse the JSON result to verify structure and content
-    let result_json: serde_json::Value = serde_json::from_str(&results[0]).expect("Failed to parse JSON result");
+    // Should have at least one match
+    assert!(!results.matches.is_empty(), "No search results found");
     
     // Verify the result contains expected fields
-    assert!(result_json["matches"].is_array(), "Result doesn't contain matches array");
-    assert!(result_json["pattern"].as_str().unwrap() == "fn ", "Pattern field doesn't match");
-    
-    // Verify at least one match was found
-    let matches = result_json["matches"].as_array().unwrap();
-    assert!(!matches.is_empty(), "No matches in results");
+    assert_eq!(results.pattern, "fn ", "Pattern field doesn't match");
     
     // Check that the matches contain expected data structure
-    let first_match = &matches[0];
-    assert!(first_match["file_path"].is_string(), "Match doesn't contain file_path");
-    assert!(first_match["line_content"].is_string(), "Match doesn't contain line_content field");
+    let first_match = &results.matches[0];
+    assert!(first_match.file_path.to_string_lossy().len() > 0, "Match doesn't contain file_path");
+    assert!(first_match.line_content.len() > 0, "Match doesn't contain line_content");
     
-    println!("Successfully found {} matches for 'fn '", matches.len());
+    println!("Successfully found {} matches for 'fn '", results.matches.len());
 }
 
 /// Tests case-sensitive search functionality
@@ -91,8 +83,7 @@ async fn test_search_code_case_sensitive() {
     
     // Execute the case-sensitive search
     let results_sensitive = local_repo.search_code(params_case_sensitive).await.expect("Search failed");
-    let result_json_sensitive: serde_json::Value = serde_json::from_str(&results_sensitive[0]).expect("Failed to parse JSON result");
-    let sensitive_count = result_json_sensitive["matches"].as_array().unwrap().len();
+    let sensitive_count = results_sensitive.matches.len();
     
     // Test with case-insensitive search (should find more)
     let params_case_insensitive = CodeSearchParams {
@@ -106,8 +97,7 @@ async fn test_search_code_case_sensitive() {
     
     // Execute the case-insensitive search
     let results_insensitive = local_repo.search_code(params_case_insensitive).await.expect("Search failed");
-    let result_json_insensitive: serde_json::Value = serde_json::from_str(&results_insensitive[0]).expect("Failed to parse JSON result");
-    let insensitive_count = result_json_insensitive["matches"].as_array().unwrap().len();
+    let insensitive_count = results_insensitive.matches.len();
     
     // Case-insensitive search should find at least as many matches as case-sensitive
     println!("Case-sensitive search found {} matches, case-insensitive found {} matches",
@@ -139,12 +129,11 @@ async fn test_search_code_file_extension_filter() {
     
     // Execute the search with .rs filter
     let results_rs = local_repo.search_code(params_rs).await.expect("Search failed");
-    let result_json_rs: serde_json::Value = serde_json::from_str(&results_rs[0]).expect("Failed to parse JSON result");
-    let rs_matches = result_json_rs["matches"].as_array().unwrap();
+    let rs_matches = &results_rs.matches;
     
     // Verify all matches have .rs extension
     for match_item in rs_matches {
-        let file_path = match_item["file_path"].as_str().unwrap();
+        let file_path = match_item.file_path.to_string_lossy();
         assert!(file_path.ends_with(".rs"), "Match found in non-rs file: {}", file_path);
     }
     
@@ -160,12 +149,11 @@ async fn test_search_code_file_extension_filter() {
     
     // Execute the search with .toml filter
     let results_toml = local_repo.search_code(params_toml).await.expect("Search failed");
-    let result_json_toml: serde_json::Value = serde_json::from_str(&results_toml[0]).expect("Failed to parse JSON result");
-    let toml_matches = result_json_toml["matches"].as_array().unwrap();
+    let toml_matches = &results_toml.matches;
     
     // Verify all matches have .toml extension
     for match_item in toml_matches {
-        let file_path = match_item["file_path"].as_str().unwrap();
+        let file_path = match_item.file_path.to_string_lossy();
         assert!(file_path.ends_with(".toml"), "Match found in non-toml file: {}", file_path);
     }
     
@@ -194,16 +182,14 @@ async fn test_search_code_exclude_dirs() {
     
     // Execute the search without exclusions
     let results_no_exclusion = local_repo.search_code(params_no_exclusion).await.expect("Search failed");
-    let result_json_no_exclusion: serde_json::Value = serde_json::from_str(&results_no_exclusion[0])
-        .expect("Failed to parse JSON result");
-    let matches_no_exclusion = result_json_no_exclusion["matches"].as_array().unwrap();
+    let matches_no_exclusion = &results_no_exclusion.matches;
     let no_exclusion_count = matches_no_exclusion.len();
     
     // Get the unique set of directories represented in the matches
     let mut dirs_with_matches = std::collections::HashSet::new();
     for match_item in matches_no_exclusion {
-        let file_path = match_item["file_path"].as_str().unwrap();
-        if let Some(parent) = std::path::Path::new(file_path).parent() {
+        let file_path = match_item.file_path.to_string_lossy();
+        if let Some(parent) = std::path::Path::new(file_path.as_ref()).parent() {
             if let Some(dir_name) = parent.file_name() {
                 if let Some(dir_str) = dir_name.to_str() {
                     dirs_with_matches.insert(dir_str.to_string());
@@ -227,8 +213,8 @@ async fn test_search_code_exclude_dirs() {
     
     // Count matches in the directory we'll exclude
     let dir_match_count = matches_no_exclusion.iter().filter(|m| {
-        let file_path = m["file_path"].as_str().unwrap();
-        let path = std::path::Path::new(file_path);
+        let file_path = m.file_path.to_string_lossy();
+        let path = std::path::Path::new(file_path.as_ref());
         if let Some(parent) = path.parent() {
             if let Some(dir_name) = parent.file_name() {
                 return dir_name.to_str() == Some(dir_to_exclude.as_str());
@@ -255,14 +241,12 @@ async fn test_search_code_exclude_dirs() {
     
     // Execute the search with exclusions
     let results_with_exclusion = local_repo.search_code(params_with_exclusion).await.expect("Search failed");
-    let result_json_with_exclusion: serde_json::Value = serde_json::from_str(&results_with_exclusion[0])
-        .expect("Failed to parse JSON result");
-    let matches_with_exclusion = result_json_with_exclusion["matches"].as_array().unwrap();
+    let matches_with_exclusion = &results_with_exclusion.matches;
     
     // Verify no matches from the excluded directory
     let excluded_matches = matches_with_exclusion.iter().filter(|m| {
-        let file_path = m["file_path"].as_str().unwrap();
-        let path = std::path::Path::new(file_path);
+        let file_path = m.file_path.to_string_lossy();
+        let path = std::path::Path::new(file_path.as_ref());
         if let Some(parent) = path.parent() {
             if let Some(dir_name) = parent.file_name() {
                 return dir_name.to_str() == Some(dir_to_exclude.as_str());
@@ -302,8 +286,7 @@ async fn test_search_code_regex_pattern() {
     
     // Execute the search with regex pattern
     let results = local_repo.search_code(params).await.expect("Search failed");
-    let result_json: serde_json::Value = serde_json::from_str(&results[0]).expect("Failed to parse JSON result");
-    let matches = result_json["matches"].as_array().unwrap();
+    let matches = &results.matches;
     
     // Should find some impl blocks
     assert!(!matches.is_empty(), "No matches found for regex pattern");
