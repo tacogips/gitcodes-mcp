@@ -1,6 +1,6 @@
 use gix;
 use gix::progress::Discard;
-use lumin::search;
+use lumin::search::{self, SearchOptions};
 use rmcp::schemars;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
@@ -12,39 +12,8 @@ pub struct LocalRepository {
     repository_location: PathBuf,
 }
 impl LocalRepository {
-    /// Generate a 12-character hash value from repository information
-    ///
-    /// Creates a deterministic hash based on the user and repository name.
-    /// This ensures that the same repository always gets the same hash value.
-    fn generate_repository_hash(remote_repository_info: &RemoteGitRepositoryInfo) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        // Create a string combining user and repo
-        let repo_key = format!(
-            "{}/{}",
-            remote_repository_info.user, remote_repository_info.repo
-        );
-
-        // Create a hash using DefaultHasher
-        let mut hasher = DefaultHasher::new();
-        repo_key.hash(&mut hasher);
-        let hash_value = hasher.finish();
-
-        // Convert to a 12-character hexadecimal string
-        // We'll take 12 characters from the hex representation
-        let hex = format!("{:x}", hash_value);
-
-        // Ensure we have at least 12 characters
-        if hex.len() >= 12 {
-            hex[0..12].to_string()
-        } else {
-            // Pad with zeros if needed (unlikely with a 64-bit hash)
-            format!("{:0>12}", hex)
-        }
-    }
     /// Validates that the repository location is a valid git repository
-    /// 
+    ///
     /// This validation checks both that:
     /// 1. The directory exists and is accessible
     /// 2. The directory contains a valid git repository
@@ -70,11 +39,12 @@ impl LocalRepository {
                     ));
                 }
                 // We could check read/write permissions here if needed
-            },
+            }
             Err(e) => {
                 return Err(format!(
                     "Failed to access metadata for '{}': {}",
-                    self.repository_location.display(), e
+                    self.repository_location.display(),
+                    e
                 ));
             }
         }
@@ -92,9 +62,10 @@ impl LocalRepository {
         match gix::open(&self.repository_location) {
             Ok(_) => Ok(()), // Successfully opened the repository
             Err(e) => Err(format!(
-                "Directory '{}' does not contain a valid git repository: {}", 
-                self.repository_location.display(), e
-            ))
+                "Directory '{}' does not contain a valid git repository: {}",
+                self.repository_location.display(),
+                e
+            )),
         }
     }
 
@@ -424,7 +395,7 @@ impl LocalRepository {
         };
 
         // Execute the search
-        match search::search_files(pattern, repo_dir, &search_options) {
+        match search::search_files(pattern, &self.repository_location, &search_options) {
             Ok(results) => {
                 // Format results
                 let mut output = String::new();
@@ -440,7 +411,39 @@ impl LocalRepository {
 
                 Ok(output)
             }
-            Err(e) => Err(format!("Lumin search failed: {}", e)),
+            Err(e) => Err(format!("file search failed: {}", e)),
+        }
+    }
+
+    /// Generate a 12-character hash value from repository information
+    ///
+    /// Creates a deterministic hash based on the user and repository name.
+    /// This ensures that the same repository always gets the same hash value.
+    fn generate_repository_hash(remote_repository_info: &RemoteGitRepositoryInfo) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        // Create a string combining user and repo
+        let repo_key = format!(
+            "{}/{}",
+            remote_repository_info.user, remote_repository_info.repo
+        );
+
+        // Create a hash using DefaultHasher
+        let mut hasher = DefaultHasher::new();
+        repo_key.hash(&mut hasher);
+        let hash_value = hasher.finish();
+
+        // Convert to a 12-character hexadecimal string
+        // We'll take 12 characters from the hex representation
+        let hex = format!("{:x}", hash_value);
+
+        // Ensure we have at least 12 characters
+        if hex.len() >= 12 {
+            hex[0..12].to_string()
+        } else {
+            // Pad with zeros if needed (unlikely with a 64-bit hash)
+            format!("{:0>12}", hex)
         }
     }
 }
