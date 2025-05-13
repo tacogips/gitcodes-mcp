@@ -15,6 +15,30 @@ This file documents the development process, architectural decisions, and implem
 
 ### Type System Improvements
 
+- **Replace GitRef with String**: Replaced GitRef struct with direct String usage
+  - Pattern: Use native types instead of single-field wrapper structs when they don't provide significant additional functionality
+  - Rationale: Simplified codebase by removing unnecessary abstractions
+  - Implementation:
+    ```diff
+    - // GitRef struct definition
+    - pub struct GitRef {
+    -     pub name: String,
+    - }
+    - 
+    - // Method using GitRef
+    - async fn update_repository(&self, _git_ref: &GitRef) -> Result<(), String> {
+    -     // Implementation...
+    - }
+    
+    + // Method using String directly
+    + async fn update_repository(&self, _ref_name: &str) -> Result<(), String> {
+    +     // Implementation...
+    + }
+    ```
+  - Apply this pattern when wrapper types don't add significant value or behavior
+
+### Type System Improvements
+
 - **Clone Parameters Struct**: Created `RemoteGitRepositoryInfo` to encapsulate user, repo, and ref_name parameters for repository cloning
 
   - Pattern: Use structured types for parameter groups that are commonly used together

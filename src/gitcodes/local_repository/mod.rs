@@ -8,23 +8,6 @@ use std::path::{Path, PathBuf};
 use crate::gitcodes::repository_manager::RepositoryLocation;
 use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
 
-// Simple type to represent a Git reference (branch, tag, etc.)
-#[derive(Debug, Clone)]
-pub struct GitRef {
-    pub name: String,
-}
-
-impl GitRef {
-    pub fn new(name: String) -> Self {
-        Self { name }
-    }
-    
-    // For convenience in formatting
-    pub fn as_str(&self) -> &str {
-        &self.name
-    }
-}
-
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
     repository_location: PathBuf,
@@ -134,8 +117,8 @@ impl LocalRepository {
     /// # Parameters
     ///
     /// * `repo_dir` - The directory containing the repository
-    /// * `git_ref` - Branch or tag name to checkout as a GitRef
-    async fn update_repository(&self, _git_ref: &GitRef) -> Result<(), String> {
+    /// * `ref_name` - Branch or tag name to checkout
+    async fn update_repository(&self, _ref_name: &str) -> Result<(), String> {
         // This functionality is temporarily disabled during refactoring
         // TODO: Reimplement with current gix API
         Err("Repository updating is temporarily disabled during refactoring.".to_string())
