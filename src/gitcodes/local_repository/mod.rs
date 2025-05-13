@@ -13,6 +13,49 @@ pub struct LocalRepository {
 ///
 /// This struct encapsulates all the parameters needed for a code search.
 /// Some fields are optional and have sensible defaults.
+///
+/// # Pattern Syntax
+///
+/// The pattern parameter is passed directly to the underlying search engine (lumin),
+/// which uses the regex syntax from the `grep` crate for pattern matching.
+///
+/// ## Regex Pattern Examples
+///
+/// The search pattern supports standard regex syntax, including:
+///
+/// - Simple text literals: `function` matches "function" anywhere in text
+/// - Any character: `log.txt` matches "log.txt", "log1txt", etc.
+/// - Character classes: `[0-9]+` matches one or more digits
+/// - Word boundaries: `\bword\b` matches "word" but not "words" or "keyword"
+/// - Line anchors: `^function` matches lines starting with "function"
+/// - Alternatives: `error|warning` matches either "error" or "warning"
+/// - Repetitions: `.*` matches any sequence of characters
+/// - Escaped special chars: `\.` to match a literal period
+///
+/// ## For Literal Text Search
+///
+/// If you want to search for a text pattern that contains regex special characters
+/// but want them interpreted literally, you need to escape those characters:
+///
+/// ```rust
+/// // Helper function to escape regex special characters for literal searches
+/// fn escape_regex(pattern: &str) -> String {
+///     let mut escaped = String::with_capacity(pattern.len() * 2);
+///     for c in pattern.chars() {
+///         match c {
+///             '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' | '|' => {
+///                 escaped.push('\\');
+///                 escaped.push(c);
+///             }
+///             _ => escaped.push(c),
+///         }
+///     }
+///     escaped
+/// }
+///
+/// // Example: Search for "file.txt" literally (not as a regex pattern)
+/// let literal_search_pattern = escape_regex("file.txt"); // Becomes "file\.txt"
+/// ```
 #[derive(Debug, Clone)]
 pub struct CodeSearchParams {
     /// Repository location (URL or local path)
@@ -22,18 +65,21 @@ pub struct CodeSearchParams {
     pub ref_name: Option<String>,
 
     /// Search pattern (text to find)
+    /// 
+    /// The pattern is passed directly to the underlying search engine and is
+    /// interpreted as a regex pattern. If you want to search for text containing
+    /// regex special characters literally, you must escape them yourself.
     pub pattern: String,
 
     /// Whether the search is case-sensitive (default: false)
     pub case_sensitive: bool,
 
-    /// Whether to use regex for searching (default: true)
-    pub use_regex: bool,
-
     /// File extensions to include in search (e.g. ["rs", "md"])
     pub file_extensions: Option<Vec<String>>,
 
     /// Directories to exclude from search (e.g. ["target", "node_modules"])
+    /// 
+    /// These are converted to glob patterns like "target/**" internally.
     pub exclude_dirs: Option<Vec<String>>,
 }
 
@@ -151,14 +197,25 @@ impl LocalRepository {
     /// # Examples
     ///
     /// ```
+    /// // Using regex pattern directly
     /// let params = CodeSearchParams {
     ///     repository_location: "https://github.com/user/repo".parse()?,
     ///     ref_name: Some("main".to_string()),
     ///     pattern: "fn main".to_string(),
     ///     case_sensitive: false,
-    ///     use_regex: true,
     ///     file_extensions: Some(vec!["rs".to_string()]),
     ///     exclude_dirs: Some(vec!["target".to_string()]),
+    /// };
+    ///
+    /// // Using literal text search (with escaped regex)
+    /// let literal_pattern = "file.txt".replace(".", "\\."); // Escape the period
+    /// let params = CodeSearchParams {
+    ///     repository_location: "https://github.com/user/repo".parse()?,
+    ///     ref_name: None,
+    ///     pattern: literal_pattern, 
+    ///     case_sensitive: true,
+    ///     file_extensions: None,
+    ///     exclude_dirs: None,
     /// };
     ///
     /// let results = search_code(params).await?;
@@ -176,11 +233,14 @@ impl LocalRepository {
             eprintln!("Note: Reference '{}' was requested, but repository updates are temporarily disabled", ref_name);
         }
 
+        // Get the pattern - the caller is responsible for properly escaping regex special characters
+        // if they want to perform a literal text search
+        let pattern = &params.pattern;
+
         // Perform the actual code search using lumin
         self.perform_code_search(
-            &params.pattern,
+            pattern,
             params.case_sensitive,
-            params.use_regex,
             params.file_extensions,
             params.exclude_dirs,
         )
@@ -195,11 +255,10 @@ impl LocalRepository {
     ///
     /// # Parameters
     ///
-    /// * `repo_dir` - The directory containing the repository
-    /// * `pattern` - The search pattern to look for
+    /// * `pattern` - The search pattern to look for (regex pattern passed directly to lumin)
     /// * `case_sensitive` - Whether the search should be case-sensitive (default: false)
-    /// * `_use_regex` - Whether to use regex for the search (not currently implemented)
     /// * `file_extensions` - Optional array of file extensions to include (e.g. ["js", "ts"])
+    /// * `exclude_dirs` - Optional directories to exclude from search
     ///
     /// # Returns
     ///
@@ -208,7 +267,6 @@ impl LocalRepository {
         &self,
         pattern: &str,
         case_sensitive: bool,
-        use_regex: bool,
         file_extensions: Option<Vec<String>>,
         exclude_dirs: Option<Vec<String>>,
     ) -> Result<String, String> {
@@ -222,26 +280,9 @@ impl LocalRepository {
         // Get repository path
         let repo_path = self.repository_location.as_path();
 
-        // Execute the search
-        let search_pattern = if use_regex {
-            pattern.to_string()
-        } else {
-            // Escape regex special characters for literal text search
-            // Manually escape common regex metacharacters
-            let mut escaped = String::with_capacity(pattern.len() * 2);
-            for c in pattern.chars() {
-                match c {
-                    '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' | '|' => {
-                        escaped.push('\\');
-                        escaped.push(c);
-                    }
-                    _ => escaped.push(c),
-                }
-            }
-            escaped
-        };
-        
-        let mut all_results = search::search_files(&search_pattern, repo_path, &search_options)
+        // Execute the search directly with the provided pattern
+        // The caller is responsible for properly formatting the regex pattern
+        let mut all_results = search::search_files(pattern, repo_path, &search_options)
             .map_err(|e| format!("Code search failed: {}", e))?;
 
         // Post-process to filter by file extension if needed
@@ -264,7 +305,6 @@ impl LocalRepository {
             "pattern": pattern,
             "repository": repo_path.display().to_string(),
             "case_sensitive": case_sensitive,
-            "regex": use_regex,
             "file_extensions": file_extensions,
             "exclude_dirs": exclude_dirs,
         });
