@@ -10,7 +10,7 @@ use crate::tools::gitcodes::gits::{local_repository::LocalRepository, Repository
 /// Uses a dedicated directory to store cloned repositories.
 #[derive(Clone)]
 pub struct RepositoryManager {
-    pub(crate) local_repository_dir_base: PathBuf,
+    pub(crate) local_repository_cache_dir_base: PathBuf,
 }
 
 impl RepositoryManager {
@@ -25,43 +25,27 @@ impl RepositoryManager {
     ///
     /// * `Result<Self, String>` - A new RepositoryManager instance or an error message
     ///                            if the directory cannot be created or accessed.
-    pub fn new(local_repository_dir_base: Option<PathBuf>) -> Result<Self, String> {
+    pub fn new(local_repository_cache_dir_base: Option<PathBuf>) -> Result<Self, String> {
         // Use provided path or default to system temp directory
-        let base_dir = match local_repository_dir_base {
+        let local_repository_cache_dir_base = match local_repository_cache_dir_base {
             Some(path) => path,
             None => std::env::temp_dir(),
         };
 
         // Validate and ensure the directory exists
-        if !base_dir.exists() {
+        if !local_repository_cache_dir_base.exists() {
             // Try to create the directory if it doesn't exist
-            std::fs::create_dir_all(&base_dir)
+            std::fs::create_dir_all(&local_repository_cache_dir_base)
                 .map_err(|e| format!("Failed to create repository cache directory: {}", e))?;
-        } else if !base_dir.is_dir() {
+        } else if !local_repository_cache_dir_base.is_dir() {
             return Err(format!(
                 "Specified path '{}' is not a directory",
-                base_dir.display()
+                local_repository_cache_dir_base.display()
             ));
         }
 
-        // Check if the directory is writable by trying to create a test file
-        let test_file_path = base_dir.join(".write_test_repo_cache_file");
-        match std::fs::File::create(&test_file_path) {
-            Ok(_) => {
-                // Clean up the test file
-                let _ = std::fs::remove_file(test_file_path);
-            }
-            Err(e) => {
-                return Err(format!(
-                    "Directory '{}' is not writable: {}",
-                    base_dir.display(),
-                    e
-                ))
-            }
-        }
-
         Ok(Self {
-            local_repository_dir_base: base_dir,
+            local_repository_cache_dir_base,
         })
     }
 
@@ -188,7 +172,7 @@ impl RepositoryManager {
     /// }
     /// ```
     async fn clone_repository(&self, params: &RemoteGitRepositoryInfo) -> Result<(), String> {
-        let repo_dir = self.local_repository_dir_base;
+        let repo_dir = self.local_repository_cache_dir_base;
         // Create directory if it doesn't exist
         if let Err(e) = std::fs::create_dir_all(repo_dir) {
             return Err(format!("Failed to create directory: {}", e));
