@@ -1,4 +1,4 @@
-use crate::tools::gitcodes::GitHubCodeTools;
+use crate::tools::GitHubCodeTools;
 use anyhow::Result;
 use rmcp::transport::stdio;
 use rmcp::ServiceExt;

@@ -28,7 +28,8 @@ impl FromStr for RepositoryLocation {
                 PathBuf::from(sanitized_location),
             )));
         } else {
-            let remote_repository = GitRemoteRepository::parse_url(repo_location_path_or_url)?;
+            let remote_repository = GitRemoteRepository::parse_url(repo_location_path_or_url)
+                .map_err(|e| e.to_string())?;
             Ok(RepositoryLocation::RemoteRepository(remote_repository))
         }
     }
