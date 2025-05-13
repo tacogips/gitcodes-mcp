@@ -196,18 +196,8 @@ impl RepositoryManager {
                 .unwrap_or_default()
         );
 
-        // Setup authentication for GitHub if token is available
-        let mut auth_url = clone_url.clone();
-        if let Some(token) = &self.github_token {
-            // Add token to URL for authentication if it's a GitHub HTTPS URL
-            if clone_url.starts_with("https://github.com") {
-                auth_url = format!(
-                    "https://{}:x-oauth-basic@{}", 
-                    token, 
-                    clone_url.trim_start_matches("https://")
-                );
-            }
-        }
+        // Get authenticated URL (includes token if applicable)
+        let auth_url = remote_repository.get_authenticated_url(self.github_token.as_ref());
 
         // Initialize repository creation options
         use gix::create::Kind;

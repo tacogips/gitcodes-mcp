@@ -45,6 +45,36 @@ impl GitRemoteRepository {
             GitRemoteRepository::Github(github_info) => github_info.repo_info.ref_name.clone(),
         }
     }
+    
+    /// Get the authenticated URL for this repository
+    ///
+    /// If a GitHub token is provided and this is a GitHub repository,
+    /// returns a URL with authentication credentials included.
+    /// Otherwise, returns the regular clone URL.
+    ///
+    /// # Parameters
+    ///
+    /// * `token` - Optional GitHub authentication token
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The URL to use for cloning, with authentication if applicable
+    pub fn get_authenticated_url(&self, token: Option<&String>) -> String {
+        let clone_url = self.clone_url();
+        
+        // If we have a token and this is a GitHub repository with an HTTPS URL,
+        // insert the token into the URL
+        match (token, self) {
+            (Some(token), GitRemoteRepository::Github(_)) if clone_url.starts_with("https://github.com") => {
+                format!(
+                    "https://{}:x-oauth-basic@{}",
+                    token,
+                    clone_url.trim_start_matches("https://")
+                )
+            },
+            _ => clone_url
+        }
+    }
 }
 
 // These functions have been converted to methods of RepositoryManager

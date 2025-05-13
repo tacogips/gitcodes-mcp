@@ -16,13 +16,27 @@ The new implementation now uses a more direct approach with the gitoxide low-lev
    - If it exists but is invalid, it's cleaned up before cloning
 
 2. **Authentication**
-   - GitHub authentication tokens are injected directly into the URL:
+   - Added a new `get_authenticated_url` method to the `GitRemoteRepository` enum:
    ```rust
-   auth_url = format!(
-       "https://{}:x-oauth-basic@{}", 
-       token, 
-       clone_url.trim_start_matches("https://")
-   );
+   pub fn get_authenticated_url(&self, token: Option<&String>) -> String {
+       let clone_url = self.clone_url();
+       
+       match (token, self) {
+           (Some(token), GitRemoteRepository::Github(_)) if clone_url.starts_with("https://github.com") => {
+               format!(
+                   "https://{}:x-oauth-basic@{}",
+                   token,
+                   clone_url.trim_start_matches("https://")
+               )
+           },
+           _ => clone_url
+       }
+   }
+   ```
+   - This centralizes the authentication logic within the repository type
+   - Simplified usage in the `clone_repository` method:
+   ```rust
+   let auth_url = remote_repository.get_authenticated_url(self.github_token.as_ref());
    ```
 
 3. **Shallow Clone**
@@ -56,6 +70,7 @@ The new implementation now uses a more direct approach with the gitoxide low-lev
 2. **Better Performance**: Shallow clone reduces network transfer and disk usage
 3. **Improved Reliability**: Existing repository checks avoid duplicate clones
 4. **Robust Error Handling**: Comprehensive error cleanup prevents repository corruption
+5. **Better Encapsulation**: Authentication logic is now encapsulated in the `GitRemoteRepository` type
 
 ## Future Improvements
 
