@@ -1,7 +1,10 @@
 mod providers;
 mod repository_location;
 
-use std::path::PathBuf;
+use std::{num::NonZeroU32, path::PathBuf};
+
+use gix::progress::Discard;
+use providers::GitRemoteRepository;
 
 use crate::gitcodes::{local_repository::LocalRepository, RepositoryLocation};
 
@@ -100,7 +103,7 @@ impl RepositoryManager {
                 // If repo is not cloned, clone it
                 if !already_fetched {
                     // We've already matched this as GitHubUrl above, so no need to extract the URL again
-                    let clone_params = RemoteGitRepositoryInfo {
+                    let clone_params = GitRemoteRepositoryInfo {
                         user: user.clone(),
                         repo: repo.clone(),
                         ref_name: ref_name_clone.clone(),
@@ -114,7 +117,7 @@ impl RepositoryManager {
                 }
 
                 Ok(LocalRepositoryInfo {
-                    remote_repository_info: Some(RemoteGitRepositoryInfo {
+                    remote_repository_info: Some(GitRemoteRepositoryInfo {
                         user,
                         repo,
                         ref_name: ref_name_clone,
@@ -172,7 +175,7 @@ impl RepositoryManager {
     ///     }
     /// }
     /// ```
-    async fn clone_repository(&self, params: &RemoteGitRepositoryInfo) -> Result<(), String> {
+    async fn clone_repository(&self, params: &GitRemoteRepository) -> Result<(), String> {
         let repo_dir = self.local_repository_cache_dir_base;
         // Create directory if it doesn't exist
         if let Err(e) = std::fs::create_dir_all(repo_dir) {
@@ -190,7 +193,7 @@ impl RepositoryManager {
         let url = gix::url::parse(url_bstr).map_err(|e| format!("Failed to parse URL: {}", e))?;
 
         // Create options for the clone operation
-        let mut clone_options = gix::clone::PrepareFetch::default();
+        let mut clone_options = gix::clone::PrepareFetch::new();
 
         // Set up shallow clone
         let depth = NonZeroU32::new(1).unwrap();
@@ -272,78 +275,5 @@ impl RepositoryManager {
 impl Default for RepositoryManager {
     fn default() -> Self {
         Self::with_default_cache_dir()
-    }
-}
-
-pub struct GitRef(String);
-
-impl GitRef {
-    /// Creates a new GitRef from a string
-    pub fn new<S: Into<String>>(s: S) -> Self {
-        GitRef(s.into())
-    }
-
-    /// Returns the underlying string value
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-// These functions have been converted to methods of RepositoryManager
-
-/// Parameters for GitHub repository cloning
-///
-/// Contains all the parameters needed for cloning a GitHub repository.
-/// This struct encapsulates repository parameters for the clone_repository function.
-///
-/// # Examples
-///
-/// ```
-/// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::RemoteGitRepositoryInfo;
-///
-/// // Basic clone parameters
-/// let params = RemoteGitRepositoryInfo {
-///     user: "rust-lang".to_string(),
-///     repo: "rust".to_string(),
-///     ref_name: "main".to_string(),
-/// };
-/// ```
-//#[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
-//pub struct RemoteGitRepositoryInfo {
-//    /// GitHub username or organization
-//    #[schemars(
-//        description = "The GitHub username or organization owning the repository. Must be the exact username as it appears in GitHub URLs."
-//    )]
-//    pub user: String,
-//    /// Repository name
-//    #[schemars(
-//        description = "The name of the repository to clone. Must be the exact repository name as it appears in GitHub URLs."
-//    )]
-//    pub repo: String,
-//    /// Branch or tag name to checkout
-//    #[schemars(
-//        description = "The branch or tag name to checkout after cloning. Defaults to 'main' if not specified."
-//    )]
-//    pub ref_name: Option<String>,
-//}
-//
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RemoteGitRepositoryInfo {
-    /// GitHub username or organization
-    pub user: String,
-    /// Repository name
-    pub repo: String,
-    /// Branch or tag name to checkout
-    pub ref_name: Option<String>,
-}
-
-impl RemoteGitRepositoryInfo {
-    /// Returns a GitRef for the reference name
-    pub fn git_ref(&self) -> GitRef {
-        match &self.ref_name {
-            Some(ref_name) => GitRef::new(ref_name),
-            None => GitRef::new("main"),
-        }
     }
 }

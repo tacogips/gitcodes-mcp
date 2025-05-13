@@ -2,11 +2,11 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
 
-use crate::tools::gitcodes::gits::RemoteGitRepositoryInfo;
+use crate::gitcodes::repository_manager::GitRemoteRepositoryInfo;
 
 pub struct GithubRemoteInfo {
     url: String,
-    repo_info: RemoteGitRepositoryInfo,
+    repo_info: GitRemoteRepositoryInfo,
 }
 
 pub struct GithubClient {
@@ -569,7 +569,7 @@ pub(crate) fn parse_github_repository_url(url: &str) -> Result<GithubRemoteInfo,
     let repo = parts[1].to_string();
 
     // Create RemoteGitRepositoryInfo with extracted user and repo
-    let repo_info = RemoteGitRepositoryInfo {
+    let repo_info = GitRemoteRepositoryInfo {
         user,
         repo,
         ref_name: None, // Default to None for ref_name
