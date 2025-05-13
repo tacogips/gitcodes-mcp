@@ -62,13 +62,25 @@ This file documents the architectural decisions and implementation patterns for 
 
 ## Architecture Patterns
 
-### Deterministic Resource Naming
+### Deterministic Resource Naming with Process Isolation
 
-- **Pattern:** Generate consistent identifiers for resources
-- **Example:** Repository cache directory naming using hash of repository info
+- **Pattern:** Generate consistent resource identifiers with process-specific differentiation
+- **Example:** Repository cache directory naming using hash of repository info and process ID
 - **Implementation:**
   ```rust
-  fn generate_repository_hash(info: &RemoteGitRepositoryInfo) -> String {
+  // In RepositoryManager
+  fn generate_process_id() -> String {
+      use std::process;
+      use uuid::Uuid;
+      
+      let pid = process::id();
+      let uuid = Uuid::new_v4();
+      
+      format!("{}_{}", pid, uuid.simple())
+  }
+  
+  // In LocalRepository
+  fn generate_repository_hash(info: &GitRemoteRepositoryInfo) -> String {
       use std::collections::hash_map::DefaultHasher;
       use std::hash::{Hash, Hasher};
       
@@ -79,8 +91,37 @@ This file documents the architectural decisions and implementation patterns for 
       
       format!("{:x}", hash_value)[0..12].to_string()
   }
+  
+  pub fn new_local_repository_to_clone(
+      remote_repository_info: GitRemoteRepositoryInfo, 
+      process_id: Option<&str>
+  ) -> Self {
+      let hash_value = Self::generate_repository_hash(&remote_repository_info);
+      
+      // Include process_id in directory name if provided
+      let dir_name = if let Some(pid) = process_id {
+          format!(
+              "mcp_gitcodes_{}_{}_{}_pid{}",
+              remote_repository_info.user, remote_repository_info.repo, hash_value, pid
+          )
+      } else {
+          format!(
+              "mcp_gitcodes_{}_{}_{}" ,
+              remote_repository_info.user, remote_repository_info.repo, hash_value
+          )
+      };
+
+      let mut repo_dir = std::env::temp_dir();
+      repo_dir.push(dir_name);
+
+      Self::new(repo_dir)
+  }
   ```
-- **Benefits:** Predictable caching, consistent paths, no need for random UUID generation
+- **Benefits:** 
+  - Predictable caching for deterministic behavior
+  - Process isolation to prevent conflicts in concurrent environments
+  - Consistent paths across runs for the same repository
+  - Uniqueness ensured by combination of deterministic hashing and process-specific IDs
 
 ### Separation of Concerns
 
@@ -268,11 +309,11 @@ This file documents the architectural decisions and implementation patterns for 
 
 ## Implementation Notes
 
-### Native Git Integration
+### Native Git Integration with Two-Phase Clone
 
 - Migrated from direct git command execution to the native Rust `gix` library
 - `gix` is a pure Rust implementation of Git with no C dependencies
-- This eliminates the need for external git command execution and simplifies error handling
+- Implemented a two-phase clone process (fetch followed by checkout) for more precise control
 - Repository operations (clone, fetch, checkout) are handled by `gix` APIs
 
 ```rust
@@ -281,30 +322,49 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
     use gix::{
         clone::PrepareFetch,
         create::{Kind, Options as CreateOptions},
-        open::Options as OpenOptions},
+        open::Options as OpenOptions,
         progress::Discard,
     };
     
-    // Initialize a repo for fetching
+    // Initialize a repo for fetching with the authenticated URL
     let mut fetch = PrepareFetch::new(
-        &clone_url,
+        auth_url.as_str(),
         repo_dir,
-        Kind::WorkTree,
+        Kind::WithWorktree,
         CreateOptions::default(),
         OpenOptions::default(),
     )?;
     
-    // Configure authentication if available
-    if let Some(token) = &self.github_token {
-        fetch = fetch.configure_remote(|remote| {
-            // Add GitHub authentication to remote URL
-            Ok(remote.with_url(url_with_auth)?)
-        });
-    }
+    // Configure shallow clone for better performance
+    let depth = NonZeroU32::new(1).unwrap();
+    fetch = fetch.with_shallow(Shallow::DepthAtRemote(depth));
     
-    // Execute the clone operation
-    let (repository, _outcome) = fetch.fetch_only(Discard, &AtomicBool::new(false))?;
-    Ok(local_repo)
+    // Execute the clone operation in two phases for better control
+    match fetch.fetch_then_checkout(&mut Discard, &gix::interrupt::IS_INTERRUPTED) {
+        Ok((mut checkout, _fetch_outcome)) => {
+            // Complete the checkout process
+            match checkout.main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED) {
+                Ok((_repo, _outcome)) => {
+                    tracing::info!("Successfully cloned repository to {}", repo_dir.display());
+                    Ok(local_repo)
+                }
+                Err(e) => {
+                    // Clean up failed checkout attempt
+                    if repo_dir.exists() {
+                        let _ = std::fs::remove_dir_all(repo_dir);
+                    }
+                    Err(format!("Failed to checkout repository: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            // Clean up failed clone attempt
+            if repo_dir.exists() {
+                let _ = std::fs::remove_dir_all(repo_dir);
+            }
+            Err(format!("Failed to clone repository: {}", e))
+        }
+    }
 }
 ```
 
@@ -320,7 +380,11 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
   - Cleanup of invalid repositories
 - Custom cache directory configuration is supported via initialization parameters
 
-### Process-Specific Identifiers Pattern
+### Refactoring: Process Isolation and Global Singleton
+
+The codebase has been extensively refactored to implement two key patterns that work together:
+
+#### Process-Specific Identifiers Pattern
 
 - **Pattern:** Add unique process identifiers to shared resources
 - **Example:** `RepositoryManager` includes a `process_id` field used in clone paths
@@ -334,7 +398,7 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
       let pid = process::id();
       let uuid = Uuid::new_v4();
       
-      format!("{}-{}", pid, uuid.simple())
+      format!("{}_{}", pid, uuid.simple())
   }
   
   // In LocalRepository
@@ -356,13 +420,13 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
 - **Benefits:** Prevents resource conflicts when multiple processes use the same codebase
 - **When to apply:** For file system operations, shared resource access, parallel processing
 
-### Global Singleton Pattern for Per-Process Resources
+#### Global Singleton Pattern for Per-Process Resources
 
 - **Pattern:** Use a global static instance with lazy initialization for per-process resources
 - **Example:** Process-wide `RepositoryManager` singleton using `once_cell`
 - **Implementation:**
   ```rust
-  // Global singleton definition
+  // Global singleton definition in repository_manager/instance.rs
   static GLOBAL_REPOSITORY_MANAGER: OnceCell<RepositoryManager> = OnceCell::new();
   
   // Initialization function (called once at process startup)
@@ -382,14 +446,52 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
           .get_or_init(|| RepositoryManager::with_default_cache_dir())
   }
   ```
+  
+  ```rust
+  // Server startup code in transport modules
+  async fn run_stdio_server(
+      debug: bool, 
+      github_token: Option<String>,
+      repository_cache_dir: Option<std::path::PathBuf>
+  ) -> Result<()> {
+      // Initialize the global repository manager at startup
+      // This ensures a single process_id is used throughout the application lifetime
+      let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(
+          github_token.clone(), 
+          repository_cache_dir.clone()
+      );
+      
+      // ... rest of the function ...
+  }
+  ```
+  
+  ```rust
+  // Tool code updated to use global instance
+  pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
+      // Initialize the global repository manager with these parameters
+      let manager = repository_manager::instance::init_repository_manager(github_token, repository_cache_dir);
+      
+      Self {
+          manager: manager.clone(),
+      }
+  }
+  
+  pub fn with_service(_manager: RepositoryManager) -> Self {
+      // Get the global repository manager instead of using the provided one
+      let manager = repository_manager::instance::get_repository_manager();
+      Self { manager: manager.clone() }
+  }
+  ```
 - **Benefits:** 
   - Ensures consistency across the entire process
   - Preserves unique process identifiers throughout the application lifetime
   - Prevents duplicate resource initialization
+  - Simplifies API by hiding process ID management from callers
 - **When to apply:** 
   - For resources that should be unique per process
   - When resources have process-specific identifiers
   - To avoid unnecessary duplication of heavyweight resources
+  - When configuration should be applied process-wide
 
 ### Authentication Methods
 
