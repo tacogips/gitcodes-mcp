@@ -35,7 +35,7 @@ anyhow = "1.0"
 rand = "0.8"
 clap = { version = "4.4", features = ["derive"] }
 html2md = "0.2.14"
-lumin = "0.1.6"
+lumin = "0.1.7"
 strum = { version = "0.25", features = ["derive"] }
 gix = { version = "0.72.1", features = ["blocking-http-transport-reqwest"] }
 gitoxide-core = { version = "0.47.1", features = ["blocking-client"] }
