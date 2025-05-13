@@ -57,9 +57,9 @@ impl FromStr for RepositoryLocation {
         // Check if it's a local path first
         //TODO(exists) check if it's a local path
         if Path::new(sanitized_location).exists() {
-            return Ok(RepositoryLocation::LocalPath(
-                LocalRepository::new_existing_dir(PathBuf::from(sanitized_location))?,
-            ));
+            return Ok(RepositoryLocation::LocalPath(LocalRepository::new(
+                PathBuf::from(sanitized_location),
+            )));
         }
 
         // Otherwise, treat it as a GitHub URL
