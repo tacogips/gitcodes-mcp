@@ -45,5 +45,6 @@
 //!
 //! See the README.md file for usage examples.
 
+pub mod gitcodes;
 pub mod tools;
 pub mod transport;

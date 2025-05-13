@@ -39,7 +39,6 @@ lumin = "0.1.5"
 strum = { version = "0.25", features = ["derive"] }
 gix = "0.72.1"
 gitoxide-core = "0.47.1"
-thiserror = "2.0"
 
 [dev-dependencies]
 # Testing utilities

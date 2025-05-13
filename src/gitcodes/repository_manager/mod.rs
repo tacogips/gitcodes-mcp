@@ -2,7 +2,7 @@ mod providers;
 use anyhow::Error;
 use std::path::PathBuf;
 
-use crate::tools::gitcodes::gits::{local_repository::LocalRepository, RepositoryLocation};
+use crate::gitcodes::{local_repository::LocalRepository, RepositoryLocation};
 
 /// Repository manager for Git operations
 ///
@@ -272,25 +272,6 @@ impl Default for RepositoryManager {
     fn default() -> Self {
         Self::with_default_cache_dir()
     }
-}
-
-/// Errors that can occur during git operations
-#[derive(Error, Debug)]
-pub enum GitError {
-    #[error("Git clone error: {0}")]
-    Clone(#[from] gix::clone::Error),
-
-    #[error("Git fetch error: {0}")]
-    Fetch(String),
-
-    #[error("Git checkout error: {0}")]
-    Checkout(String),
-
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Git operation error: {0}")]
-    Other(String),
 }
 
 pub struct GitRef(String);
