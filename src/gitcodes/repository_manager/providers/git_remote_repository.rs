@@ -3,12 +3,13 @@ use crate::gitcodes::repository_manager::providers::github::{
 };
 use anyhow::{anyhow, Result};
 
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum GitRemoteRepository {
     Github(GithubRemoteInfo),
 }
 
 impl GitRemoteRepository {
-    fn parse_url(url: &str) -> Result<Self> {
+    pub fn parse_url(url: &str) -> Result<Self> {
         if let Ok(remote_info) = parse_github_repository_url(&url) {
             Ok(GitRemoteRepository::Github(remote_info))
         } else {

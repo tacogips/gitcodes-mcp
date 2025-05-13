@@ -4,6 +4,7 @@ use strum::{AsRefStr, Display, EnumString};
 
 use crate::gitcodes::repository_manager::GitRemoteRepositoryInfo;
 
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct GithubRemoteInfo {
     pub clone_url: String,
     repo_info: GitRemoteRepositoryInfo,

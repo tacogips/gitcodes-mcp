@@ -1,13 +1,11 @@
-use local_repository::LocalRepository;
-
-pub use crate::gitcodes::remote_repository::GitRemoteRepository;
-
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use crate::gitcodes::remote_repository;
+use crate::gitcodes::LocalRepository;
+
+use super::providers::GitRemoteRepository;
 
 /// Enum representing a repository location, either a GitHub URL or a local filesystem path
 #[derive(Debug, Clone, serde::Deserialize)]

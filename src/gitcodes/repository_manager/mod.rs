@@ -6,7 +6,7 @@ use std::{num::NonZeroU32, path::PathBuf};
 use gix::progress::Discard;
 use providers::GitRemoteRepository;
 
-use crate::gitcodes::{local_repository::LocalRepository, RepositoryLocation};
+use crate::gitcodes::local_repository::LocalRepository;
 
 /// Repository manager for Git operations
 ///
@@ -14,6 +14,7 @@ use crate::gitcodes::{local_repository::LocalRepository, RepositoryLocation};
 /// Uses a dedicated directory to store cloned repositories.
 #[derive(Clone)]
 pub struct RepositoryManager {
+    github_token: Option<String>,
     pub(crate) local_repository_cache_dir_base: PathBuf,
 }
 
@@ -29,7 +30,10 @@ impl RepositoryManager {
     ///
     /// * `Result<Self, String>` - A new RepositoryManager instance or an error message
     ///                            if the directory cannot be created or accessed.
-    pub fn new(local_repository_cache_dir_base: Option<PathBuf>) -> Result<Self, String> {
+    pub fn new(
+        github_token: Option<String>,
+        local_repository_cache_dir_base: Option<PathBuf>,
+    ) -> Result<Self, String> {
         // Use provided path or default to system temp directory
         let local_repository_cache_dir_base = match local_repository_cache_dir_base {
             Some(path) => path,
@@ -49,6 +53,7 @@ impl RepositoryManager {
         }
 
         Ok(Self {
+            github_token,
             local_repository_cache_dir_base,
         })
     }
@@ -61,72 +66,72 @@ impl RepositoryManager {
         Self::new(None).expect("Failed to initialize with system temporary directory")
     }
 
-    /// Parses a repository URL or local file path and prepares it for operations
-    ///
-    /// This method:
-    /// 1. Processes the repository location (URL or local path)
-    /// 2. For URLs: Extracts user and repo name, clones/updates the repository
-    /// 3. For local paths: Uses the path directly without cloning
-    ///
-    /// # Parameters
-    ///
-    /// * `repo_location` - The repository location (either a GitHub URL or local file path)
-    /// * `ref_name` - Optional branch or tag name (only used for URLs)
-    pub async fn parse_and_prepare_repository(
-        &self,
-        repo_location: RepositoryLocation,
-        ref_name: Option<String>,
-    ) -> Result<LocalRepository, String> {
-        match repo_location {
-            RepositoryLocation::LocalPath(local_path) => {
-                local_path.validate()?;
+    ///// Parses a repository URL or local file path and prepares it for operations
+    /////
+    ///// This method:
+    ///// 1. Processes the repository location (URL or local path)
+    ///// 2. For URLs: Extracts user and repo name, clones/updates the repository
+    ///// 3. For local paths: Uses the path directly without cloning
+    /////
+    ///// # Parameters
+    /////
+    ///// * `repo_location` - The repository location (either a GitHub URL or local file path)
+    ///// * `ref_name` - Optional branch or tag name (only used for URLs)
+    //pub async fn parse_and_prepare_repository(
+    //    &self,
+    //    repo_location: RepositoryLocation,
+    //    ref_name: Option<String>,
+    //) -> Result<LocalRepository, String> {
+    //    match repo_location {
+    //        RepositoryLocation::LocalPath(local_path) => {
+    //            local_path.validate()?;
 
-                Ok(local_path.clone())
-            }
-            RepositoryLocation::RemoteRepository(_) => {
-                // Handle GitHub repository URLs
-                // Parse repository URL
-                let (user, repo) = match parse_repository_url(repo_location) {
-                    Ok(result) => result,
-                    Err(e) => return Err(format!("Error: {}", e)),
-                };
+    //            Ok(local_path.clone())
+    //        }
+    //        RepositoryLocation::RemoteRepository(_) => {
+    //            // Handle GitHub repository URLs
+    //            // Parse repository URL
+    //            let (user, repo) = match parse_repository_url(repo_location) {
+    //                Ok(result) => result,
+    //                Err(e) => return Err(format!("Error: {}", e)),
+    //            };
 
-                // Get a temporary directory for the repository
-                let repo_dir = self.get_repo_dir(&user, &repo);
+    //            // Get a temporary directory for the repository
+    //            let repo_dir = self.get_repo_dir(&user, &repo);
 
-                // Check if repo is already cloned
-                let already_fetched = self.is_local_repo_exists(&repo_dir).await;
+    //            // Check if repo is already cloned
+    //            let already_fetched = self.is_local_repo_exists(&repo_dir).await;
 
-                // Clone ref_name once at the beginning to avoid ownership issues
-                let ref_name_clone = ref_name.clone();
+    //            // Clone ref_name once at the beginning to avoid ownership issues
+    //            let ref_name_clone = ref_name.clone();
 
-                // If repo is not cloned, clone it
-                if !already_fetched {
-                    // We've already matched this as GitHubUrl above, so no need to extract the URL again
-                    let clone_params = GitRemoteRepositoryInfo {
-                        user: user.clone(),
-                        repo: repo.clone(),
-                        ref_name: ref_name_clone.clone(),
-                    };
-                    self.clone_repository(&repo_dir, &clone_params).await?
-                } else {
-                    // Convert Option<String> to GitRef
-                    let ref_str = ref_name_clone.as_ref().map_or("main", |s| s.as_str());
-                    let git_ref = GitRef::new(ref_str);
-                    update_repository(&repo_dir, &git_ref).await?
-                }
+    //            // If repo is not cloned, clone it
+    //            if !already_fetched {
+    //                // We've already matched this as GitHubUrl above, so no need to extract the URL again
+    //                let clone_params = GitRemoteRepositoryInfo {
+    //                    user: user.clone(),
+    //                    repo: repo.clone(),
+    //                    ref_name: ref_name_clone.clone(),
+    //                };
+    //                self.clone_repository(&repo_dir, &clone_params).await?
+    //            } else {
+    //                // Convert Option<String> to GitRef
+    //                let ref_str = ref_name_clone.as_ref().map_or("main", |s| s.as_str());
+    //                let git_ref = GitRef::new(ref_str);
+    //                update_repository(&repo_dir, &git_ref).await?
+    //            }
 
-                Ok(LocalRepositoryInfo {
-                    remote_repository_info: Some(GitRemoteRepositoryInfo {
-                        user,
-                        repo,
-                        ref_name: ref_name_clone,
-                    }),
-                    repo_dir,
-                })
-            }
-        }
-    }
+    //            Ok(LocalRepositoryInfo {
+    //                remote_repository_info: Some(GitRemoteRepositoryInfo {
+    //                    user,
+    //                    repo,
+    //                    ref_name: ref_name_clone,
+    //                }),
+    //                repo_dir,
+    //            })
+    //        }
+    //    }
+    //}
 
     // Parse repository URL to extract user and repo name
     fn parse_repository_url(

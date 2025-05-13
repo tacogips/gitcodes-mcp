@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[derive(Clone)]
 pub struct GitHubCodeTools {
     /// The underlying GitHub service implementation
-    service: RepositoryManager,
+    manager: RepositoryManager,
 }
 
 impl GitHubCodeTools {
@@ -27,7 +27,7 @@ impl GitHubCodeTools {
     /// * `repository_cache_dir` - Optional path to a directory for storing cloned repositories.
     pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
         Self {
-            service: GitHubService::new(github_token, repository_cache_dir),
+            manager: RepositoryManager::new(github_token, repository_cache_dir),
         }
     }
 
@@ -44,7 +44,7 @@ impl GitHubCodeTools {
 
     /// Creates a new GitHubCodeTools with a specific GitHubService
     pub fn with_service(service: GitHubService) -> Self {
-        Self { service }
+        Self { manager: service }
     }
 }
 
@@ -60,7 +60,7 @@ impl ServerHandler for GitHubCodeTools {
     ///
     /// Returns server capabilities, protocol version, and usage instructions
     fn get_info(&self) -> ServerInfo {
-        let auth_status = self.service.get_auth_status();
+        let auth_status = self.manager.get_auth_status();
 
         let instructions = format!(
             "# GitHub and Rust Documentation MCP Server
@@ -169,7 +169,7 @@ impl GitHubCodeTools {
             page,
         };
 
-        self.service.search_repositories(params).await
+        self.manager.search_repositories(params).await
     }
 
     /// Search code in a GitHub repository
@@ -252,7 +252,7 @@ impl GitHubCodeTools {
             exclude_dirs,
         };
 
-        match self.service.grep_repository(params).await {
+        match self.manager.grep_repository(params).await {
             Ok(result) => result,
             Err(error) => format!("Search failed: {}", error),
         }
@@ -286,6 +286,6 @@ impl GitHubCodeTools {
         repo_location_str: String,
     ) -> Result<String, String> {
         let repository_location = RepositoryLocation::from_str(&repo_location_str)?;
-        self.service.list_repository_refs(repository_location).await
+        self.manager.list_repository_refs(repository_location).await
     }
 }
