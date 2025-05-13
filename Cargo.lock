@@ -789,6 +789,7 @@ dependencies = [
  "html2md",
  "lumin",
  "mockito",
+ "once_cell",
  "rand 0.8.5",
  "reqwest",
  "rmcp",

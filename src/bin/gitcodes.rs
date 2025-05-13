@@ -74,6 +74,9 @@ async fn run_stdio_server(
     github_token: Option<String>,
     repository_cache_dir: Option<std::path::PathBuf>
 ) -> Result<()> {
+    // Initialize the global repository manager at startup
+    // This ensures a single process_id is used throughout the application lifetime
+    let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(github_token.clone(), repository_cache_dir.clone());
     // Initialize the tracing subscriber with stderr logging
     let level = if debug {
         tracing::Level::DEBUG
@@ -112,6 +115,9 @@ async fn run_http_server(
     github_token: Option<String>,
     repository_cache_dir: Option<std::path::PathBuf>
 ) -> Result<()> {
+    // Initialize the global repository manager at startup
+    // This ensures a single process_id is used throughout the application lifetime
+    let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(github_token.clone(), repository_cache_dir.clone());
     // Setup tracing
     let level = if debug { "debug" } else { "info" };
 

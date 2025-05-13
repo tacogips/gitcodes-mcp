@@ -1,4 +1,4 @@
-use crate::gitcodes::*;
+use crate::gitcodes::{*, repository_manager};
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -52,10 +52,16 @@ impl GitHubCodeTools {
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
     /// * `repository_cache_dir` - Optional path to a directory for storing cloned repositories.
+    ///
+    /// This method initializes or reuses the global RepositoryManager instance to ensure
+    /// the same process_id is used throughout the process lifetime.
     pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
+        // Initialize the global repository manager with these parameters
+        // This will only have an effect the first time it's called
+        let manager = repository_manager::instance::init_repository_manager(github_token, repository_cache_dir);
+        
         Self {
-            manager: RepositoryManager::new(github_token, repository_cache_dir)
-                .expect("Failed to initialize repository manager"),
+            manager: manager.clone(),
         }
     }
 
@@ -70,9 +76,14 @@ impl GitHubCodeTools {
         Self::new(github_token, None)
     }
 
-    /// Creates a new GitHubCodeTools with a specific RepositoryManager
-    pub fn with_service(manager: RepositoryManager) -> Self {
-        Self { manager }
+    /// Creates a new GitHubCodeTools with the global RepositoryManager instance
+    ///
+    /// This method ignores the passed manager parameter and uses the global instance instead,
+    /// ensuring that all instances share the same process_id.
+    pub fn with_service(_manager: RepositoryManager) -> Self {
+        // Get the global repository manager
+        let manager = repository_manager::instance::get_repository_manager();
+        Self { manager: manager.clone() }
     }
 }
 

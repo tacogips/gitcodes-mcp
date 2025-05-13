@@ -356,6 +356,41 @@ async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Res
 - **Benefits:** Prevents resource conflicts when multiple processes use the same codebase
 - **When to apply:** For file system operations, shared resource access, parallel processing
 
+### Global Singleton Pattern for Per-Process Resources
+
+- **Pattern:** Use a global static instance with lazy initialization for per-process resources
+- **Example:** Process-wide `RepositoryManager` singleton using `once_cell`
+- **Implementation:**
+  ```rust
+  // Global singleton definition
+  static GLOBAL_REPOSITORY_MANAGER: OnceCell<RepositoryManager> = OnceCell::new();
+  
+  // Initialization function (called once at process startup)
+  pub fn init_repository_manager(
+      github_token: Option<String>,
+      repository_cache_dir: Option<PathBuf>,
+  ) -> &'static RepositoryManager {
+      GLOBAL_REPOSITORY_MANAGER.get_or_init(move || {
+          RepositoryManager::new(github_token, repository_cache_dir)
+              .expect("Failed to initialize global repository manager")
+      })
+  }
+  
+  // Access function (safely returns the singleton instance)
+  pub fn get_repository_manager() -> &'static RepositoryManager {
+      GLOBAL_REPOSITORY_MANAGER
+          .get_or_init(|| RepositoryManager::with_default_cache_dir())
+  }
+  ```
+- **Benefits:** 
+  - Ensures consistency across the entire process
+  - Preserves unique process identifiers throughout the application lifetime
+  - Prevents duplicate resource initialization
+- **When to apply:** 
+  - For resources that should be unique per process
+  - When resources have process-specific identifiers
+  - To avoid unnecessary duplication of heavyweight resources
+
 ### Authentication Methods
 
 - GitHub API authentication supports multiple methods:

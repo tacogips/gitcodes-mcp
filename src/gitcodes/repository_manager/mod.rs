@@ -1,4 +1,5 @@
 pub mod providers;
+pub mod instance;
 mod repository_location;
 
 use std::{num::NonZeroU32, path::PathBuf};

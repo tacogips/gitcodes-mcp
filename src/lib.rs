@@ -43,7 +43,24 @@
 //! - As an MCP server (STDIN/STDOUT mode)
 //! - Directly as a Rust library
 //!
-//! See the README.md file for usage examples.
+//! ## Process-Wide RepositoryManager
+//!
+//! This library uses a global singleton instance of `RepositoryManager` which is initialized
+//! at process startup. This ensures that the same process ID is maintained across all cloning
+//! operations within the process, preventing conflicts when multiple repositories are cloned.
+//!
+//! ```rust
+//! // Initialize the global repository manager (only happens once)
+//! let manager = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(
+//!     Some("github_token".to_string()), 
+//!     None
+//! );
+//!
+//! // Later access to the same instance
+//! let manager = gitcodes_mcp::gitcodes::repository_manager::instance::get_repository_manager();
+//! ```
+//!
+//! See the README.md file for more usage examples.
 
 pub mod gitcodes;
 pub mod tools;
