@@ -28,15 +28,18 @@ impl GitRemoteRepository {
             GitRemoteRepository::Github(github_info) => github_info.clone_url.clone(),
         }
     }
-    
+
     pub fn get_unique_name(&self) -> String {
         match self {
             GitRemoteRepository::Github(github_info) => {
-                format!("{}__{}", github_info.repo_info.user, github_info.repo_info.repo)
+                format!(
+                    "{}__{}",
+                    github_info.repo_info.user, github_info.repo_info.repo
+                )
             }
         }
     }
-    
+
     pub fn get_ref_name(&self) -> Option<String> {
         match self {
             GitRemoteRepository::Github(github_info) => github_info.repo_info.ref_name.clone(),
