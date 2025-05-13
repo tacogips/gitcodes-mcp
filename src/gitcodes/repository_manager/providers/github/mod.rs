@@ -85,10 +85,7 @@ impl GithubClient {
     }
 
     //TODO(tacogips) implthis
-    pub async fn get_default_branch(
-        &self,
-        get_default_branch_param: String, //TODO create new param struct
-    ) -> String {
+    pub async fn get_default_branch(&self, target_repository: &GitRemoteRepositoryInfo) -> String {
         unimplemented!()
     }
 

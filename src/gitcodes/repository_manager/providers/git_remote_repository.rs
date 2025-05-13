@@ -68,5 +68,5 @@ pub struct GitRemoteRepositoryInfo {
     /// Repository name
     pub repo: String,
     /// Branch or tag name to checkout
-    pub ref_name_str: Option<String>,
+    pub ref_name: Option<String>,
 }
