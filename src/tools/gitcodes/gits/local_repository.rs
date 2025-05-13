@@ -12,7 +12,7 @@ use thiserror::Error;
 pub struct LocalRepository(PathBuf);
 impl LocalRepository {
     /// Generate a unique directory name for the repository
-    fn new_local_repository_to_clone(
+    pub fn new_local_repository_to_clone(
         repository_cache_dir_base: &Path,
         user: &str,
         repo: &str,
@@ -24,8 +24,9 @@ impl LocalRepository {
     }
 
     /// Generate a unique directory name for the repository
-    fn new_existing_dir(path: PathBuf) -> Self {
-        Self(path)
+    pub fn new_existing_dir(path: PathBuf) -> Result<Self, String> {
+        //TODO(tacogips) check the path is valid
+        Ok(Self(path))
     }
 
     /// Check if repository is already cloned
@@ -314,5 +315,4 @@ impl LocalRepository {
         )
         .await
     }
-
 }
