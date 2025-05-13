@@ -588,3 +588,11 @@ MCP implements the following security measures:
 
 - Multiple requests to the same repository share temporary directories
 - Access to shared resources is protected by Rust's standard synchronization mechanisms
+
+## Implementation Notes
+
+### Type System Simplifications
+
+- Git references (branches and tags) are handled directly as string values (`&str`) rather than using a dedicated `GitRef` type, which simplifies the codebase without losing functionality
+- Repository cache directories (previously called temporary directories) use deterministic naming based on repository owner and name
+- The `RepositoryManager` structure has been enhanced to provide better encapsulation of repository operations

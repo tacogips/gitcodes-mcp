@@ -11,6 +11,37 @@ This file documents the development process, architectural decisions, and implem
 - Document any significant refactorings or architecture changes
 - Note any dependencies added or removed with rationale
 
+## Recent Refactoring
+
+The codebase has undergone refactoring to fix compilation errors and improve code organization. The key changes include:
+
+### Compilation Error Fixes
+
+- Fixed unclosed delimiter issue in `repository_manager/mod.rs`
+- Removed duplicate struct/enum definitions in the GitHub module
+- Fixed parameter name inconsistencies (params vs param)
+- Made the `providers` module public to allow imports from other modules
+- Moved `CodeSearchParams` struct outside impl block
+- Fixed error handling in `RepositoryManager::new()`
+- Added the `JsonSchema` derive for SortOption and OrderOption
+- Made the `github_token` field public in RepositoryManager
+- Fixed import paths in transport modules (sse_server, stdio)
+
+### Type System Simplification
+
+- Replaced `GitRef` struct with direct `String` usage to reduce unnecessary abstraction
+- Method signatures updated to use `&str` directly instead of `&GitRef`
+- This simplification improves code clarity by removing an unnecessary wrapper type
+
+### Documentation Updates
+
+- Updated README.md with GitHub API tools documentation
+- Added command line token authentication instructions
+- Documented custom repository cache directory configuration
+- Enhanced implementation notes section with repository caching details
+- Updated spec.md with details about type system changes
+- Added refactoring information to devlog.md for historical context
+
 ## Key Changes
 
 ### Type System Improvements

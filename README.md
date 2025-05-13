@@ -1,12 +1,15 @@
 # gitcodes MCP
 
-This is an MCP (Model Context Protocol) server that provides tools for Rust crate documentation lookup. It allows LLMs to look up documentation for Rust crates they are unfamiliar with.
+This is an MCP (Model Context Protocol) server that provides tools for Rust crate documentation lookup and GitHub code search. It allows LLMs to look up documentation for Rust crates they are unfamiliar with and search code repositories on GitHub.
 
 ## Features
 
 - Lookup crate documentation: Get general documentation for a Rust crate
 - Search crates: Search for crates on crates.io based on keywords
 - Lookup item documentation: Get documentation for a specific item (e.g., struct, function, trait) within a crate
+- GitHub repository search: Search for repositories on GitHub
+- GitHub code search: Grep through code in GitHub repositories
+- GitHub repository exploration: List branches and tags in repositories
 
 ## Installation
 
@@ -40,14 +43,32 @@ cargo run --bin gitcodes http --debug
 
 ### GitHub Authentication
 
-The GitHub API tools support both authenticated and unauthenticated requests:
+The GitHub API tools support both authenticated and unauthenticated requests with multiple authentication methods:
+
+#### Method 1: Command Line Argument (Highest Priority)
 
 ```bash
-# Set GitHub personal access token for higher rate limits (optional)
+# Provide GitHub token directly via command line
+cargo run --bin gitcodes http --github-token your_github_token
+```
+
+#### Method 2: Environment Variable
+
+```bash
+# Set GitHub personal access token via environment variable
 export GITCODE_MCP_GITHUB_TOKEN=your_github_token
 
 # Run with authentication
 cargo run --bin gitcodes http
+```
+
+#### Method 3: Custom Repository Cache Directory
+
+You can also specify a custom directory for storing cloned repositories:
+
+```bash
+# Use a custom cache directory
+cargo run --bin gitcodes http --cache-dir /path/to/cache/dir
 ```
 
 **Note**:
@@ -57,6 +78,7 @@ cargo run --bin gitcodes http
 - All operations on public repositories work without a token
 - Private repositories require a token with the `repo` scope
 - The token is read once at startup and stored in memory
+- Command line token takes precedence over environment variable if both are provided
 
 ````
 
@@ -159,11 +181,96 @@ Example:
 }
 ```
 
+### 4. `search_repositories`
+
+Searches for repositories on GitHub.
+
+Parameters:
+
+- `query` (required): The search query string
+- `sort_by` (optional): How to sort results (Options: "relevance", "stars", "forks", "updated")
+- `order` (optional): Sort order (Options: "asc", "desc", default: "desc")
+- `per_page` (optional): Results per page (default: 30, max: 100)
+- `page` (optional): Page number (default: 1)
+
+Example:
+
+```json
+{
+  "name": "search_repositories",
+  "arguments": {
+    "query": "rust http client",
+    "sort_by": "stars",
+    "order": "desc",
+    "per_page": 10,
+    "page": 1
+  }
+}
+```
+
+### 5. `grep_repository`
+
+Searches for code patterns within a GitHub repository.
+
+Parameters:
+
+- `repository` (required): Repository URL (formats: "https://github.com/user/repo", "git@github.com:user/repo.git", "github:user/repo")
+- `ref_name` (optional): Branch or tag name (default: main or master)
+- `pattern` (required): Search pattern
+- `case_sensitive` (optional): Whether to be case-sensitive (default: false)
+- `use_regex` (optional): Whether to use regex (default: true)
+- `file_extensions` (optional): File extensions to search (e.g., ["rs", "toml"])
+- `exclude_dirs` (optional): Directories to exclude (e.g., ["target", "node_modules"])
+
+Example:
+
+```json
+{
+  "name": "grep_repository",
+  "arguments": {
+    "repository": "https://github.com/tokio-rs/tokio",
+    "ref_name": "master",
+    "pattern": "async fn",
+    "case_sensitive": false,
+    "file_extensions": ["rs"]
+  }
+}
+```
+
+### 6. `list_repository_refs`
+
+Lists branches and tags for a GitHub repository.
+
+Parameters:
+
+- `repository` (required): Repository URL (formats: "https://github.com/user/repo", "git@github.com:user/repo.git", "github:user/repo")
+
+Example:
+
+```json
+{
+  "name": "list_repository_refs",
+  "arguments": {
+    "repository": "https://github.com/rust-lang/rust"
+  }
+}
+```
+
 ## Implementation Notes
 
+### Crate Documentation Features
 - The server includes a caching mechanism to prevent redundant API calls for the same documentation
 - It interfaces with docs.rs for crate documentation and crates.io for search functionality
 - Results are returned as plain text/HTML content that can be parsed and presented by the client
+
+### GitHub Code Search Features
+- Repositories are cloned to a local cache directory using shallow clones (--depth=1)
+- Repository cache directories are reused for subsequent searches on the same repository
+- Repositories are automatically updated (git pull) when accessed
+- Cache directory paths follow a deterministic naming pattern based on repository owner and name
+- Git references (branches, tags) can be specified for search operations
+- Lightweight type system for repository locations (GitHub URL vs. local path)
+- Support for multiple authentication methods (command line, environment variable)
 
 ## MCP Protocol Integration
 
@@ -173,5 +280,3 @@ This server implements the Model Context Protocol (MCP) which allows it to be ea
 
 MIT License
 
-│ > git_repository.rsでstd::process::Command::new("git")を使用している箇所のうち、gitoxideで代替可能な処理をそちらを使用するようにして。必要であればcratedocsを確認して。 │
-│ think and output only in english。 │
