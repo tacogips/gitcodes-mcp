@@ -202,6 +202,16 @@ In the ServerHandler's get_info() implementation:
 
 ## Development Guidelines
 
+### Library Source Code References
+
+When working with this project's dependencies:
+
+- Library source code may be stored in the `.private.deps-src` directory
+- If you're unsure about library API usage, function signatures, or implementation details, check the source code in `.private.deps-src`
+- Utilize MCP tools like `mcp__cratedocs-mcp__lookup_item_tool`, `mcp__cratedocs-mcp__lookup_crate`, and `mcp__cratedocs-mcp__lookup_item_examples` to understand library usage patterns
+- For libraries not available locally, use the `mcp__bravesearch__brave_web_search` tool to find documentation and examples
+- Always prefer consulting the actual source code over making assumptions about library behavior
+
 ### Documentation Terminology
 
 In this project, the term "documentation" or "project documentation" refers to the following:
