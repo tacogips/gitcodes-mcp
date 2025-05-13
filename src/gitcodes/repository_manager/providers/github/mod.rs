@@ -313,7 +313,7 @@ impl GithubClient {
     /// let url = construct_search_url(&params);
     /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
     /// ```
-    pub fn construct_search_url(param: &GithubSearchParams) -> String {
+    fn construct_search_url(param: &GithubSearchParams) -> String {
         // Set up sort parameter using Default implementation
         let default_sort = GithubSortOption::default();
         let sort = param.sort_by.as_ref().unwrap_or(&default_sort).to_str();

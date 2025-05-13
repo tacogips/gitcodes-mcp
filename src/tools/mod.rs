@@ -234,28 +234,30 @@ impl GitHubCodeTools {
             description = "Directories to exclude from search (optional, e.g., [\"target\", \"node_modules\"]). Skips specified directories during search. Common build directories are excluded by default."
         )]
         exclude_dirs: Option<Vec<String>>,
-    ) -> String {
-        // Parse the repository string to a RepositoryLocation
-        let repo_location = match RepositoryLocation::from_str(&repository_location) {
-            Ok(location) => location,
-            Err(e) => return format!("Invalid repository location: {}", e),
-        };
+    ) -> Result<String, String> {
+        let repository_location = RepositoryLocation::from_str(&repo_location_str)?;
 
-        // Create a GrepParams struct from the individual parameters
-        let params = GrepParams {
-            repository_location: repo_location,
-            ref_name,
-            pattern,
-            case_sensitive,
-            use_regex,
-            file_extensions,
-            exclude_dirs,
-        };
+        //// Parse the repository string to a RepositoryLocation
+        //let repo_location = match RepositoryLocation::from_str(&repository_location) {
+        //    Ok(location) => location,
+        //    Err(e) => return format!("Invalid repository location: {}", e),
+        //};
 
-        match self.manager.grep_repository(params).await {
-            Ok(result) => result,
-            Err(error) => format!("Search failed: {}", error),
-        }
+        //// Create a GrepParams struct from the individual parameters
+        //let params = GrepParams {
+        //    repository_location: repo_location,
+        //    ref_name,
+        //    pattern,
+        //    case_sensitive,
+        //    use_regex,
+        //    file_extensions,
+        //    exclude_dirs,
+        //};
+
+        //match self.manager.grep_repository(params).await {
+        //    Ok(result) => result,
+        //    Err(error) => format!("Search failed: {}", error),
+        //}
     }
 
     /// List branches and tags for a GitHub repository

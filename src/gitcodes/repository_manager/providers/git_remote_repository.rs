@@ -3,6 +3,12 @@ use crate::gitcodes::repository_manager::providers::github::{
 };
 use anyhow::{anyhow, Result};
 
+#[derive(Debug, Clone, strum::Display, strum::EnumString)]
+pub enum GitProvider {
+    #[strum(serialize = "github")]
+    Github,
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub enum GitRemoteRepository {
     Github(GithubRemoteInfo),
@@ -16,7 +22,8 @@ impl GitRemoteRepository {
             Err(anyhow!("invalid remote git url: {}", url))
         }
     }
-    fn clone_url(&self) -> String {
+
+    pub fn clone_url(&self) -> String {
         match self {
             GitRemoteRepository::Github(github_info) => github_info.clone_url.clone(),
         }
