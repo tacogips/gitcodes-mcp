@@ -1,678 +1,291 @@
 # Development Log
 
-This file documents the development process, architectural decisions, and implementation details for the GitCodes MCP project.
-
-**IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the history documented here.
-
-## Structure
-
-- Each major change or feature should be documented with a date
-- Include design decisions, implementation challenges, and solutions
-- Document any significant refactorings or architecture changes
-- Note any dependencies added or removed with rationale
-
-## Recent Refactoring
-
-The codebase has undergone refactoring to fix compilation errors and improve code organization. The key changes include:
-
-### Compilation Error Fixes
-
-- Fixed unclosed delimiter issue in `repository_manager/mod.rs`
-- Removed duplicate struct/enum definitions in the GitHub module
-- Fixed parameter name inconsistencies (params vs param)
-- Made the `providers` module public to allow imports from other modules
-- Moved `CodeSearchParams` struct outside impl block
-- Fixed error handling in `RepositoryManager::new()`
-- Added the `JsonSchema` derive for SortOption and OrderOption
-- Made the `github_token` field public in RepositoryManager
-- Fixed import paths in transport modules (sse_server, stdio)
-
-### Type System Simplification
-
-- Replaced `GitRef` struct with direct `String` usage to reduce unnecessary abstraction
-- Method signatures updated to use `&str` directly instead of `&GitRef`
-- This simplification improves code clarity by removing an unnecessary wrapper type
-
-### Documentation Updates
-
-- Updated README.md with GitHub API tools documentation
-- Added command line token authentication instructions
-- Documented custom repository cache directory configuration
-- Enhanced implementation notes section with repository caching details
-- Updated spec.md with details about type system changes
-- Added refactoring information to devlog.md for historical context
-
-## Key Changes
-
-### Type System Improvements
-
-- **Replace GitRef with String**: Replaced GitRef struct with direct String usage
-  - Pattern: Use native types instead of single-field wrapper structs when they don't provide significant additional functionality
-  - Rationale: Simplified codebase by removing unnecessary abstractions
-  - Implementation:
-    ```diff
-    - // GitRef struct definition
-    - pub struct GitRef {
-    -     pub name: String,
-    - }
-    - 
-    - // Method using GitRef
-    - async fn update_repository(&self, _git_ref: &GitRef) -> Result<(), String> {
-    -     // Implementation...
-    - }
-    
-    + // Method using String directly
-    + async fn update_repository(&self, _ref_name: &str) -> Result<(), String> {
-    +     // Implementation...
-    + }
-    ```
-  - Apply this pattern when wrapper types don't add significant value or behavior
-
-### Type System Improvements
-
-- **Clone Parameters Struct**: Created `RemoteGitRepositoryInfo` to encapsulate user, repo, and ref_name parameters for repository cloning
-
-  - Pattern: Use structured types for parameter groups that are commonly used together
-  - Rationale: Improves code readability, reduces parameter count, and makes function signatures more maintainable
-  - Implementation:
-
-    ```rust
-    // Structured parameter type for clone_repository function
-    #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
-    pub struct RemoteGitRepositoryInfo {
-        pub user: String,
-        pub repo: String,
-        pub ref_name: String,
-    }
-
-    // Updated function signature using the structured parameter
-    async fn clone_repository(repo_dir: &Path, params: &RemoteGitRepositoryInfo) -> Result<(), String> { ... }
-    ```
-
-  - Apply this pattern for other parameter groups that are passed together frequently
-
-### Type System Improvements
-
-- **Repository Location Enum**: Changed `GrepParams.repository` and `list_repository_refs` parameter type from String to `RepositoryLocation` enum
-
-  - Pattern: Use enums to represent distinct variants with different behaviors
-  - Rationale: Strong type safety prevents runtime errors by making GitHub URLs vs local paths explicit
-  - Implementation:
-
-    ```rust
-    // Example of the enum pattern to use:
-    pub enum RepositoryLocation {
-        GitHubUrl(String),
-        LocalPath(PathBuf),
-    }
-
-    // Include FromStr for string conversion:
-    impl FromStr for RepositoryLocation { ... }
-
-    // Ensure serialization support:
-    #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
-    ```
-
-  - Future extension: This pattern can be expanded to support other source types (GitLab, BitBucket, etc.)
-
-- **Field Naming Clarity**: Renamed `repository` field to `repository_location`
-  - Pattern: Field names should reflect both their type and purpose
-  - Rationale: Descriptive naming improves code readability and self-documents the API
-  - Implementation guidance: When field type is an enum, include the enum name in the field name
-  - Apply consistently in:
-    - Struct definitions
-    - Function parameters
-    - Tool parameter descriptions
-    - API documentation
-
-### Architecture Patterns
-
-#### Deterministic Repository Hash Generation
-
-We've improved the repository hash generation to create deterministic hashes based on repository owner and name:  
-
-```rust
-fn generate_repository_hash(remote_repository_info: &RemoteGitRepositoryInfo) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    // Create a string combining user and repo
-    let repo_key = format!("{}/{}", remote_repository_info.user, remote_repository_info.repo);
-    
-    // Create a hash using DefaultHasher
-    let mut hasher = DefaultHasher::new();
-    repo_key.hash(&mut hasher);
-    let hash_value = hasher.finish();
-    
-    // Convert to a 12-character hexadecimal string
-    let hex = format!("{:x}", hash_value);
-    
-    // Ensure we have at least 12 characters
-    if hex.len() >= 12 {
-        hex[0..12].to_string()
-    } else {
-        // Pad with zeros if needed (unlikely with a 64-bit hash)
-        format!("{:0>12}", hex)
-    }
-}
-```
-
-This approach replaced the previous UUID-based implementation, providing several benefits:
-
-- **Deterministic caching**: The same repository always gets the same hash, enabling better caching
-- **Predictable behavior**: Repository paths are consistent across runs
-- **No dependencies**: Removed dependency on random UUID generation
-- **Efficient**: Uses Rust's standard library hashing capabilities
-
-- **Separation of Concerns**: Refactored search result formatting
-
-  - Pattern: Lower-level modules should return raw data; formatting belongs in UI/API layers
-  - Rationale: Makes components more reusable and simplifies testing
-  - Implementation:
-
-    ```rust
-    // Prefer this pattern in service methods:
-    pub async fn grep_repository(&self, params: GrepParams) -> Result<String, String> {
-        // Return raw results without formatting
-    }
-
-    // Let the API layer handle formatting:
-    match self.service.grep_repository(params).await {
-        Ok(result) => format_for_display(result),
-        Err(error) => format!("Search failed: {}", error),
-    }
-    ```
-
-  - Apply this pattern when adding new API methods
-
-- **Error Propagation**: Use Result types for operations that can fail
-  - Pattern: Return `Result<T, E>` instead of raw values when errors are possible
-  - Rationale: Makes error handling explicit and ensures errors aren't lost
-  - Implementation:
-    ```rust
-    // Preferred pattern for public methods:
-    pub async fn operation_name(&self) -> Result<SuccessType, ErrorType> {
-        match potentially_failing_operation() {
-            Ok(value) => Ok(value),
-            Err(e) => Err(format!("Descriptive error: {}", e)),
-        }
-    }
-    ```
-  - Apply this pattern consistently in all service methods
-  - Higher-level modules can format results as needed for various use cases
-
-### Repository Cache Directory Configuration
-
-- Renamed fields and parameters for better semantic clarity:
-  - Changed `temp_dir_base` to `repository_cache_dir_base` in RepositoryManager
-  - Updated CLI parameter from `--temp-dir` to `--cache-dir` with short form `-c`
-  - Updated all method and constructor parameters for consistency
-- Improved terminology throughout the codebase:
-  - Updated documentation to use "repository cache" instead of "temporary directory"
-  - Changed convenience method names from `with_default_temp_dir` to `with_default_cache_dir`
-  - Updated log messages to use "repository cache directory" for clarity
-- Enhanced CLI help text to better explain the purpose of the parameter
-- Updated all related code paths to maintain consistency:
-  - Parameter names in constructors
-  - Variable names in function implementations
-  - Field names in structs
-  - Messages in logging statements
-
-### Custom Temporary Directory Configuration
-
-- Added option to configure custom temporary directory for repository storage:
-  - Modified `RepositoryManager::new()` to accept an optional PathBuf for temp_dir_base
-  - Added validation to ensure the directory exists and is writable
-  - Added fallback to system temporary directory if none provided
-  - Implemented proper error handling for validation failures
-- Added `--temp-dir` command-line parameter to both stdio and http server modes:
-  - Updated clap configuration in the main binary
-  - Added clear help text describing the parameter function
-  - Implemented proper logging to notify when custom directory is used
-- Updated service initialization chain:
-  - Modified `GitHubService::new()` and `GitHubCodeTools::new()` to accept temp_dir parameter
-  - Added convenience methods `with_default_temp_dir()` for backward compatibility
-  - Updated transport implementations to pass the parameter through
-- Enhanced robustness with proper I/O validation:
-  - Added existence check for specified directory
-  - Added check to verify the path is a directory and not a file
-  - Added write permission verification using a test file
-
-### Type Safety with Path and PathBuf
-
-- Replaced string path representations with proper Path and PathBuf types:
-  - Changed `repo_dir` in `RepositoryInfo` from `String` to `PathBuf`
-  - Changed `temp_dir_base` in `RepositoryManager` from `String` to `PathBuf`
-  - Updated all related method signatures to use `&Path` instead of `&str` for path parameters
-  - Modified `get_repo_dir` to use `PathBuf::join()` instead of string concatenation
-- Enhanced error handling for path operations:
-  - Used `Path::to_string_lossy()` for paths that need to be passed to command-line tools
-  - Maintained proper path handling throughout the codebase
-- Improved code safety and maintainability:
-  - Better type safety by using specialized path types
-  - Clearer semantics for path and directory operations
-  - More robust path manipulation using standard library functions
-- Eliminated potential path handling bugs and edge cases
-
-### Encapsulation and Access Control
-
-- Restricted visibility of internal helper functions in the `git_repository` module:
-  - Changed `parse_repository_url` from `pub fn` to `fn`
-  - Changed `clone_repository` from `pub async fn` to `async fn`
-  - Changed `update_repository` from `pub async fn` to `async fn`
-  - Changed internal methods on `RepositoryManager` from `pub fn` to `fn` where possible
-- Improved code encapsulation by limiting public API surface:
-  - Only exposed methods and types required by external modules
-  - Kept `RepositoryInfo` struct and its fields public as they're used externally
-  - Maintained `parse_and_prepare_repository` method as public since it's needed by `GitHubService`
-- Enhanced maintainability by reducing API surface area:
-  - Limited exposure of implementation details
-  - Made code changes easier by reducing public contract
-  - Followed the principle of least privilege
-
-### Refactor Repository Manager Methods
-
-- Converted standalone functions in `git_repository.rs` to methods on the `RepositoryManager` struct:
-  - Moved `get_repo_dir` to a method on `RepositoryManager`
-  - Moved `is_repo_cloned` to a method on `RepositoryManager`
-  - Moved `parse_and_prepare_repository` to a method on `RepositoryManager`
-- Updated callers in the `GitHubService` class to use the new method-based approach
-- Improved the code organization by following object-oriented principles:
-  - Methods that operate on `RepositoryManager` state are now properly encapsulated
-  - Clear distinction between stateless utility functions and object methods
-- Simplified function signatures by removing the redundant manager parameter
-- Enhanced code readability and maintainability
-
-### Refactor Repository Management to Git Repository Module
-
-- Moved repository management functionality from `GitHubService` to `git_repository.rs`:
-  - Extracted `RepositoryInfo` struct to the module
-  - Moved `parse_and_prepare_repository` method from `GitHubService` to `git_repository` module
-  - Updated GitHubService methods to use the new consolidated function
-- Enhanced code organization by completing the separation of concerns between:
-  - Repository management (cloning, updating, info extraction)
-  - Service orchestration (high-level API)
-- Made the repository preparation more consistent across different methods
-- Improved readability by reducing redundancy in the code
-- Eliminated dead code warning for `RepositoryInfo` fields by making them public
-
-### Refactor Code Search Functions to Separate Module
-
-- Created a new `code_search.rs` module for code search functionality:
-  - Extracted `perform_code_search` function from `GitHubService` class
-  - Extracted `format_search_results` function from `GitHubService` class
-  - Made the module private with mod-level visibility
-- Updated the `grep_repository` method to use the new functions
-- Improved initialization of SearchOptions using struct initialization rather than mutation
-- Enhanced code organization by following better separation of concerns:
-  - `params.rs` for data structures
-  - `github_api.rs` for API interaction logic
-  - `git_repository.rs` for Git operations
-  - `code_search.rs` for code search logic
-  - `mod.rs` for service orchestration
-- Maintained all functionality while improving code maintainability
-
-### Refactor Git Repository Functions to Separate Module
-
-- Extracted repository operations from `GitHubService` to `git_repository.rs`:
-  - Moved `clone_repository` function to the `git_repository` module as mentioned in the TODO comment
-  - Moved `update_repository` function to the `git_repository` module
-  - Removed the duplicate implementations from `GitHubService`
-  - Updated function calls in `GitHubService` to use the new functions
-- Enhanced code organization by grouping related functionality:
-  - All Git operations now reside in the `git_repository` module
-  - Service class now delegates repository operations rather than implementing them
-- Improved code reusability by making these functions public and stateless
-- Enhanced maintainability by eliminating duplicate code
-- Completed refactoring mentioned in TODO comment
-
-### Refactor GitHub API Functions to Separate Module
-
-- Moved API-related functionality from `GitHubService` to a separate `github_api.rs` module:
-  - Extracted `construct_search_url` function from `SearchParams` implementation
-  - Moved `execute_search_request` method from `GitHubService` class to a standalone function
-  - Made `github_api` module private with mod-level visibility
-- Updated `search_repositories` method in `GitHubService` to use the new function
-- Simplified token handling in the `GitHubService::new` function
-- Added TODO comments for future improvements, including proper error handling using `anyhow::Result<String>`
-- Enhanced code organization by following better separation of concerns:
-  - `params.rs` for data structures
-  - `github_api.rs` for API interaction logic
-  - `mod.rs` for service orchestration
-- Maintained documentation for the extracted API methods
-- Improved modularity and maintainability by grouping related functionality
-
-### Move Git Repository Manager to GitHub Service Package
-
-- Moved `git_repository.rs` from `gitcodes` directory to `git_service` directory
-- Reorganized imports and function calls to use the relocated module
-- Updated `git_service/mod.rs` to export and use the git repository functionality
-- Modified the main `gitcodes/mod.rs` to re-export the repository manager
-- Ensured backward compatibility with existing API
-- Completed the restructuring of all GitHub-related components into a single package
-- Improved code organization by keeping related components together
-- Enhanced maintainability with a more consistent module structure
-
-### Refactor GitHub Service Components into Separate Package
-
-- Created a dedicated `git_service` directory under `gitcodes` to improve code organization
-- Moved parameter-related structs and enums to a separate `params.rs` file:
-  - `SearchParams` struct and methods
-  - `GrepParams` struct and methods
-  - `SortOption` enum
-  - `OrderOption` enum
-- Moved service implementation to `git_service/mod.rs`
-- Updated imports and exports throughout the codebase
-- Modified documentation to reflect the new module structure
-- Maintained backward compatibility with existing API
-- Enhanced code organization by following better separation of concerns
-- Improved code maintainability by grouping related components
-
-### Create GrepParams Struct for Code Search
-
-- Created a new `GrepParams` struct for code search parameters
-- Refactored `GitHubService::grep_repository()` to use the structured parameter type
-- Updated `GitHubCodeTools::grep_repository()` to create and pass a GrepParams struct
-- Enhanced code documentation with examples for the new parameter type
-- Aligned implementation with specification in spec.md which already defined `GrepRequest`
-- Improved API consistency between search_repositories and grep_repository methods
-- Followed the same pattern used for the SearchParams refactoring
-- Added comprehensive Rustdoc comments for better developer experience
-
-### Merge SearchParams and Eliminate InternalSearchParams
-
-- Consolidated search parameter handling by removing `InternalSearchParams` struct
-- Moved functionality directly into `SearchParams` implementation
-- Enhanced encapsulation by adding `construct_search_url()` method directly to `SearchParams`
-- Simplified the API by removing an unnecessary abstraction layer
-- Improved code readability and maintainability by consolidating parameter validation
-- Updated `GitHubService::search_repositories()` to work with the merged implementation
-- Reduced code duplication and improved type safety
-- Removed internal parameter conversion, making the code more maintainable
-
-### Add Command Line GitHub Token Configuration
-
-- Added `--github-token` parameter to command line interface using clap
-- Created option for passing GitHub token directly through command line arguments
-- Implemented priority authentication flow:
+This file documents the architectural decisions and implementation patterns for the GitCodes MCP project. It's organized by pattern categories rather than chronological history to better guide future code generation.
+
+**IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the patterns documented here.
+
+## Type System Patterns
+
+### Use Native Types Over Single-Field Wrappers
+
+- **Pattern:** Replace wrapper types with native Rust types when they don't add significant behavior
+- **Example:** Replaced `GitRef` struct with direct `String` usage
+- **Implementation:**
+  ```rust
+  // Instead of:
+  pub struct GitRef { pub name: String }
+  async fn update_repository(&self, git_ref: &GitRef) -> Result<(), String> { ... }
+  
+  // Use directly:
+  async fn update_repository(&self, ref_name: &str) -> Result<(), String> { ... }
+  ```
+- **When to apply:** When a wrapper type doesn't add validation, behavior, or type safety
+
+### Parameter Grouping With Structured Types
+
+- **Pattern:** Group related parameters into a structured type
+- **Example:** `RemoteGitRepositoryInfo` for repository cloning parameters
+- **Implementation:**
+  ```rust
+  #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+  pub struct RemoteGitRepositoryInfo {
+      pub user: String,
+      pub repo: String,
+      pub ref_name: String,
+  }
+  
+  async fn clone_repository(repo_dir: &Path, params: &RemoteGitRepositoryInfo) -> Result<(), String> { ... }
+  ```
+- **When to apply:** When multiple parameters are often passed together
+
+### Type-Safe Variants With Enums
+
+- **Pattern:** Use enums to represent different variants with distinct behaviors
+- **Example:** `RepositoryLocation` for GitHub URLs vs local paths
+- **Implementation:**
+  ```rust
+  pub enum RepositoryLocation {
+      GitHubUrl(String),
+      LocalPath(PathBuf),
+  }
+  
+  impl FromStr for RepositoryLocation { ... }
+  ```
+- **When to apply:** When a parameter can have multiple distinct types with different behaviors
+
+### Descriptive Field Naming
+
+- **Pattern:** Field names should reflect both type and purpose
+- **Example:** Renamed `repository` to `repository_location` for clarity
+- **When to apply:** When using enum types as fields, include the enum name in the field name
+- **Apply consistently in:** Struct definitions, function parameters, API documentation
+
+## Architecture Patterns
+
+### Deterministic Resource Naming
+
+- **Pattern:** Generate consistent identifiers for resources
+- **Example:** Repository cache directory naming using hash of repository info
+- **Implementation:**
+  ```rust
+  fn generate_repository_hash(info: &RemoteGitRepositoryInfo) -> String {
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
+      
+      let repo_key = format!("{}/{}", info.user, info.repo);
+      let mut hasher = DefaultHasher::new();
+      repo_key.hash(&mut hasher);
+      let hash_value = hasher.finish();
+      
+      format!("{:x}", hash_value)[0..12].to_string()
+  }
+  ```
+- **Benefits:** Predictable caching, consistent paths, no need for random UUID generation
+
+### Separation of Concerns
+
+- **Pattern:** Separate data handling from presentation
+- **Example:** Low-level modules return raw data; formatting done in API layers
+- **Implementation:**
+  ```rust
+  // Service method returns raw data:
+  pub async fn grep_repository(&self, params: GrepParams) -> Result<GrepResult, String> { ... }
+  
+  // API layer handles formatting:
+  match service.grep_repository(params).await {
+      Ok(result) => format_for_display(result),
+      Err(error) => format!("Search failed: {}", error),
+  }
+  ```
+- **Application:** Service methods, API controllers, data transformations
+
+### Explicit Error Handling
+
+- **Pattern:** Use Result types for operations that can fail
+- **Implementation:**
+  ```rust
+  pub async fn operation_name(&self) -> Result<SuccessType, ErrorType> {
+      match potentially_failing_operation() {
+          Ok(value) => Ok(value),
+          Err(e) => Err(format!("Descriptive error: {}", e)),
+      }
+  }
+  ```
+- **When to apply:** All functions that can fail should return Result
+
+## Module Organization Patterns
+
+### Feature-Based Module Structure
+
+- **Pattern:** Organize code by feature rather than technical layer
+- **Example:** Dedicated modules for GitHub API, Git repository operations, code search
+- **Implementation:**
+  ```
+  gitcodes/
+   ├── github/
+   │   ├── api.rs           # GitHub API operations
+   │   ├── params.rs         # API parameter structures
+   │   └── mod.rs
+   ├── repository/
+   │   ├── manager.rs        # Repository management
+   │   ├── location.rs       # Repository location types
+   │   └── mod.rs
+   └── mod.rs
+  ```
+- **Benefits:** Improves discoverability, keeps related code together
+
+### Component Encapsulation
+
+- **Pattern:** Hide implementation details behind public interfaces
+- **Example:** Making helper functions module-private with explicit public APIs
+- **Implementation:**
+  ```rust
+  // Private implementation:
+  fn parse_repository_url(url: &str) -> Result<(String, String), String> { ... }
+  
+  // Public interface:
+  pub fn prepare_repository(url: &str) -> Result<RepositoryInfo, String> {
+      let (user, repo) = parse_repository_url(url)?;
+      // ...
+  }
+  ```
+- **When to apply:** For internal helper functions, implementation details
+
+### Method Refactoring
+
+- **Pattern:** Convert standalone functions to methods on relevant structs
+- **Example:** Moving repository utility functions to `RepositoryManager` methods
+- **Implementation:**
+  ```rust
+  // Instead of:
+  fn get_repo_dir(manager: &RepositoryManager, info: &RepositoryInfo) -> PathBuf { ... }
+  
+  // Use:
+  impl RepositoryManager {
+      fn get_repo_dir(&self, info: &RepositoryInfo) -> PathBuf { ... }
+  }
+  ```
+- **Benefits:** Better encapsulation, clearer ownership, simplified signatures
+
+## API Design Patterns
+
+### Authentication Options Hierarchy
+
+- **Pattern:** Implement a clear priority order for configuration options
+- **Example:** GitHub token authentication precedence
+- **Implementation:**
   1. Command line argument (highest priority)
   2. Programmatic parameter (second priority)
   3. Environment variable (fallback)
-- Modified transport implementations (stdio and sse_server) to accept the token parameter
-- Updated all documentation to reflect the three authentication options
-- Enhanced flexibility by supporting multiple authentication methods
-- Added tracing information to log when command line token is used
-- Ensured backward compatibility with all existing authentication methods
-
-### Merge Authentication Methods in GitHubService
-
-- Refactored `GitHubService::new()` to accept an optional GitHub token parameter
-- Merged functionality from `with_token()` into the main constructor
-- Simplified the API by using a single method with flexible authentication options
-- Added token priority: explicit parameter takes precedence over environment variable
-- Updated `GitHubCodeTools` constructor to match the changes
-- Updated documentation and examples to reflect the unified approach
-- Enhanced maintainability by reducing duplicate code
-- This change maintains backward compatibility by supporting both authentication methods
-
-### Update GitHubService to Accept GitHub Token Parameter
-
-- Modified `GitHubService` to accept a GitHub token directly during initialization
-- Added a new `GitHubService::with_token()` method for explicit token configuration
-- Added a matching `GitHubCodeTools::with_token()` method to the wrapper class
-- Updated documentation to describe both authentication methods (environment variable and programmatic)
-- Enhanced user experience by providing flexibility in how authentication is configured
-- Updated the `get_info()` method to document both authentication approaches
-- This change maintains backward compatibility as the original approach (environment variable) still works
-
-### Refactor construct_search_url Method to InternalSearchParams
-
-- Moved `construct_search_url` method from `GitHubService` to `InternalSearchParams`
-- Updated reference in `GitHubService::search_repositories` to use the new method
-- Improved encapsulation by placing URL construction logic with the parameters it uses
-- Enhanced code organization by following the principle that methods should be on the data they operate on
-- Made the API more intuitive as the search parameters now directly construct their URL representation
-
-### Refactor build_internal_search_params to Use InternalSearchParams::new
-
-- Modified `build_internal_search_params` method to use the `InternalSearchParams::new()` constructor
-- Updated comments in the method to be more concise and descriptive
-- Improved code maintainability by using proper constructor pattern
-- Removed redundant comment about ensuring per_page limits as this is now handled in the constructor
-
-### Add InternalSearchParams Constructor Method
-
-- Added a new `InternalSearchParams::new()` constructor method to improve encapsulation and code clarity
-- Constructor method now handles GitHub API limit validation (capping per_page at 100)
-- Updated `build_internal_search_params` to use the new constructor method
-- Improved code maintainability by centralizing parameter validation and initialization logic
-- Enhanced documentation with clearer parameter descriptions
-
-### Implement Default Trait for Enums
-
-- Implemented `Default` trait for `SortOption` and `OrderOption` enums
-- Added `Relevance` variant to `SortOption` with empty string serialization
-- Updated `build_internal_search_params` to use the `Default` implementations
-- Removed hardcoded default values ("", "desc") in favor of type-safe defaults
-- Improved code maintainability by centralizing default value definitions in the enum types
-
-### Add strum for Enum String Conversion
-
-- Added `strum` crate as a dependency for simplifying enum-to-string conversions
-- Applied derive macros to `SortOption` and `OrderOption` enums:
-  - `Display`: Enables formatting enum values with `{}` in strings
-  - `EnumString`: Allows parsing strings into enum values
-  - `AsRefStr`: Provides `as_ref()` method for string references
-- Used `#[strum(serialize_all = "lowercase")]` to ensure all variants output lowercase by default
-- Added specific `#[strum(serialize = "...")]` attributes for custom API string values:
-  - `Ascending` → "asc"
-  - `Descending` → "desc"
-- Simplified the `to_str()` methods to use the derived `as_ref()` method
-- Fixed lifetime issues by removing the `'static` constraint
-- Maintained backward compatibility with existing API pattern
-
-### Refactor Search Parameters to Use Structured Type
-
-- Changed `search_repositories` parameter from individual parameters to a unified `SearchParams` struct
-- Converted the existing `SearchParams` struct from an internal implementation detail to a public API parameter
-- Added proper documentation for each field with `#[schemars(description = "...")]` annotations
-- Updated `tool` description to show the new structured parameter format
-- Created an internal `InternalSearchParams` struct to maintain separation between API and implementation details
-- Modified the search URL construction to use the new structured parameter type
-- Updated example usage in tool documentation to demonstrate the new approach
-
-### Remove Leftover Tool Attributes
-
-- Removed remaining `#[tool]` attributes from `GitHubService::search_repositories`
-- Cleaned up unused imports (`tool`, `schemars`) from `mod.rs`
-- Fixed formatting issues in the module
-- Completed the proper separation of core functionality and MCP tool interface
-
-### Reorganize Git Repository Code Structure
-
-- Moved `RepositoryManager` struct from `mod.rs` to `git_repository.rs`
-- Made `temp_dir_base` field module-private with `pub(crate)` visibility
-- Improved encapsulation by keeping Git-related functionality in its dedicated file
-- Better organization of code following separation of concerns principles
-
-### Refactor MCP Tool Implementation with Wrapper Pattern
-
-- Separated `#[tool(tool_box)]` implementation from `GitHubService`
-- Created a new `GitHubCodeTools` wrapper struct for MCP protocol integration
-- Moved tool annotations and handler implementation to the wrapper in a dedicated `tools.rs` file
-- Implemented a clean separation of concerns between:
-  - Core business logic in `GitHubService`
-  - MCP protocol integration in `GitHubCodeTools`
-- Updated transport implementations to use the wrapper
-- Fixed tool parameter handling in the wrapper
-- Made core service methods public for use by the wrapper
-
-### Refactor GitHubService::grep_repository Method
-
-- Restructured the `grep_repository` method to improve modularity and readability
-- Created helper methods to handle specific responsibilities:
-  - `parse_and_prepare_repository`: Handles URL parsing and repository preparation
-  - `perform_code_search`: Executes the search using lumin search engine
-  - `format_search_results`: Formats results for user-friendly output
-- Added a `RepositoryInfo` struct to encapsulate repository data between functions
-- Improved error handling with more consistent Result return types
-- Enhanced documentation for each helper method
-
-### Refactor RepositoryManager Creation
-
-- Moved `new_repository_manager()` function to a proper `RepositoryManager::new()` method
-- Enhanced object-oriented design by implementing constructor directly on the struct
-- Updated `Default` implementation to use the new method
-- Removed redundant standalone function from `git_repository.rs`
-- Improved code organization and adherence to Rust idioms
-
-### Refactor Enum String Conversion to Methods
-
-- Added `to_str()` methods to `SortOption` and `OrderOption` enums
-- Encapsulated string conversion logic within the enum types
-- Simplified `build_search_params()` function by using these methods
-- Enhanced code maintainability by centralizing conversion logic
-- Followed Rust best practices by implementing behavior directly on types
-
-### Refactor GitHubService::search_repositories for Better Modularity
-
-- Refactored `search_repositories` method into smaller, focused helper methods
-- Created `SearchParams` struct to encapsulate search configuration
-- Extracted logic into three primary helper methods:
-  - `build_search_params`: Handles parameter preparation and validation
-  - `construct_search_url`: Builds the GitHub API URL with all query parameters
-  - `execute_search_request`: Handles the HTTP request and response processing
-- Improved code organization and maintainability while preserving functionality
-- Enhanced code documentation with more detailed method descriptions
-
-### Rename GitHubRepositoryRouter to GitHubService
-
-- Renamed `GitHubRepositoryRouter` to `GitHubService` to better reflect its purpose as a service provider rather than a router
-- Removed "Router" terminology as the component doesn't perform routing functionality
-- Updated struct documentation to clarify its role as an integrated service for GitHub operations
-- Updated all references throughout the codebase (transport implementations, exports, etc.)
-
-### Rename CargoDocRouter to GitHubRepositoryRouter
-
-- Renamed `CargoDocRouter` to `GitHubRepositoryRouter` to better reflect its purpose and functionality
-- Updated all references across the codebase to use the new name
-- Removed mentions of planned Rust crate documentation in router documentation
-- Updated imports and usages in transport implementations
-
-### Code Structure Refactoring for Repository Management
-
-- Refactored the `RepositoryManager` implementation to address compilation errors
-- Moved method implementations from the struct to standalone functions to improve modularity
-- Fixed function signature issues in `git_repository.rs` and `mod.rs`
-- Updated method calls in `mod.rs` to use the refactored functions from `git_repository`
-- Properly exported functions across module boundaries to ensure visibility
-- Fixed the return type of `parse_repository_url` to use `String` instead of `str`
-
-### Implement Lumin Integration for Code Search
-
-- Added `lumin` v1.0.3 dependency for file search functionality
-- Replaced direct git grep command execution with lumin's search API
-- Improved code organization and error handling in the code search functionality
-- Aligned implementation with the original specification in spec.md
-
-### Dependency Documentation Update
-
-- Confirmed the removal of `lumin` dependency as documented in the implementation challenges
-- Noted the discrepancy between spec.md (which references lumin) and the actual implementation
-- Verified that direct git command execution is used instead of lumin for grepping
-
-### Initial Implementation of Model Context Protocol for GitHub
-
-Implemented the core functionality specified in `spec.md`:
-
-1. **GitHub Repository Search Tool**
-
-   - Created a tool to search for repositories using the GitHub API
-   - Implemented sorting, pagination, and proper error handling
-   - Added authentication support via GitHub token
-
-2. **GitHub Repository Code Grep Tool**
-
-   - Implemented code search functionality using git clone and git grep
-   - Added support for regex search, case sensitivity options
-   - Created repository cloning and update logic with proper state management
-
-3. **GitHub Repository Branches/Tags List Tool**
-   - Added ability to list all branches and tags for a repository
-   - Implemented proper formatting for branch/tag display
-
-### Implementation Challenges
-
-#### Dependency Management Issues
-
-- Initially attempted to use `git2` and `gitoxide` libraries, but encountered dependency conflicts with `libgit2-sys` and `lumin`
-- Switched to using direct git command execution via `std::process::Command` for simplicity and to avoid dependency issues
-- Removed `git2` and `gitoxide` from direct dependencies to resolve build errors
-
-#### Concurrent Task Management
-
-- Use `tokio::task::spawn_blocking` only when executing truly blocking operations like system commands or filesystem operations
-- For git operations via CLI commands, spawn_blocking is appropriate as these are blocking system calls
-- For non-blocking operations like in-memory searches, avoid unnecessary overhead of spawn_blocking
-- Implemented proper error handling for CLI git commands with context-aware error messages
-- Created a repository manager to handle temporary directory management and repository state
-
-#### Building without OpenSSL and Other Native Dependencies
-
-- Encountered OpenSSL dependency issues during build
-- Modified `reqwest` configuration to use `default-features = false` to avoid requiring OpenSSL
-
-### Architecture Decisions
-
-1. **Repository Management**
-
-   - Created a `RepositoryManager` class to handle git repository operations
-   - Used a unique naming scheme for temporary directories to prevent conflicts
-   - Added proper cleanup and error handling for repository operations
-
-2. **Response Format**
-
-   - Simplified return values to use strings instead of complex JSON structures
-   - Added formatted output for search results and repository information
-
-3. **Error Handling Strategy**
-   - Used context-aware error messages to help users understand issues
-   - Implemented graceful fallbacks for commands that might fail
-   - Added proper resource cleanup in error cases
-
-### GitHub Authentication Documentation
-
-Added detailed documentation regarding the use of the `GITCODE_MCP_GITHUB_TOKEN` environment variable:
-
-- The environment variable `GITCODE_MCP_GITHUB_TOKEN` is used for GitHub API authentication
-- Authentication is optional but recommended to avoid rate limiting:
-  - Unauthenticated requests: Limited to 60 requests/hour
-  - Authenticated requests: 5,000 requests/hour
-- Token usage:
-  - When provided, the token is stored in memory when MCP starts
-  - It is not referenced from the environment variable after initialization
-  - For accessing private repositories, the token must have the `repo` scope
-- When token is not provided:
-  - The system falls back to unauthenticated requests
-  - All public repository operations still work
-  - Rate limits are significantly lower (60 vs 5,000 requests/hour)
-  - Private repositories will not be accessible
-- Token security:
-  - Tokens are never logged or exposed in error messages
-  - Tokens are only used for GitHub API requests, not for local operations
-
-### Future Improvements
-
-1. **Security Enhancements**
-
-   - Add credential management for authenticated git operations
-   - Implement proper token handling and security for GitHub API requests
-
-2. **Performance Optimizations**
-
-   - Add caching for repository operations to reduce git command calls
-   - Implement smarter code search algorithms to handle large repositories
-
-3. **Features**
-   - Add support for additional GitHub operations like pull requests
-   - Implement diff visualization for comparing branches/commits
+- **Benefits:** Consistent predictable behavior, flexibility for users
+
+### Consistent Parameter Types
+
+- **Pattern:** Use consistent parameter types across related APIs
+- **Example:** Structured parameter types for search and grep operations
+- **Implementation:**
+  ```rust
+  // Related operation parameters use similar structure:
+  pub struct SearchParams { /* ... */ }
+  pub struct GrepParams { /* ... */ }
+  
+  // API methods have consistent signatures:
+  pub async fn search_repositories(&self, params: SearchParams) -> Result<...> { ... }
+  pub async fn grep_repository(&self, params: GrepParams) -> Result<...> { ... }
+  ```
+- **Benefits:** Easier to learn API, consistent usage patterns
+
+### Wrapper Pattern For Tool Integration
+
+- **Pattern:** Use wrapper classes to separate core functionality from tool integration
+- **Example:** `GitHubCodeTools` wrapper for MCP integration around `GitHubService`
+- **Implementation:**
+  ```rust
+  // Core service with business logic:
+  pub struct GitHubService { /* ... */ }
+  
+  // Wrapper with tool annotations:
+  #[derive(tool::ToolBox)]
+  pub struct GitHubCodeTools {
+      service: GitHubService,
+  }
+  
+  impl GitHubCodeTools {
+      #[tool(description = "...")]
+      pub async fn search_repositories(&self, params: SearchParams) -> CallToolResult {
+          match self.service.search_repositories(params).await {
+              Ok(result) => CallToolResult::success(result),
+              Err(error) => CallToolResult::error(error),
+          }
+      }
+  }
+  ```
+- **Benefits:** Clean separation of concerns, core services remain independent of tool framework
+
+## Data Handling Patterns
+
+### Path Type Safety
+
+- **Pattern:** Use specialized path types instead of strings
+- **Example:** Replaced string paths with `Path` and `PathBuf`
+- **Implementation:**
+  ```rust
+  // Instead of:
+  fn get_repo_dir(base_dir: &str, repo: &str) -> String { ... }
+  
+  // Use:
+  fn get_repo_dir(base_dir: &Path, repo: &str) -> PathBuf {
+      base_dir.join(format!("mcp_repo_{}", repo))
+  }
+  ```
+- **Benefits:** Type safety, better path manipulation, clearer semantics
+
+### Enum String Conversion
+
+- **Pattern:** Add methods for consistent enum-to-string conversions
+- **Example:** `to_str()` methods on enumeration types
+- **Implementation:**
+  ```rust
+  pub enum SortOption {
+      Relevance,
+      Stars,
+      Forks,
+      Updated,
+  }
+  
+  impl SortOption {
+      pub fn to_str(&self) -> &str {
+          match self {
+              SortOption::Relevance => "",
+              SortOption::Stars => "stars",
+              SortOption::Forks => "forks",
+              SortOption::Updated => "updated",
+          }
+      }
+  }
+  ```
+- **Benefits:** Centralized conversion logic, consistent string representations
+
+## Implementation Notes
+
+### Dependency Management
+
+- Direct git command execution is used via `std::process::Command` instead of git libraries
+- This avoids dependency conflicts with `libgit2-sys` and simplifies the codebase
+- Commands are executed in blocking contexts using `tokio::task::spawn_blocking`
+
+### Repository Caching Strategy
+
+- Repositories are cloned to local cache directories using shallow clones (`--depth=1`)
+- Cache directories follow a deterministic naming pattern based on repository owner and name
+- Repositories are automatically updated when accessed again
+- Custom cache directory configuration is supported via command-line parameters
+
+### Authentication Methods
+
+- GitHub API authentication supports multiple methods:
+  - Command-line parameter: `--github-token <token>`
+  - Environment variable: `GITCODE_MCP_GITHUB_TOKEN`
+  - Programmatic API parameter: `GitHubService::new(Some(token))`
+- Tokens are stored in memory and not referenced from environment after startup
+- Unauthenticated requests are supported with rate limits (60 requests/hour vs 5,000/hour)
