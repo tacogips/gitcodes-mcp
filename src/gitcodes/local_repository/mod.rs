@@ -274,7 +274,8 @@ impl LocalRepository {
         let search_options = search::SearchOptions {
             case_sensitive,
             respect_gitignore: true,
-            exclude_glob: exclude_dirs.as_ref().map(|dirs| dirs.iter().map(|dir| format!("{}/**", dir)).collect()),
+            exclude_glob: exclude_dirs.as_ref().map(|dirs| dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()),
+            match_content_omit_num: None,  // Default to None (no omission)
         };
 
         // Get repository path
