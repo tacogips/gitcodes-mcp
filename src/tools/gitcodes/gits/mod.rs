@@ -28,9 +28,11 @@
 
 mod local_repository;
 pub mod remote_repository;
-
+mod repository_manager;
 use local_repository::LocalRepository;
+
 pub use remote_repository::*;
+pub use repository_manager::*;
 
 use std::{
     path::{Path, PathBuf},

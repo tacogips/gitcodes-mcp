@@ -1,7 +1,6 @@
 mod remote_repository_client;
 mod remote_repository_service;
 pub use remote_repository_client::*;
-pub use remote_repository_service::*;
 
 use gix;
 use gix::bstr::ByteSlice;

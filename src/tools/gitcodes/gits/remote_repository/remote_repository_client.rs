@@ -1,5 +1,7 @@
 // Repository information struct has been moved to git_repository.rs
 
+use reqwest::Client;
+
 /// Service for GitHub repository operations
 ///
 /// This struct provides integrated tools for GitHub operations:
