@@ -238,6 +238,71 @@ This file documents the architectural decisions and implementation patterns for 
 
 ### Wrapper Pattern For Tool Integration
 
+## Testing Patterns
+
+### Dynamic Test Assertion Patterns
+
+- **Pattern:** Make tests adaptable to different test repositories by finding relevant test data dynamically  
+- **Example:** In directory exclusion tests, we first identify which directories actually contain matches
+- **Implementation:**
+  ```rust
+  // Instead of hardcoding a directory to exclude:
+  let api_match_count = matches.iter().filter(|m| {
+      file_path.contains("/api/")
+  }).count();
+  
+  // Dynamically find directories with matches:
+  let mut dirs_with_matches = std::collections::HashSet::new();
+  for match_item in matches_no_exclusion {
+      let file_path = match_item["file_path"].as_str().unwrap();
+      if let Some(parent) = std::path::Path::new(file_path).parent() {
+          if let Some(dir_name) = parent.file_name() {
+              if let Some(dir_str) = dir_name.to_str() {
+                  dirs_with_matches.insert(dir_str.to_string());
+              }
+          }
+      }
+  }
+  
+  // Use first available directory for the test
+  let dir_to_exclude = dirs_with_matches.iter().next().unwrap().clone();
+  ```
+- **When to apply:** When tests need to work across different test repositories or with varying data
+
+### Search Functionality Testing
+
+- **Pattern:** Test different aspects of search with specifically tailored test cases
+- **Example:** For code search, we test basic pattern matching, case sensitivity, file extension filtering, directory exclusion, and regex patterns separately
+- **Implementation:**
+  ```rust
+  // Basic search test
+  #[tokio::test]
+  async fn test_search_code_basic_pattern() { ... }
+  
+  // Case sensitivity test
+  #[tokio::test]
+  async fn test_search_code_case_sensitive() { ... }
+  
+  // File extension filtering test
+  #[tokio::test]
+  async fn test_search_code_file_extension_filter() { ... }
+  ```
+- **When to apply:** When testing complex functionality with multiple features that need separate verification
+
+### Path Pattern Improvements
+
+- **Pattern:** Use more robust directory exclusion patterns with leading wildcards
+- **Example:** Changed directory exclusion pattern format from `{dir}/**` to `**/{dir}/**`
+- **Implementation:**
+  ```rust
+  // Original pattern - only works for top-level directories
+  exclude_glob: dirs.iter().map(|dir| format!("{}/**", dir)).collect()
+  
+  // Improved pattern - works for directories at any level
+  exclude_glob: dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()
+  ```
+- **When to apply:** When working with glob patterns that need to match at any level of directory hierarchy
+
 - **Pattern:** Use wrapper classes to separate core functionality from tool integration
 - **Example:** `GitHubCodeTools` wrapper for MCP integration around `GitHubService`
 - **Implementation:**
