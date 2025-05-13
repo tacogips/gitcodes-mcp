@@ -1,12 +1,9 @@
-use gix;
-use gix::progress::Discard;
-use lumin::search::{self, SearchOptions};
-use rmcp::schemars;
-use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use lumin::search;
+use serde_json::{json, to_string_pretty};
+use std::path::PathBuf;
 
-use crate::gitcodes::repository_manager::RepositoryLocation;
 use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
+use crate::gitcodes::repository_manager::RepositoryLocation;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
@@ -91,12 +88,12 @@ impl LocalRepository {
     /// * `process_id` - Optional unique process ID from the repository manager
     ///                  Used as part of the hash calculation to ensure uniqueness
     pub fn new_local_repository_to_clone(
-        remote_repository_info: GitRemoteRepositoryInfo, 
-        process_id: Option<&str>
+        remote_repository_info: GitRemoteRepositoryInfo,
+        process_id: Option<&str>,
     ) -> Self {
         // Generate hash value with process_id included in the hash calculation
         let hash_value = Self::generate_repository_hash(&remote_repository_info, process_id);
-        
+
         // Create directory name with the hash that already incorporates process_id
         let dir_name = format!(
             "mcp_gitcodes_{}_{}_{}",
@@ -119,7 +116,8 @@ impl LocalRepository {
     /// Returns a JSON string with all the references in the repository
     pub async fn list_repository_refs(&self, _repository_location: RepositoryLocation) -> String {
         // Temporary implementation
-        "Repository ref listing functionality is temporarily disabled during refactoring.".to_string()
+        "Repository ref listing functionality is temporarily disabled during refactoring."
+            .to_string()
     }
 
     /// Update a local repository by pulling from remote
@@ -136,7 +134,6 @@ impl LocalRepository {
         // TODO: Reimplement with current gix API
         Err("Repository updating is temporarily disabled during refactoring.".to_string())
     }
-
 
     /// Search code in a repository by pattern
     ///
@@ -166,19 +163,29 @@ impl LocalRepository {
     ///
     /// let results = search_code(params).await?;
     /// ```
-    pub async fn search_code(&self, _params: CodeSearchParams) -> Result<String, String> {
-        //let repo_info = match self
-        //    .repo_manager
-        //    .parse_and_prepare_repository(&params.repository_location, params.ref_name.clone())
-        //    .await
-        //{
-        //    Ok(info) => info,
-        //    Err(e) => return Err(e),
-        //};
+    pub async fn search_code(&self, params: CodeSearchParams) -> Result<Vec<String>, String> {
+        // Validate the repository before searching
+        if let Err(e) = self.validate() {
+            return Err(format!("Repository validation failed: {}", e));
+        }
 
-        // Execute code search and return raw results
-        // Temporarily returning empty string until code_search is fixed
-        Ok("Code search feature temporarily disabled".to_string())
+        // If a specific ref is requested, try to update the repository
+        if let Some(ref_name) = &params.ref_name {
+            // Temporarily disabled due to ongoing refactoring
+            // Just log the request rather than attempting update
+            eprintln!("Note: Reference '{}' was requested, but repository updates are temporarily disabled", ref_name);
+        }
+
+        // Perform the actual code search using lumin
+        self.perform_code_search(
+            &params.pattern,
+            params.case_sensitive,
+            params.use_regex,
+            params.file_extensions,
+            params.exclude_dirs,
+        )
+        .await
+        .map(|results_json| vec![results_json])
     }
 
     /// Performs a code search on a prepared repository
@@ -199,13 +206,79 @@ impl LocalRepository {
     /// * `String` - JSON string of search results
     pub async fn perform_code_search(
         &self,
-        _pattern: &str,
-        _case_sensitive: bool,
-        _use_regex: bool,
-        _file_extensions: Option<Vec<String>>,
+        pattern: &str,
+        case_sensitive: bool,
+        use_regex: bool,
+        file_extensions: Option<Vec<String>>,
+        exclude_dirs: Option<Vec<String>>,
     ) -> Result<String, String> {
-        // Implementation temporarily disabled
-        Ok("Code search feature temporarily disabled".to_string())
+        // Configure search options
+        let search_options = search::SearchOptions {
+            case_sensitive,
+            respect_gitignore: true,
+        };
+
+        // Get repository path
+        let repo_path = self.repository_location.as_path();
+
+        // Execute the search
+        let search_pattern = if use_regex {
+            pattern.to_string()
+        } else {
+            // Escape regex special characters for literal text search
+            // Manually escape common regex metacharacters
+            let mut escaped = String::with_capacity(pattern.len() * 2);
+            for c in pattern.chars() {
+                match c {
+                    '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' | '|' => {
+                        escaped.push('\\');
+                        escaped.push(c);
+                    }
+                    _ => escaped.push(c),
+                }
+            }
+            escaped
+        };
+        
+        let mut all_results = search::search_files(&search_pattern, repo_path, &search_options)
+            .map_err(|e| format!("Code search failed: {}", e))?;
+
+        // Post-process to filter by file extension if needed
+        if let Some(extensions) = &file_extensions {
+            all_results.retain(|result| {
+                if let Some(ext) = result.file_path.extension() {
+                    if let Some(ext_str) = ext.to_str() {
+                        return extensions.iter().any(|e| e == ext_str);
+                    }
+                }
+                false
+            });
+        }
+
+        // Post-process to exclude directories if needed
+        if let Some(exclude_dirs) = &exclude_dirs {
+            all_results.retain(|result| {
+                !exclude_dirs.iter().any(|dir| {
+                    let exclude_path = repo_path.join(dir);
+                    result.file_path.starts_with(&exclude_path)
+                })
+            });
+        }
+
+        // Convert results to JSON
+        let json_results = json!({
+            "matches": all_results,
+            "pattern": pattern,
+            "repository": repo_path.display().to_string(),
+            "case_sensitive": case_sensitive,
+            "regex": use_regex,
+            "file_extensions": file_extensions,
+            "exclude_dirs": exclude_dirs,
+        });
+
+        // Stringify the JSON
+        to_string_pretty(&json_results)
+            .map_err(|e| format!("Failed to convert search results to JSON: {}", e))
     }
 
     /// Generate a 12-character hash value from repository information
@@ -213,7 +286,10 @@ impl LocalRepository {
     /// Creates a deterministic hash based on the user and repository name.
     /// If process_id is provided, it will be included in the hash calculation to ensure
     /// uniqueness across different processes for the same repository.
-    fn generate_repository_hash(remote_repository_info: &GitRemoteRepositoryInfo, process_id: Option<&str>) -> String {
+    fn generate_repository_hash(
+        remote_repository_info: &GitRemoteRepositoryInfo,
+        process_id: Option<&str>,
+    ) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 

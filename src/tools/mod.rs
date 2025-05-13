@@ -1,4 +1,4 @@
-use crate::gitcodes::{*, repository_manager};
+use crate::gitcodes::{repository_manager, *};
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -58,8 +58,11 @@ impl GitHubCodeTools {
     pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
         // Initialize the global repository manager with these parameters
         // This will only have an effect the first time it's called
-        let manager = repository_manager::instance::init_repository_manager(github_token, repository_cache_dir);
-        
+        let manager = repository_manager::instance::init_repository_manager(
+            github_token,
+            repository_cache_dir,
+        );
+
         Self {
             manager: manager.clone(),
         }
@@ -83,7 +86,9 @@ impl GitHubCodeTools {
     pub fn with_service(_manager: RepositoryManager) -> Self {
         // Get the global repository manager
         let manager = repository_manager::instance::get_repository_manager();
-        Self { manager: manager.clone() }
+        Self {
+            manager: manager.clone(),
+        }
     }
 }
 
@@ -245,7 +250,7 @@ impl GitHubCodeTools {
 
         #[tool(param)]
         #[schemars(
-            description = "Branch or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to search in. If the specified branch doesn't exist, falls back to 'main' or 'master'."
+            description = "Branch, Commit or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to search in. If the specified branch doesn't exist, falls back to 'main' or 'master'."
         )]
         ref_name: Option<String>,
 
@@ -281,7 +286,7 @@ impl GitHubCodeTools {
     ) -> Result<String, String> {
         // TODO: Implement search code functionality with RepositoryLocation
         // Need to import FromStr trait to use from_str method properly
-        
+
         // Temporarily return a placeholder response
         Ok("Search code functionality is temporarily disabled during refactoring.".to_string())
         //let params = GrepParams {
@@ -328,6 +333,9 @@ impl GitHubCodeTools {
         repo_location_str: String,
     ) -> Result<String, String> {
         // TODO: Implement repository refs listing functionality
-        Ok("Repository refs listing functionality is temporarily disabled during refactoring.".to_string())
+        Ok(
+            "Repository refs listing functionality is temporarily disabled during refactoring."
+                .to_string(),
+        )
     }
 }
