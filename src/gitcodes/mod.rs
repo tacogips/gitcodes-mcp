@@ -79,6 +79,8 @@
 //! ```
 
 mod local_repository;
-pub mod remote_repository;
-
 mod repository_manager;
+
+pub use local_repository::*;
+
+pub use repository_manager::*;

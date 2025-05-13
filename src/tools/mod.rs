@@ -1,13 +1,6 @@
-pub use gitcodes::GitHubService;
-
-use crate::gitcodes::{
-    params::{GrepParams, OrderOption, SearchParams, SortOption},
-    remote_repository::RepositoryLocation,
-    GitHubService,
-};
+use crate::gitcodes::*;
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
@@ -16,7 +9,7 @@ use std::str::FromStr;
 #[derive(Clone)]
 pub struct GitHubCodeTools {
     /// The underlying GitHub service implementation
-    service: GitHubService,
+    service: RepositoryManager,
 }
 
 impl GitHubCodeTools {
@@ -288,7 +281,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local file path (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
+            description = "Repository URL or local file path (posix only) (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
         repo_location_str: String,
     ) -> Result<String, String> {
