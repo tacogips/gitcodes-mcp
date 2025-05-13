@@ -1,12 +1,15 @@
 mod github;
+use anyhow::Result;
+use github::GithubClient;
 
 enum GitProvider {
     Github(GithubClient),
 }
 
 impl GitProvider {
-    fn parse_url(&url: &str) {
-        parse_github_url
+    fn parse_url(&url: &str) -> Result<Self> {
+        if let Ok(user, repo) = parse_github_url() {}
+        Err(error!("invalid remote git url: {}", url))
     }
 }
 

@@ -1,3 +1,4 @@
+mod providers;
 use anyhow::Error;
 use std::path::PathBuf;
 
