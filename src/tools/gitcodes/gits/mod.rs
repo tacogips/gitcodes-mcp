@@ -31,10 +31,13 @@ pub mod github_api;
 mod local_repository;
 pub mod remote_repository;
 
+use local_repository::LocalRepository;
 pub use remote_repository::*;
 
-use reqwest::Client;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 /// Enum representing a repository location, either a GitHub URL or a local filesystem path
 #[derive(Debug, Clone, serde::Deserialize)]

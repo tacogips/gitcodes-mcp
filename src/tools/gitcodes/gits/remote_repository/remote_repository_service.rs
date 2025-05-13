@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
@@ -80,7 +82,7 @@ impl RemoteRepositoryManager {
     /// * `ref_name` - Optional branch or tag name (only used for URLs)
     pub async fn parse_and_prepare_repository(
         &self,
-        repo_location: &RepositoryLocation,
+        repo_location: &RemoteRepositoryLocation,
         ref_name: Option<String>,
     ) -> Result<LocalRepositoryInfo, String> {
         match repo_location {
