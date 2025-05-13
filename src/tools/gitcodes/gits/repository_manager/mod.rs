@@ -95,7 +95,7 @@ impl RepositoryManager {
 
                 Ok(local_path.clone())
             }
-            RepositoryLocation::GitHubUrl(_) => {
+            RepositoryLocation::RemoteRepository(_) => {
                 // Handle GitHub repository URLs
                 // Parse repository URL
                 let (user, repo) = match parse_repository_url(repo_location) {
