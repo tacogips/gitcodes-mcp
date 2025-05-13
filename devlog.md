@@ -72,6 +72,43 @@ This file documents the development process, architectural decisions, and implem
 
 ### Architecture Patterns
 
+#### Deterministic Repository Hash Generation
+
+We've improved the repository hash generation to create deterministic hashes based on repository owner and name:  
+
+```rust
+fn generate_repository_hash(remote_repository_info: &RemoteGitRepositoryInfo) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    // Create a string combining user and repo
+    let repo_key = format!("{}/{}", remote_repository_info.user, remote_repository_info.repo);
+    
+    // Create a hash using DefaultHasher
+    let mut hasher = DefaultHasher::new();
+    repo_key.hash(&mut hasher);
+    let hash_value = hasher.finish();
+    
+    // Convert to a 12-character hexadecimal string
+    let hex = format!("{:x}", hash_value);
+    
+    // Ensure we have at least 12 characters
+    if hex.len() >= 12 {
+        hex[0..12].to_string()
+    } else {
+        // Pad with zeros if needed (unlikely with a 64-bit hash)
+        format!("{:0>12}", hex)
+    }
+}
+```
+
+This approach replaced the previous UUID-based implementation, providing several benefits:
+
+- **Deterministic caching**: The same repository always gets the same hash, enabling better caching
+- **Predictable behavior**: Repository paths are consistent across runs
+- **No dependencies**: Removed dependency on random UUID generation
+- **Efficient**: Uses Rust's standard library hashing capabilities
+
 - **Separation of Concerns**: Refactored search result formatting
 
   - Pattern: Lower-level modules should return raw data; formatting belongs in UI/API layers

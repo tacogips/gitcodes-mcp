@@ -18,22 +18,33 @@ pub struct LocalRepository {
     repository_location: PathBuf,
 }
 impl LocalRepository {
-    /// Generate a 12-character hash value from a UUID
+    /// Generate a 12-character hash value from repository information
     ///
-    /// Takes the first 6 characters and last 6 characters of a UUID and combines them
-    /// to create a 12-character hash value.
+    /// Creates a deterministic hash based on the user and repository name.
+    /// This ensures that the same repository always gets the same hash value.
     fn generate_repository_hash(remote_repository_info: &RemoteGitRepositoryInfo) -> String {
-        // Generate a UUID and combine its first and last parts
-        // Full UUID format is: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-        let uuid = uuid::Uuid::new_v4();
-        let uuid_str = uuid.to_string(); // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
-        // Take first 6 chars (from first segment) and last 6 chars (from last segment)
-        let first_part = &uuid_str[0..6]; // First 6 chars of the first segment
-        let last_part = &uuid_str[uuid_str.len() - 6..]; // Last 6 chars of the last segment
-
-        // Combine to create a 12-char hash
-        format!("{}{}", first_part, last_part)
+        // Create a string combining user and repo
+        let repo_key = format!("{}/{}", remote_repository_info.user, remote_repository_info.repo);
+        
+        // Create a hash using DefaultHasher
+        let mut hasher = DefaultHasher::new();
+        repo_key.hash(&mut hasher);
+        let hash_value = hasher.finish();
+        
+        // Convert to a 12-character hexadecimal string
+        // We'll take 12 characters from the hex representation
+        let hex = format!("{:x}", hash_value);
+        
+        // Ensure we have at least 12 characters
+        if hex.len() >= 12 {
+            hex[0..12].to_string()
+        } else {
+            // Pad with zeros if needed (unlikely with a 64-bit hash)
+            format!("{:0>12}", hex)
+        }
     }
     /// if this validation is failed, it may means it just not cloned the git repository yet, otherwise someting wrong
     pub fn validate(&self) -> Result<(), String> {
@@ -48,12 +59,16 @@ impl LocalRepository {
         Ok(())
     }
 
-    /// Generate a unique directory name for the repository using UUID
+    /// Generate a unique directory name for the repository based on its information
     pub fn new_local_repository_to_clone(remote_repository_info: RemoteGitRepositoryInfo) -> Self {
         let hash_value = Self::generate_repository_hash(&remote_repository_info);
-        let dir_name = format!("mcp_gitcodes_{}_{}_{}", user, repo, hash_value);
+        let dir_name = format!("mcp_gitcodes_{}_{}_{}", 
+            remote_repository_info.user, 
+            remote_repository_info.repo, 
+            hash_value
+        );
 
-        Self::new(dir_name)
+        Self::new(PathBuf::from(dir_name))
     }
 
     /// Generate a unique directory name for the repository
