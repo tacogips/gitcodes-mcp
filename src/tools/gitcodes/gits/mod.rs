@@ -43,7 +43,7 @@ use std::{
 #[derive(Debug, Clone, serde::Deserialize)]
 pub enum RepositoryLocation {
     /// A GitHub repository URL (https://github.com/user/repo, git@github.com:user/repo.git, or github:user/repo)
-    GitHubUrl(String),
+    GitHubUrl(),
     /// A local filesystem path
     LocalPath(LocalRepository),
 }
