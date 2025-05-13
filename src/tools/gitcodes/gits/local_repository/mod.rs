@@ -13,6 +13,7 @@ use uuid;
 
 use super::code_search;
 
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
     repository_location: PathBuf,
 }
