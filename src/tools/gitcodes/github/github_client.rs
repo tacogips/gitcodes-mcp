@@ -1,4 +1,6 @@
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use strum::{AsRefStr, Display, EnumString};
 
 pub struct GithubClient {
     client: Client,
@@ -47,13 +49,13 @@ impl GithubClient {
     /// let url = construct_search_url(&params);
     /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
     /// ```
-    pub fn construct_search_url(param: &SearchParams) -> String {
+    pub fn construct_search_url(param: &GithubSearchParams) -> String {
         // Set up sort parameter using Default implementation
-        let default_sort = SortOption::default();
+        let default_sort = GithubSortOption::default();
         let sort = param.sort_by.as_ref().unwrap_or(&default_sort).to_str();
 
         // Set up order parameter using Default implementation
-        let default_order = OrderOption::default();
+        let default_order = GithubOrderOption::default();
         let order = param.order.as_ref().unwrap_or(&default_order).to_str();
 
         // Set default values for pagination
@@ -79,7 +81,7 @@ impl GithubClient {
     ///
     /// Sends the HTTP request to the GitHub API and handles the response.
     //TODO(tacogips) this method should return Result<String,String> instead of String
-    pub async fn execute_search_request(&self, param: &SearchParams) -> String {
+    pub async fn execute_search_request(&self, param: &GithubSearchParams) -> String {
         let url = Self::construct_search_url(param);
         // Set up the API request
         let mut req_builder = self.client.get(url).header(
@@ -122,7 +124,7 @@ impl GithubClient {
 /// Controls how repository search results are ordered in the response.
 #[derive(Debug, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
 #[strum(serialize_all = "lowercase")]
-pub enum SortOption {
+pub enum GithubSortOption {
     /// No specific sort, use GitHub's default relevance sorting
     #[strum(serialize = "")]
     Relevance,
@@ -137,28 +139,26 @@ pub enum SortOption {
     Updated,
 }
 
-impl SortOption {
+impl GithubSortOption {
     /// Converts the sort option to its API string representation
     pub fn to_str(&self) -> &str {
         self.as_ref()
     }
 }
 
-impl Default for SortOption {
+impl Default for GithubSortOption {
     /// Returns the default sort option (Relevance)
     fn default() -> Self {
-        SortOption::Relevance
+        GithubSortOption::Relevance
     }
 }
 
 /// Sort direction options for GitHub repository search results
 ///
 /// Controls whether results are displayed in ascending or descending order.
-#[derive(
-    Debug, schemars::JsonSchema, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr,
-)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Display, EnumString, AsRefStr)]
 #[strum(serialize_all = "lowercase")]
-pub enum OrderOption {
+pub enum GithubOrderOption {
     /// Sort in ascending order (lowest to highest, oldest to newest)
     #[strum(serialize = "asc")]
     Ascending,
@@ -167,17 +167,17 @@ pub enum OrderOption {
     Descending,
 }
 
-impl OrderOption {
+impl GithubOrderOption {
     /// Converts the order option to its API string representation
     pub fn to_str(&self) -> &str {
         self.as_ref()
     }
 }
 
-impl Default for OrderOption {
+impl Default for GithubOrderOption {
     /// Returns the default order option (Descending)
     fn default() -> Self {
-        OrderOption::Descending
+        GithubOrderOption::Descending
     }
 }
 
@@ -186,6 +186,13 @@ impl Default for OrderOption {
 /// Contains all the parameters needed for configuring a repository search request to GitHub's API.
 /// This struct handles both the parameter validation and URL construction for repository searches.
 ///
+/// # Parameter Handling
+///
+/// - `sort_by`: Uses SortOption::Relevance if None (empty string in the URL)
+/// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
+/// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
+/// - `page`: Uses 1 if None
+/// - `query`: URL encoded to handle special characters
 /// # Examples
 ///
 /// ```
@@ -209,15 +216,15 @@ impl Default for OrderOption {
 ///    page: Some(2),
 /// };
 /// ```
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct SearchParams {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GithubSearchParams {
     /// Sort parameter for search results
     /// When None, defaults to SortOption::Relevance (GitHub's default sorting)
-    pub sort_by: Option<SortOption>,
+    pub sort_by: Option<GithubSortOption>,
 
     /// Order parameter for sorting results (ascending or descending)
     /// When None, defaults to OrderOption::Descending
-    pub order: Option<OrderOption>,
+    pub order: Option<GithubOrderOption>,
 
     /// Number of results per page (1-100)
     /// When None, defaults to 30
