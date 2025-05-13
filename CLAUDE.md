@@ -267,6 +267,9 @@ When working with tests:
 - When modifying test code, maintain or increase the strictness of the original tests
 - If a test case seems incorrect, discuss this with the user rather than modifying the test
 
+The following repositories are available for testing this library. These repositories will not be modified except for testing purposes:
+- https://github.com/tacogips/gitcodes-mcp-test-1
+
 ### User Communication Guidelines
 
 When working with user requests:
