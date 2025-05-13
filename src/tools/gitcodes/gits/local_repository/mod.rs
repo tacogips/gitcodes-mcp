@@ -1,15 +1,9 @@
 use gix;
-use gix::bstr::ByteSlice;
 use gix::progress::Discard;
 use lumin::search;
-use rand::Rng;
 use rmcp::schemars;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::str::FromStr;
-use thiserror::Error;
-use uuid;
 
 use super::{code_search, RemoteGitRepositoryInfo, RepositoryLocation};
 
@@ -27,17 +21,20 @@ impl LocalRepository {
         use std::hash::{Hash, Hasher};
 
         // Create a string combining user and repo
-        let repo_key = format!("{}/{}", remote_repository_info.user, remote_repository_info.repo);
-        
+        let repo_key = format!(
+            "{}/{}",
+            remote_repository_info.user, remote_repository_info.repo
+        );
+
         // Create a hash using DefaultHasher
         let mut hasher = DefaultHasher::new();
         repo_key.hash(&mut hasher);
         let hash_value = hasher.finish();
-        
+
         // Convert to a 12-character hexadecimal string
         // We'll take 12 characters from the hex representation
         let hex = format!("{:x}", hash_value);
-        
+
         // Ensure we have at least 12 characters
         if hex.len() >= 12 {
             hex[0..12].to_string()
@@ -46,26 +43,67 @@ impl LocalRepository {
             format!("{:0>12}", hex)
         }
     }
-    /// if this validation is failed, it may means it just not cloned the git repository yet, otherwise someting wrong
+    /// Validates that the repository location is a valid git repository
+    /// 
+    /// This validation checks both that:
+    /// 1. The directory exists and is accessible
+    /// 2. The directory contains a valid git repository
+    ///
+    /// If this validation fails, it may mean the git repository hasn't been
+    /// cloned yet or that there's another issue with the repository.
     pub fn validate(&self) -> Result<(), String> {
-        // For local paths, use the path directly
+        // Check if the directory exists
         if !self.repository_location.is_dir() {
             return Err(format!(
                 "Local path '{}' is not a directory",
                 self.repository_location.display()
             ));
         }
-        //TODO(check is git)
-        Ok(())
+
+        // Check file metadata to ensure we have proper access
+        match std::fs::metadata(&self.repository_location) {
+            Ok(metadata) => {
+                if !metadata.is_dir() {
+                    return Err(format!(
+                        "Local path '{}' exists but is not a directory",
+                        self.repository_location.display()
+                    ));
+                }
+                // We could check read/write permissions here if needed
+            },
+            Err(e) => {
+                return Err(format!(
+                    "Failed to access metadata for '{}': {}",
+                    self.repository_location.display(), e
+                ));
+            }
+        }
+
+        // Check if it's a git repository by looking for the .git directory
+        let git_dir = self.repository_location.join(".git");
+        if !git_dir.exists() {
+            return Err(format!(
+                "Directory '{}' is not a git repository (no .git directory found)",
+                self.repository_location.display()
+            ));
+        }
+
+        // For more thorough validation, try opening the repository with gix
+        match gix::open(&self.repository_location) {
+            Ok(_) => Ok(()), // Successfully opened the repository
+            Err(e) => Err(format!(
+                "Directory '{}' does not contain a valid git repository: {}", 
+                self.repository_location.display(), e
+            ))
+        }
     }
 
     /// Generate a unique directory name for the repository based on its information
     pub fn new_local_repository_to_clone(remote_repository_info: RemoteGitRepositoryInfo) -> Self {
         let hash_value = Self::generate_repository_hash(&remote_repository_info);
-        let dir_name = format!("mcp_gitcodes_{}_{}_{}", 
-            remote_repository_info.user, 
-            remote_repository_info.repo, 
-            hash_value
+        let dir_name = format!(
+            "mcp_gitcodes_{}_{}_{}",
+            remote_repository_info.user, remote_repository_info.repo, hash_value
         );
 
         Self::new(PathBuf::from(dir_name))
@@ -77,12 +115,6 @@ impl LocalRepository {
         Self {
             repository_location,
         }
-    }
-
-    /// Check if repository is already cloned
-    async fn is_exists(&self, dir: &Path) -> bool {
-        tokio::fs::metadata(dir).await.is_ok()
-        //TODO(tacogips) check is git repository
     }
 
     /// List branches and tags for a GitHub repository or local git directory
