@@ -1,107 +1,315 @@
-// Repository information struct has been moved to git_repository.rs
-
-/// Service for GitHub repository operations
+/// Repository manager for Git operations
 ///
-/// This struct provides integrated tools for GitHub operations:
-/// - Repository searching
-/// - Code searching within repositories
-/// - Branch and tag listing
-///
-/// # Authentication
-///
-/// The service handles GitHub authentication through the `GITCODE_MCP_GITHUB_TOKEN`
-/// environment variable. This token is:
-/// - Read once at startup and stored in memory
-/// - Used for all GitHub API requests
-/// - Optional, but recommended to avoid rate limiting (60 vs 5,000 requests/hour)
-/// - Required for accessing private repositories (with `repo` scope)
+/// Handles cloning, updating, and retrieving information from GitHub repositories.
+/// Uses a dedicated directory to store cloned repositories.
 #[derive(Clone)]
-pub struct GitRemoteRepositoryService {
-    /// HTTP client for API requests
-    pub client: Client,
-    /// GitHub authentication token (if provided via GITCODE_MCP_GITHUB_TOKEN)
-    pub github_token: Option<String>,
+pub struct RemoteRepositoryManager {
+    pub(crate) local_repository_dir_base: PathBuf,
 }
 
-impl Default for GitRemoteRepositoryService {
-    fn default() -> Self {
-        Self::with_default_cache_dir(None)
-    }
-}
-
-impl GitRemoteRepositoryService {
-    /// Creates a new Gitservice instance
-    ///
-    /// Initializes:
-    /// - HTTP client for API requests
-    /// - Repository manager for Git operations
-    /// - GitHub token from the provided parameter or environment variable
-    ///
-    /// # Authentication
-    ///
-    /// Authentication can be provided in three ways:
-    /// 1. Command line argument `--github-token` (highest priority)
-    /// 2. Explicitly via the `github_token` parameter in code (second priority)
-    /// 3. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
-    ///
-    /// If no token is provided through either method, the system will work with
-    /// lower rate limits (60 requests/hour vs 5,000 requests/hour).
+impl RemoteRepositoryManager {
+    /// Creates a new RepositoryManager instance with a custom repository cache directory
     ///
     /// # Parameters
     ///
-    /// * `github_token` - Optional GitHub token for authentication. If None, will attempt to read from environment.
-    /// * `repository_cache_dir` - Optional custom directory path for storing cloned repositories.
+    /// * `repository_cache_dir` - Optional custom path for storing repositories.
+    ///                            If None, the system's temporary directory is used.
     ///
     /// # Returns
     ///
-    /// A new GitHubService instance or panics if the repository manager cannot be initialized.
-    pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
-        Self {
-            client: Client::new(),
-            github_token,
+    /// * `Result<Self, String>` - A new RepositoryManager instance or an error message
+    ///                            if the directory cannot be created or accessed.
+    pub fn new(local_repository_dir_base: Option<PathBuf>) -> Result<Self, String> {
+        // Use provided path or default to system temp directory
+        let base_dir = match local_repository_dir_base {
+            Some(path) => path,
+            None => std::env::temp_dir(),
+        };
+
+        // Validate and ensure the directory exists
+        if !base_dir.exists() {
+            // Try to create the directory if it doesn't exist
+            std::fs::create_dir_all(&base_dir)
+                .map_err(|e| format!("Failed to create repository cache directory: {}", e))?;
+        } else if !base_dir.is_dir() {
+            return Err(format!(
+                "Specified path '{}' is not a directory",
+                base_dir.display()
+            ));
         }
+
+        // Check if the directory is writable by trying to create a test file
+        let test_file_path = base_dir.join(".write_test_repo_cache_file");
+        match std::fs::File::create(&test_file_path) {
+            Ok(_) => {
+                // Clean up the test file
+                let _ = std::fs::remove_file(test_file_path);
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Directory '{}' is not writable: {}",
+                    base_dir.display(),
+                    e
+                ))
+            }
+        }
+
+        Ok(Self {
+            local_repository_dir_base: base_dir,
+        })
     }
 
-    /// Creates a new GitHub service instance with the default repository cache directory
+    /// Creates a new RepositoryManager with the system's default cache directory
     ///
-    /// This is a convenience constructor that uses the system's temporary directory
-    /// for storing repositories.
+    /// This is a convenience method that creates a RepositoryManager with the
+    /// system's temporary directory as the repository cache location.
+    pub fn with_default_cache_dir() -> Self {
+        Self::new(None).expect("Failed to initialize with system temporary directory")
+    }
+
+    /// Parses a repository URL or local file path and prepares it for operations
+    ///
+    /// This method:
+    /// 1. Processes the repository location (URL or local path)
+    /// 2. For URLs: Extracts user and repo name, clones/updates the repository
+    /// 3. For local paths: Uses the path directly without cloning
     ///
     /// # Parameters
     ///
-    /// * `github_token` - Optional GitHub token for authentication.
-    pub fn with_default_cache_dir(github_token: Option<String>) -> Self {
-        Self::new(github_token, None)
-    }
+    /// * `repo_location` - The repository location (either a GitHub URL or local file path)
+    /// * `ref_name` - Optional branch or tag name (only used for URLs)
+    pub async fn parse_and_prepare_repository(
+        &self,
+        repo_location: &RepositoryLocation,
+        ref_name: Option<String>,
+    ) -> Result<LocalRepositoryInfo, String> {
+        match repo_location {
+            RepositoryLocation::LocalPath(local_path) => {
+                // For local paths, use the path directly
+                if !local_path.is_dir() {
+                    return Err(format!(
+                        "Local path '{}' is not a directory",
+                        local_path.display()
+                    ));
+                }
 
-    /// Get the authentication status for display
-    pub fn get_auth_status(&self) -> String {
-        if self.github_token.is_some() {
-            "Authenticated GitHub API access enabled (5,000 requests/hour)".to_string()
-        } else {
-            "Unauthenticated GitHub API access (60 requests/hour limit). Set GITCODE_MCP_GITHUB_TOKEN for higher limits.".to_string()
+                Ok(LocalRepositoryInfo {
+                    remote_repository_info: None,
+                    repo_dir: local_path.to_path_buf(),
+                })
+            }
+            RepositoryLocation::GitHubUrl(_) => {
+                // Handle GitHub repository URLs
+                // Parse repository URL
+                let (user, repo) = match parse_repository_url(repo_location) {
+                    Ok(result) => result,
+                    Err(e) => return Err(format!("Error: {}", e)),
+                };
+
+                // Get a temporary directory for the repository
+                let repo_dir = self.get_repo_dir(&user, &repo);
+
+                // Check if repo is already cloned
+                let already_fetched = self.is_local_repo_exists(&repo_dir).await;
+
+                // Clone ref_name once at the beginning to avoid ownership issues
+                let ref_name_clone = ref_name.clone();
+
+                // If repo is not cloned, clone it
+                if !already_fetched {
+                    // We've already matched this as GitHubUrl above, so no need to extract the URL again
+                    let clone_params = RemoteGitRepositoryInfo {
+                        user: user.clone(),
+                        repo: repo.clone(),
+                        ref_name: ref_name_clone.clone(),
+                    };
+                    self.clone_repository(&repo_dir, &clone_params).await?
+                } else {
+                    // Convert Option<String> to GitRef
+                    let ref_str = ref_name_clone.as_ref().map_or("main", |s| s.as_str());
+                    let git_ref = GitRef::new(ref_str);
+                    update_repository(&repo_dir, &git_ref).await?
+                }
+
+                Ok(LocalRepositoryInfo {
+                    remote_repository_info: Some(RemoteGitRepositoryInfo {
+                        user,
+                        repo,
+                        ref_name: ref_name_clone,
+                    }),
+                    repo_dir,
+                })
+            }
         }
     }
 
-    /// Search for GitHub repositories using the GitHub API
+    // Parse repository URL to extract user and repo name
+    fn parse_repository_url(
+        repo_location: &RepositoryLocation,
+    ) -> Result<(String, String), String> {
+        match repo_location {
+            RepositoryLocation::LocalPath(_) => {
+                // Return placeholder values for user and repo for local paths
+                Ok(("local".to_string(), "repository".to_string()))
+            }
+            RepositoryLocation::GitHubUrl(url) => {
+                let user_repo = if url.starts_with("https://github.com/") {
+                    url.trim_start_matches("https://github.com/")
+                        .trim_end_matches(".git")
+                        .to_string()
+                } else if url.starts_with("git@github.com:") {
+                    url.trim_start_matches("git@github.com:")
+                        .trim_end_matches(".git")
+                        .to_string()
+                } else if url.starts_with("github:") {
+                    url.trim_start_matches("github:").to_string()
+                } else {
+                    return Err("Invalid GitHub repository URL format".to_string());
+                };
+
+                let parts: Vec<&str> = user_repo.split('/').collect();
+                if parts.len() != 2 {
+                    return Err("Invalid GitHub repository URL format".to_string());
+                }
+
+                Ok((parts[0].to_string(), parts[1].to_string()))
+            }
+        }
+    }
+
+    /// Clone a repository from GitHub
     ///
-    /// This method searches for repositories on GitHub based on the provided query.
-    /// It supports sorting, pagination, and uses GitHub's search API.
+    /// Creates a directory and performs a shallow clone of the specified repository.
+    /// Uses a structured RemoteGitRepositoryInfo object to encapsulate all required clone parameters.
     ///
-    /// # Authentication
+    /// # Parameters
     ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
-    /// - Without a token, limited to 60 requests/hour
-    /// - With a token, allows 5,000 requests/hour
+    /// * `repo_dir` - The directory where the repository should be cloned
+    /// * `params` - RemoteGitRepositoryInfo struct containing user, repo, and ref_name
     ///
-    /// # Rate Limiting
+    /// # Returns
     ///
-    /// GitHub API has rate limits that vary based on authentication:
-    /// - Unauthenticated: 60 requests/hour
-    /// - Authenticated: 5,000 requests/hour
-    pub async fn search_repositories(&self, params: SearchParams) -> String {
-        //TODO(tacogips) this method should return anyhow::Result<String> instead of String
-        // Execute the search request
-        github_api::execute_search_request(&params, &self.client, self.github_token.as_ref()).await
+    /// * `Result<(), String>` - Success or an error message if the clone operation fails
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::PathBuf;
+    /// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::{clone_repository, RemoteGitRepositoryInfo};
+    ///
+    /// async fn example() {
+    ///     let repo_dir = PathBuf::from("/tmp/example_repo");
+    ///     let params = RemoteGitRepositoryInfo {
+    ///         user: "rust-lang".to_string(),
+    ///         repo: "rust".to_string(),
+    ///         ref_name: "main".to_string(),
+    ///     };
+    ///
+    ///     match clone_repository(&repo_dir, &params).await {
+    ///         Ok(()) => println!("Repository cloned successfully"),
+    ///         Err(e) => eprintln!("Failed to clone repository: {}", e),
+    ///     }
+    /// }
+    /// ```
+    async fn clone_repository(&self, params: &RemoteGitRepositoryInfo) -> Result<(), String> {
+        let repo_dir = self.local_repository_dir_base;
+        // Create directory if it doesn't exist
+        if let Err(e) = std::fs::create_dir_all(repo_dir) {
+            return Err(format!("Failed to create directory: {}", e));
+        }
+
+        // Build the clone URL
+        let clone_url = format!("https://github.com/{}/{}.git", params.user, params.repo);
+
+        // Create a repository using gitoxide
+        // First convert to byte slice for parsing
+        let url_bstr = clone_url.as_bytes().as_bstr();
+
+        // Parse the URL using gix's URL parser
+        let url = gix::url::parse(url_bstr).map_err(|e| format!("Failed to parse URL: {}", e))?;
+
+        // Create options for the clone operation
+        let mut clone_options = gix::clone::PrepareFetch::default();
+
+        // Set up shallow clone
+        let depth = NonZeroU32::new(1).unwrap();
+        clone_options.remote_configuration.fetch_options.shallow =
+            Some(gix::remote::fetch::Shallow::DepthAtRemote(depth));
+
+        // Create a new repository (with worktree) at the specified path
+        let repo = gix::create_with_options(
+            repo_dir,
+            gix::create::Kind::WithWorktree,
+            gix::create::Options::default(),
+        )
+        .map_err(|e| format!("Failed to create repository: {}", e))?;
+
+        // Add a remote named "origin" pointing to the GitHub repository
+        let mut remote = repo
+            .remote_add("origin", clone_url.as_str())
+            .map_err(|e| format!("Failed to add remote: {}", e))?;
+
+        // Fetch from the remote to get the branch data
+        let progress = Discard;
+        let refspecs = Vec::new(); // Empty refspecs means fetch defaults (usually all branches)
+        let fetch_result = remote
+            .fetch_with_options(
+                &refspecs,
+                Some(&clone_options.remote_configuration.fetch_options),
+                Some(&progress),
+            )
+            .map_err(|e| format!("Failed to fetch repository: {}", e))?;
+
+        // Now check out the specified branch
+        // First try to find the reference
+        let ref_name_full = format!("refs/remotes/origin/{}", params.ref_name);
+
+        // Try to find the requested branch or tag
+        let found_ref = repo
+            .try_find_reference(&ref_name_full)
+            .map_err(|e| format!("Failed to find reference: {}", e))?;
+
+        if let Some(found_ref) = found_ref {
+            // We found the branch, now create a local branch pointing to it
+            let local_branch = format!("refs/heads/{}", params.ref_name);
+
+            // Get the commit ID from the remote reference
+            let commit_id = found_ref
+                .peel_to_id()
+                .map_err(|e| format!("Failed to resolve reference: {}", e))?;
+
+            // Create local branch
+            repo.reference_create(
+                &local_branch,
+                commit_id.detach(),
+                false,
+                format!("Clone: Setting up branch '{}'", params.ref_name),
+            )
+            .map_err(|e| format!("Failed to create branch: {}", e))?;
+
+            // Success! Branch is set up
+            Ok(())
+        } else {
+            // Branch wasn't found, but the repository is cloned
+            // Let's try to check if it's a tag
+            let tag_ref = format!("refs/tags/{}", params.ref_name);
+            let found_tag = repo
+                .try_find_reference(&tag_ref)
+                .map_err(|e| format!("Failed to find tag: {}", e))?;
+
+            if found_tag.is_some() {
+                // We found a tag, that's fine
+                Ok(())
+            } else {
+                // Neither branch nor tag found
+                Err(format!("Branch or tag '{}' not found", params.ref_name))
+            }
+        }
+    }
+}
+
+impl Default for RepositoryManager {
+    fn default() -> Self {
+        Self::with_default_cache_dir()
     }
 }
