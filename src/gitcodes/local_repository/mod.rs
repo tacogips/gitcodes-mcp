@@ -89,25 +89,19 @@ impl LocalRepository {
     ///
     /// * `remote_repository_info` - Information about the remote repository
     /// * `process_id` - Optional unique process ID from the repository manager
-    ///                  Used to differentiate between multiple processes
+    ///                  Used as part of the hash calculation to ensure uniqueness
     pub fn new_local_repository_to_clone(
         remote_repository_info: GitRemoteRepositoryInfo, 
         process_id: Option<&str>
     ) -> Self {
-        let hash_value = Self::generate_repository_hash(&remote_repository_info);
+        // Generate hash value with process_id included in the hash calculation
+        let hash_value = Self::generate_repository_hash(&remote_repository_info, process_id);
         
-        // Include process_id in directory name if provided
-        let dir_name = if let Some(pid) = process_id {
-            format!(
-                "mcp_gitcodes_{}_{}_{}_pid{}",
-                remote_repository_info.user, remote_repository_info.repo, hash_value, pid
-            )
-        } else {
-            format!(
-                "mcp_gitcodes_{}_{}_{}" ,
-                remote_repository_info.user, remote_repository_info.repo, hash_value
-            )
-        };
+        // Create directory name with the hash that already incorporates process_id
+        let dir_name = format!(
+            "mcp_gitcodes_{}_{}_{}",
+            remote_repository_info.user, remote_repository_info.repo, hash_value
+        );
 
         let mut repo_dir = std::env::temp_dir();
         repo_dir.push(dir_name);
@@ -217,16 +211,24 @@ impl LocalRepository {
     /// Generate a 12-character hash value from repository information
     ///
     /// Creates a deterministic hash based on the user and repository name.
-    /// This ensures that the same repository always gets the same hash value.
-    fn generate_repository_hash(remote_repository_info: &GitRemoteRepositoryInfo) -> String {
+    /// If process_id is provided, it will be included in the hash calculation to ensure
+    /// uniqueness across different processes for the same repository.
+    fn generate_repository_hash(remote_repository_info: &GitRemoteRepositoryInfo, process_id: Option<&str>) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        // Create a string combining user and repo
-        let hash_input = format!(
-            "{}{}",
-            remote_repository_info.user, remote_repository_info.repo
-        );
+        // Create a string combining user, repo, and process_id if available
+        let hash_input = if let Some(pid) = process_id {
+            format!(
+                "{}{}{}",
+                remote_repository_info.user, remote_repository_info.repo, pid
+            )
+        } else {
+            format!(
+                "{}{}",
+                remote_repository_info.user, remote_repository_info.repo
+            )
+        };
 
         // Hash the string to get a unique value
         let mut hasher = DefaultHasher::new();
