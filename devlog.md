@@ -268,18 +268,56 @@ This file documents the architectural decisions and implementation patterns for 
 
 ## Implementation Notes
 
-### Dependency Management
+### Native Git Integration
 
-- Direct git command execution is used via `std::process::Command` instead of git libraries
-- This avoids dependency conflicts with `libgit2-sys` and simplifies the codebase
-- Commands are executed in blocking contexts using `tokio::task::spawn_blocking`
+- Migrated from direct git command execution to the native Rust `gix` library
+- `gix` is a pure Rust implementation of Git with no C dependencies
+- This eliminates the need for external git command execution and simplifies error handling
+- Repository operations (clone, fetch, checkout) are handled by `gix` APIs
+
+```rust
+// Repository cloning using gix instead of command execution
+async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Result<LocalRepository, String> {
+    use gix::{
+        clone::PrepareFetch,
+        create::{Kind, Options as CreateOptions},
+        open::Options as OpenOptions},
+        progress::Discard,
+    };
+    
+    // Initialize a repo for fetching
+    let mut fetch = PrepareFetch::new(
+        &clone_url,
+        repo_dir,
+        Kind::WorkTree,
+        CreateOptions::default(),
+        OpenOptions::default(),
+    )?;
+    
+    // Configure authentication if available
+    if let Some(token) = &self.github_token {
+        fetch = fetch.configure_remote(|remote| {
+            // Add GitHub authentication to remote URL
+            Ok(remote.with_url(url_with_auth)?)
+        });
+    }
+    
+    // Execute the clone operation
+    let (repository, _outcome) = fetch.fetch_only(Discard, &AtomicBool::new(false))?;
+    Ok(local_repo)
+}
+```
 
 ### Repository Caching Strategy
 
-- Repositories are cloned to local cache directories using shallow clones (`--depth=1`)
+- Repositories are cloned to local cache directories using shallow clones
 - Cache directories follow a deterministic naming pattern based on repository owner and name
-- Repositories are automatically updated when accessed again
-- Custom cache directory configuration is supported via command-line parameters
+- Cache strategy includes:
+  - Hash-based directory naming for consistency
+  - Automatic reuse of existing repositories
+  - Validation of repository integrity before reuse
+  - Cleanup of invalid repositories
+- Custom cache directory configuration is supported via initialization parameters
 
 ### Authentication Methods
 
@@ -287,5 +325,6 @@ This file documents the architectural decisions and implementation patterns for 
   - Command-line parameter: `--github-token <token>`
   - Environment variable: `GITCODE_MCP_GITHUB_TOKEN`
   - Programmatic API parameter: `GitHubService::new(Some(token))`
+- Authentication is applied at the transport level for Git operations
 - Tokens are stored in memory and not referenced from environment after startup
 - Unauthenticated requests are supported with rate limits (60 requests/hour vs 5,000/hour)
