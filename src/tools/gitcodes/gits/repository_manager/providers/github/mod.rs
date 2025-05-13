@@ -544,8 +544,8 @@ pub struct GithubSearchParams {
 ///
 /// # Returns
 ///
-/// * `Result<(String, String), String>` - A tuple containing (user, repo) or an error message
-pub(crate) fn parse_github_url(url: &str) -> Result<GithubRemoteInfo, String> {
+/// * `Result<GithubRemoteInfo, String>` - A GithubRemoteInfo object or an error message
+pub(crate) fn parse_github_repository_url(url: &str) -> Result<GithubRemoteInfo, String> {
     let user_repo = if url.starts_with("https://github.com/") {
         url.trim_start_matches("https://github.com/")
             .trim_end_matches(".git")
@@ -564,6 +564,20 @@ pub(crate) fn parse_github_url(url: &str) -> Result<GithubRemoteInfo, String> {
     if parts.len() != 2 {
         return Err("Invalid GitHub repository URL format".to_string());
     }
-
-    Ok((parts[0].to_string(), parts[1].to_string()))
+    
+    let user = parts[0].to_string();
+    let repo = parts[1].to_string();
+    
+    // Create RemoteGitRepositoryInfo with extracted user and repo
+    let repo_info = RemoteGitRepositoryInfo {
+        user,
+        repo,
+        ref_name: None, // Default to None for ref_name
+    };
+    
+    // Create and return GithubRemoteInfo
+    Ok(GithubRemoteInfo {
+        url: url.to_string(),
+        repo_info,
+    })
 }
