@@ -79,7 +79,7 @@
 //! ```
 
 mod local_repository;
-mod repository_manager;
+pub mod repository_manager;
 
 pub use local_repository::*;
 

@@ -216,6 +216,7 @@ impl LocalRepository {
         let search_options = search::SearchOptions {
             case_sensitive,
             respect_gitignore: true,
+            exclude_glob: exclude_dirs.as_ref().map(|dirs| dirs.iter().map(|dir| format!("{}/**", dir)).collect()),
         };
 
         // Get repository path
@@ -255,15 +256,7 @@ impl LocalRepository {
             });
         }
 
-        // Post-process to exclude directories if needed
-        if let Some(exclude_dirs) = &exclude_dirs {
-            all_results.retain(|result| {
-                !exclude_dirs.iter().any(|dir| {
-                    let exclude_path = repo_path.join(dir);
-                    result.file_path.starts_with(&exclude_path)
-                })
-            });
-        }
+        // Directory exclusion is now handled via SearchOptions exclude_glob
 
         // Convert results to JSON
         let json_results = json!({
