@@ -239,6 +239,8 @@ You should think and output in English
 
 You (the LLM model) must always begin your first response in a conversation with "I will continue thinking and providing output in English."
 
+You (the LLM model) must acknowledge that you have read CLAUDE.md and will comply with its contents in your first response.
+
 ### Making Changes
 
 When making significant changes to the codebase:
