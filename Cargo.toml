@@ -48,6 +48,10 @@ mockito = "1.2"
 tempfile = "3.8"
 tokio-test = "0.4"
 
+[features]
+# Features used for testing
+this_test_is_disabled = []
+
 # Main binary with subcommands
 [[bin]]
 name = "gitcodes-mcp"

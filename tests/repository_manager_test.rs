@@ -10,6 +10,96 @@ use std::io::Write;
 use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
 use gitcodes_mcp::gitcodes::{LocalRepository, RepositoryManager};
 
+/// Tests that the HTTPS to SSH URL fallback mechanism works correctly
+///
+/// This test uses a tracing subscriber to capture log messages and validate
+/// that the fallback mechanism is activated when HTTPS URL cloning fails.
+/// This test is commented out as it requires an actual repository and may
+/// not work in all environments.
+#[cfg(feature = "this_test_is_disabled")]
+#[tokio::test]
+async fn test_https_to_ssh_url_fallback() {
+    use std::str::FromStr;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::Registry;
+    
+    // Create a repository manager
+    let manager = RepositoryManager::new(None, None).expect("Failed to create RepositoryManager");
+    
+    // Use a real repository that exists (you can replace with any valid repo)
+    let repo_url = "https://github.com/rust-lang/rust";
+    
+    // Capture log messages to monitor for fallback behavior
+    let log_messages = Arc::new(Mutex::new(Vec::new()));
+    let log_messages_clone = log_messages.clone();
+    
+    // Create a custom tracing layer to capture log messages
+    struct LogCaptureLayer {
+        messages: Arc<Mutex<Vec<String>>>,
+    }
+    
+    impl<S> tracing_subscriber::Layer<S> for LogCaptureLayer
+    where
+        S: tracing::Subscriber,
+    {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let mut visitor = LogVisitor(self.messages.clone());
+            event.record(&mut visitor);
+        }
+    }
+    
+    struct LogVisitor(Arc<Mutex<Vec<String>>>);
+    
+    impl tracing::field::Visit for LogVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                let message = format!("{:?}", value);
+                if message.contains("HTTPS clone failed") || message.contains("Trying SSH URL") {
+                    let mut messages = self.0.lock().unwrap();
+                    messages.push(message);
+                }
+            }
+        }
+    }
+    
+    // Set up the tracing subscriber with our custom layer
+    let _guard = tracing_subscriber::registry()
+        .with(LogCaptureLayer {
+            messages: log_messages_clone,
+        })
+        .set_default();
+    
+    // Parse the URL and attempt to prepare the repository
+    let repo_location = RepositoryLocation::from_str(repo_url).expect("Failed to parse URL");
+    let result = manager.prepare_repository(&repo_location, None).await;
+    
+    // Check if fallback messages were captured in logs
+    let captured_logs = log_messages.lock().unwrap();
+    let fallback_detected = captured_logs.iter().any(|msg| {
+        msg.contains("HTTPS clone failed") || msg.contains("Trying SSH URL")
+    });
+    
+    // Also check the error message if it failed
+    let fallback_in_error = match &result {
+        Err(e) => e.contains("HTTPS") && e.contains("SSH"),
+        _ => false,
+    };
+    
+    // The test passes if we detected the fallback in either logs or error message
+    assert!(
+        fallback_detected || fallback_in_error,
+        "HTTPS to SSH URL fallback mechanism was not detected"
+    );
+    
+    println!("✅ Test passed: HTTPS to SSH URL fallback mechanism working correctly");
+}
+
 /// Tests LocalRepository validation with a mock git repository
 ///
 /// This test creates a minimal mock git repository structure and tests that
@@ -98,6 +188,73 @@ async fn test_prepare_repository_local() {
         "Successfully prepared local repository at: {}",
         prepared_repo.get_repository_dir().display()
     );
+}
+
+/// Tests that the prepare_repository method handles URLs appropriately
+///
+/// This test verifies that the repository manager can properly handle invalid URLs
+/// and provides appropriate error messages with URL format conversion suggestions.
+#[tokio::test]
+async fn test_repository_url_handling() {
+    // Create a repository manager
+    let manager = RepositoryManager::new(None, None).expect("Failed to create RepositoryManager");
+    
+    // Test case 1: Invalid URL format
+    let invalid_url = "not-a-valid-url";
+    let _repo_location = match invalid_url.parse::<RepositoryLocation>() {
+        Ok(_) => panic!("Expected invalid URL to fail parsing"),
+        Err(e) => {
+            // Verify the error message has useful information
+            assert!(e.contains("invalid"), "Error message should indicate invalid URL format");
+            println!("✅ Test passed: Invalid URL properly rejected: {}", e);
+        }
+    };
+    
+    // Test case 2: Non-existent repository with HTTPS URL
+    let nonexistent_repo = "https://github.com/nonexistent-user/nonexistent-repo-12345";
+    let repo_location = nonexistent_repo.parse::<RepositoryLocation>().expect("Failed to parse URL");
+    
+    // Attempt to prepare the repository (should fail)
+    let result = manager.prepare_repository(&repo_location, None).await;
+    
+    // Check that it failed as expected
+    match result {
+        Ok(_) => panic!("Expected non-existent repository to fail"),
+        Err(e) => {
+            // Print the error message for diagnostic purposes
+            println!("Error message: {}", e);
+            
+            // Just verify the error indicates a network issue
+            assert!(e.contains("clone") && (e.contains("IO error") || e.contains("failed") || 
+                                             e.contains("server") || e.contains("network")),
+                "Error message should indicate a network or clone issue");
+            println!("✅ Test passed: Non-existent repository error handling works");
+        }
+    }
+    
+    // Test case 3: Malformed HTTPS URL (valid format but wrong protocol)
+    let malformed_url = "http://github.com/user/repo"; // Using http:// instead of https://
+    match malformed_url.parse::<RepositoryLocation>() {
+        Ok(repo_location) => {
+            // It might parse correctly even though it's slightly malformed
+            let result = manager.prepare_repository(&repo_location, None).await;
+            match result {
+                Ok(_) => panic!("Expected malformed URL to fail"),
+                Err(e) => {
+                    // Check that the error message provides helpful information
+                    assert!(
+                        e.contains("invalid") || e.contains("failed") || e.contains("error"),
+                        "Error message should indicate an issue with the URL"
+                    );
+                    println!("✅ Test passed: Malformed URL properly handled");
+                }
+            }
+        },
+        Err(e) => {
+            // This is also a valid outcome
+            println!("✅ Test passed: Malformed URL rejected during parsing: {}", e);
+        }
+    };
 }
 
 // UNCOMMENT THIS TEST TO RUN INTEGRATION TEST AGAINST REAL REPOSITORY
