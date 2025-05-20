@@ -230,8 +230,9 @@ impl LocalRepository {
     ///
     /// # Returns
     ///
-    /// A JSON string containing an array of objects representing repository references.
-    /// Each object contains the reference name and its corresponding commit SHA.
+    /// A Result containing either a JSON string with an array of objects representing repository references,
+    /// or an error message as a String if something went wrong.
+    /// The JSON array contains objects where each object has the reference name and its corresponding commit SHA.
     ///
     /// # Format
     ///
@@ -248,80 +249,73 @@ impl LocalRepository {
     ///   ...
     /// ]
     /// ```
-    pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> String {
-        // Attempt to open the git repository at the specified path
-        let repo_result = gix::open(self.repository_location.clone());
-        
-        match repo_result {
-            Ok(repo) => {
-                // Successfully opened the repository
-                let mut refs = Vec::new();
-                
-                // Iterate through all references in the repository
-                match repo.references() {
-                    Ok(references) => {
-                        // Get all references
-                        match references.all() {
-                            Ok(iter) => {
-                                // Process each reference
-                                for reference in iter {
-                                    match reference {
-                                        Ok(r) => {
-                                            // Get the reference name
-                                            let ref_name = r.name().as_bstr().to_string();
-                                            
-                                            // Get the target object ID (commit SHA)
-                                            let target = r.target();
-                                            let sha = target.id().to_hex().to_string();
-                                            
-                                            // Create a JSON object for this reference
-                                            let ref_obj = serde_json::json!({
-                                                "ref": ref_name,
-                                                "object": {
-                                                    "sha": sha,
-                                                    "type": "commit"
-                                                }
-                                            });
-                                            
-                                            refs.push(ref_obj);
-                                        },
-                                        Err(_) => continue, // Skip references that can't be read
-                                    }
-                                }
-                            },
-                            Err(e) => {
-                                return format!(
-                                    "{{\"error\": \"Failed to iterate repository references: {}\"}}", 
-                                    e
-                                );
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        return format!(
-                            "{{\"error\": \"Failed to list repository references: {}\"}}", 
-                            e
-                        );
-                    }
-                }
-                
-                // Convert the vector of references to a JSON array
-                match serde_json::to_string(&refs) {
-                    Ok(json) => json,
-                    Err(e) => format!(
-                        "{{\"error\": \"Failed to serialize repository references: {}\"}}", 
-                        e
-                    ),
-                }
-            },
+    pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> Result<String, String> {
+        // Open the repository
+        let repo = match gix::open(&self.repository_location) {
+            Ok(repo) => repo,
             Err(e) => {
-                // Failed to open the repository
-                format!(
-                    "{{\"error\": \"Failed to open repository at {}: {}\"}}", 
-                    self.repository_location.display(), 
+                return Err(format!(
+                    "Failed to open repository at {}: {}",
+                    self.repository_location.display(),
                     e
-                )
+                ));
             }
+        };
+
+        // Get the references platform
+        let refs_platform = match repo.references() {
+            Ok(platform) => platform,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to access repository references: {}",
+                    e
+                ));
+            }
+        };
+
+        // Get all references from the platform
+        let all_refs = match refs_platform.all() {
+            Ok(refs) => refs,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to list repository references: {}",
+                    e
+                ));
+            }
+        };
+
+        // Process the references into JSON objects
+        let mut result = Vec::new();
+        for reference in all_refs {
+            if let Ok(r) = reference {
+                // Get reference name - fully qualified name (e.g., refs/heads/main)
+                let ref_name = r.name().as_bstr().to_string();
+                
+                // Get target information (the SHA)
+                let target = r.target();
+                let sha = target.id().to_hex().to_string();
+                
+                // Create the JSON object for this reference
+                let ref_obj = serde_json::json!({
+                    "ref": ref_name,
+                    "object": {
+                        "sha": sha,
+                        "type": "commit" // Assuming all references point to commits
+                    }
+                });
+                
+                result.push(ref_obj);
+            }
+            // Skip references that couldn't be read
+        }
+
+        // Convert to JSON string
+        match serde_json::to_string(&result) {
+            Ok(json) => Ok(json),
+            Err(e) => Err(format!(
+                "Failed to serialize repository references: {}",
+                e
+            )),
         }
     }
 
