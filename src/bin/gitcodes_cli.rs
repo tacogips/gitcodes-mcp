@@ -286,7 +286,7 @@ async fn main() -> Result<()> {
             match RepositoryLocation::from_str(&repository_location) {
                 Ok(repo_location) => {
                     // Prepare the repository (clone or reuse local)
-                    match manager.prepare_repository(repo_location, None).await {
+                    match manager.prepare_repository(&repo_location, None).await {
                         Ok(local_repo) => {
                             tracing::info!(
                                 "Repository prepared at: {}",

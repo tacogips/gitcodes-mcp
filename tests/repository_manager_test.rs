@@ -83,7 +83,7 @@ async fn test_prepare_repository_local() {
 
     // Test prepare_repository with our local repository
     let prepared_repo = manager
-        .prepare_repository(repo_location, None)
+        .prepare_repository(&repo_location, None)
         .await
         .expect("Failed to prepare local repository");
 

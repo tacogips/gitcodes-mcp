@@ -58,7 +58,7 @@ pub async fn perform_grep_in_repository(
 
     // Prepare the repository (clone if necessary)
     let local_repo = repository_manager
-        .prepare_repository(repository_location.clone(), ref_name.map(String::from))
+        .prepare_repository(&repository_location, ref_name.map(String::from))
         .await?;
 
     // Use the pattern as provided - the caller is responsible for any regex escaping
