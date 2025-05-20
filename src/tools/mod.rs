@@ -347,8 +347,8 @@ impl GitHubCodeTools {
         )]
         repository_location: String,
     ) -> Result<String, String> {
-        // Use the services module to handle repository refs listing
-        let (refs_json, local_repo) = services::list_repository_refs(&self.manager, &repository_location).await?;
+        // Use the repository manager directly to handle repository refs listing
+        let (refs_json, local_repo) = self.manager.list_repository_refs(&repository_location).await?;
         
         // Note: We don't clean up the repository here to use it as a cache
         // This improves performance for subsequent operations

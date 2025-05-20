@@ -363,6 +363,37 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
       fn get_repo_dir(&self, info: &RepositoryInfo) -> PathBuf { ... }
   }
   ```
+
+#### Moving Service Functions to Their Logical Owner
+
+- **Pattern:** Migrate service functions to methods on the types they primarily operate on
+- **Example:** Moving `list_repository_refs` from services module to `RepositoryManager`
+- **Implementation:**
+  ```rust
+  // Before: Function in services module
+  pub async fn list_repository_refs(
+      repository_manager: &repository_manager::RepositoryManager,
+      repository_location_str: &str,
+  ) -> Result<(String, Option<LocalRepository>), String> {
+      // Implementation...
+  }
+
+  // After: Method on RepositoryManager
+  impl RepositoryManager {
+      pub async fn list_repository_refs(
+          &self,
+          repository_location_str: &str,
+      ) -> Result<(String, Option<LocalRepository>), String> {
+          // Implementation...
+      }
+  }
+  ```
+
+- **Benefits:**
+  1. Places methods with the data they operate on
+  2. Reduces the need to pass the repository manager as a parameter
+  3. Creates a more intuitive API for consumers
+  4. Clearly identifies the logical owner of repository-related operations
 - **Benefits:** Better encapsulation, clearer ownership, simplified signatures
 
 ## API Design Patterns

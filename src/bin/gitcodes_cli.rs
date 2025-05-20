@@ -281,11 +281,8 @@ async fn main() -> Result<()> {
         } => {
             tracing::info!("Listing references for repository: {}", repository_location);
 
-            // Use the services module to list repository references
-            use gitcodes_mcp::services;
-            
-            // Get the refs from the services module
-            let (refs_json, local_repo_opt) = services::list_repository_refs(manager, &repository_location).await
+            // Get the refs directly from the repository manager
+            let (refs_json, local_repo_opt) = manager.list_repository_refs(&repository_location).await
                 .map_err(|e| anyhow::anyhow!(e))?;
             
             // Simply print the JSON result

@@ -8,7 +8,6 @@
 use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
 use gitcodes_mcp::gitcodes::local_repository::LocalRepository;
 use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
-use gitcodes_mcp::services;
 use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -140,8 +139,8 @@ async fn test_services_list_repository_refs_local_with_fetch() {
                 }
             }
             
-            // Now, use the services::list_repository_refs function which should fetch updates
-            let (refs_json, local_repo_opt) = match services::list_repository_refs(&manager, &local_path_str).await {
+            // Now, use the repository manager's list_repository_refs method which should fetch updates
+            let (refs_json, local_repo_opt) = match manager.list_repository_refs(&local_path_str).await {
                 Ok(result) => result,
                 Err(e) => {
                     println!("Warning: Failed to list repository refs via service: {}", e);
@@ -251,8 +250,8 @@ async fn test_list_repository_refs() {
     // Create test manager
     let manager = create_test_manager();
 
-    // List repository references via the service function
-    let result = services::list_repository_refs(&manager, repo_url).await;
+    // List repository references via the repository manager
+    let result = manager.list_repository_refs(repo_url).await;
 
     match result {
         Ok((refs_json, local_repo_opt)) => {
@@ -356,8 +355,8 @@ async fn test_list_repository_refs_https_url() {
     // Create test manager
     let manager = create_test_manager();
 
-    // List repository references via the service function
-    let result = services::list_repository_refs(&manager, repo_url).await;
+    // List repository references via the repository manager
+    let result = manager.list_repository_refs(repo_url).await;
 
     // Handle the result conditionally
     match result {
@@ -456,7 +455,7 @@ async fn test_list_local_repository_refs() {
         let local_path = repo_dir.to_string_lossy();
 
         // Now list refs from the local repository
-        let result = services::list_repository_refs(&manager, &local_path).await;
+        let result = manager.list_repository_refs(&local_path).await;
 
         match result {
             Ok((refs_json, local_repo_opt)) => {

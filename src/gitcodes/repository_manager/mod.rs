@@ -2,7 +2,7 @@ pub mod instance;
 pub mod providers;
 mod repository_location;
 
-use std::{num::NonZeroU32, path::PathBuf};
+use std::{num::NonZeroU32, path::PathBuf, str::FromStr};
 
 use gix::{progress::Discard, remote::fetch::Shallow};
 use providers::GitRemoteRepository;
@@ -375,6 +375,78 @@ impl RepositoryManager {
         providers::github::GithubClient::new(client, self.github_token.clone())
     }
 
+    /// Lists all references (branches and tags) for a given repository using the GitHub API
+    ///
+    /// This method handles the entire refs listing process:
+    /// 1. Parses a repository location string into a RepositoryLocation
+    /// 2. For GitHub repositories, uses the GitHub API to fetch refs
+    /// 3. For local repositories:
+    ///    a. Prepares the repository using the repository manager
+    ///    b. Fetches the latest updates from remote
+    ///    c. Lists refs from the local repository
+    ///
+    /// # Parameters
+    ///
+    /// * `repository_location_str` - The repository location string to parse (e.g., "github:user/repo" or "/path/to/local/repo")
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(String, Option<LocalRepository>), String>` - A tuple containing the JSON results string and optionally a local repository reference
+    ///
+    /// # Errors
+    ///
+    /// This method returns an error if:
+    /// - The repository location string cannot be parsed
+    /// - The repository cannot be accessed or prepared
+    /// - The API request fails (for GitHub repositories)
+    /// - The git command fails (for local repositories)
+    pub async fn list_repository_refs(
+        &self,
+        repository_location_str: &str,
+    ) -> Result<(String, Option<LocalRepository>), String> {
+        // Parse the repository location string
+        let repository_location = RepositoryLocation::from_str(repository_location_str)
+            .map_err(|e| format!("Failed to parse repository location: {}", e))?;
+
+        // Different handling based on repository type
+        match &repository_location {
+            RepositoryLocation::RemoteRepository(remote_repo) => {
+                // Currently only GitHub repositories are supported
+                match remote_repo {
+                    GitRemoteRepository::Github(github_repo_info) => {
+                        // For GitHub repositories, use the GitHub API
+                        let github_client = self.get_github_client();
+                        let refs_json = github_client
+                            .list_repository_refs(&github_repo_info.repo_info)
+                            .await?;
+
+                        // Return the JSON result without a local repository reference
+                        Ok((refs_json, None))
+                    }
+                }
+            }
+            local_repository @ RepositoryLocation::LocalPath(_) => {
+                // For local repositories, prepare the repository and use git commands
+                let local_repo = self
+                    .prepare_repository(local_repository, None)
+                    .await?;
+
+                // Fetch updates from remote before listing refs to ensure we have the latest changes
+                // Ignore fetch errors as we can still list existing refs even if fetch fails
+                if let Err(e) = local_repo.fetch_remote().await {
+                    eprintln!("Warning: Failed to fetch latest updates from remote: {}", e);
+                    // Continue with listing refs despite fetch failure
+                }
+
+                // Use the local repository to list refs
+                let refs_json = local_repo.list_repository_refs().await?;
+
+                // Return both the JSON results and the local repository reference
+                Ok((refs_json, Some(local_repo)))
+            }
+        }
+    }
+
     /// Search for repositories across different Git providers
     ///
     /// This method performs a search for repositories on the specified Git provider
@@ -479,21 +551,20 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
-    /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubSearchParams, GithubSortOption, GithubOrderOption};
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::{GitProvider, github::{GithubSortOption, GithubOrderOption}};
     ///
     /// async fn example() {
     ///     let repo_manager = RepositoryManager::default();
     ///
-    ///     // Basic search with defaults
-    ///     let params = GithubSearchParams {
-    ///         query: "rust http client".to_string(),
-    ///         sort_by: None,
-    ///         order: None,
-    ///         per_page: None,
-    ///         page: None,
-    ///     };
-    ///
-    ///     match repo_manager.search_github_repositories(params).await {
+    ///     // Search using the public method
+    ///     match repo_manager.search_repositories(
+    ///         GitProvider::Github,
+    ///         "rust http client".to_string(),
+    ///         Some(GithubSortOption::Stars),
+    ///         Some(GithubOrderOption::Descending),
+    ///         Some(10),
+    ///         Some(1)
+    ///     ).await {
     ///         Ok(results) => println!("Found repositories: {}", results),
     ///         Err(e) => eprintln!("Search failed: {}", e),
     ///     }

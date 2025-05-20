@@ -8,7 +8,6 @@ use std::env;
 use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
 use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
 use gitcodes_mcp::gitcodes::repository_manager::providers::GitRemoteRepository;
-use gitcodes_mcp::services;
 use serde_json::Value;
 use std::str::FromStr;
 
@@ -51,8 +50,8 @@ async fn test_list_repository_refs_github() {
     for repo_url in repo_urls {
         println!("Testing repository refs for URL: {}", repo_url);
         
-        // Call the service function to list repository refs
-        let result = services::list_repository_refs(&manager, repo_url).await;
+        // Call the repository manager method to list repository refs
+        let result = manager.list_repository_refs(repo_url).await;
         
         // Verify the result
         match result {
@@ -170,8 +169,8 @@ async fn test_list_repository_refs_error_handling() {
     // Invalid repository URL (non-existent repository)
     let invalid_repo_url = "github:tacogips/non-existent-repository-12345";
     
-    // Call the service function with the invalid URL
-    let result = services::list_repository_refs(&manager, invalid_repo_url).await;
+    // Call the repository manager method with the invalid URL
+    let result = manager.list_repository_refs(invalid_repo_url).await;
     
     // Verify the function returns an error
     assert!(result.is_err(), "Function should return an error for non-existent repository");
@@ -185,7 +184,7 @@ async fn test_list_repository_refs_error_handling() {
     
     // Test with invalid format
     let malformed_url = "invalid-format";
-    let result = services::list_repository_refs(&manager, malformed_url).await;
+    let result = manager.list_repository_refs(malformed_url).await;
     
     // Verify the function returns an error
     assert!(result.is_err(), "Function should return an error for invalid URL format");
