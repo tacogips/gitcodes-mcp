@@ -666,12 +666,13 @@ The codebase now uses a global singleton pattern for the `RepositoryManager`:
 
 - Implemented in `LocalRepository::list_repository_refs()`
 - Returns all references (branches and tags) in the repository as a JSON array
+- Uses strongly-typed structs (`GitRefObject`, `RefObject`) for proper serialization
 - Each reference includes:
   - Full reference name (e.g., `refs/heads/main`, `refs/tags/v1.0.0`)
   - SHA-1 object identifier for the referenced commit
   - Object type (typically "commit")
 - Format matches the GitHub API reference listing for consistency
-- Error handling returns properly formatted JSON with error messages
+- Proper error handling through Result<String, String> return type
 - Usage example:
 
 ```json

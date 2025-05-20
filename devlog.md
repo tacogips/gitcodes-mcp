@@ -14,38 +14,56 @@ This file documents the architectural decisions and implementation patterns for 
 - Matches GitHub API format for consistency between local and remote repositories
 
 ```rust
-// Example implementation using gix to list repository references
-pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> String {
-    // Open the repository
-    match gix::open(self.repository_location.clone()) {
-        Ok(repo) => {
-            let mut refs = Vec::new();
-            
-            // Process all references in the repository
-            for reference in repo.references().ok()? {
-                if let Ok(r) = reference {
-                    // Extract ref name and SHA
-                    let ref_name = r.name().to_string();
-                    if let Some(target) = r.target().ok() {
-                        let sha = target.to_hex().to_string();
-                        refs.push(serde_json::json!({
-                            "ref": ref_name,
-                            "object": {
-                                "sha": sha,
-                                "type": "commit"
-                            }
-                        }));
-                    }
-                }
-            }
-            
-            // Convert to JSON string
-            serde_json::to_string(&refs).unwrap_or_else(|e| {
-                format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
-            })
-        },
-        Err(e) => format!("{{\"error\": \"Failed to open repository: {}\"}}", e)
+// Example implementation using gix to list repository references with strongly-typed structs
+pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> Result<String, String> {
+    // Define structs for reference objects
+    #[derive(Serialize)]
+    struct RefObject {
+        sha: String,
+        #[serde(rename = "type")]
+        object_type: &'static str,
     }
+    
+    #[derive(Serialize)]
+    struct GitRefObject {
+        #[serde(rename = "ref")]
+        ref_name: String,
+        object: RefObject,
+    }
+    
+    // Open the repository
+    let repo = gix::open(&self.repository_location)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+    
+    let refs_platform = repo.references()
+        .map_err(|e| format!("Failed to access repository references: {}", e))?;
+        
+    let all_refs = refs_platform.all()
+        .map_err(|e| format!("Failed to list references: {}", e))?;
+        
+    // Process references into structured objects
+    let mut result = Vec::new();
+    for reference in all_refs {
+        if let Ok(r) = reference {
+            let ref_name = r.name().as_bstr().to_string();
+            let sha = r.target().id().to_hex().to_string();
+            
+            // Use properly structured types
+            let ref_obj = GitRefObject {
+                ref_name,
+                object: RefObject {
+                    sha,
+                    object_type: "commit",
+                },
+            };
+            
+            result.push(ref_obj);
+        }
+    }
+    
+    // Serialize to JSON
+    serde_json::to_string(&result)
+        .map_err(|e| format!("Failed to serialize references: {}", e))
 }
 ```
 
