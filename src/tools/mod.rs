@@ -295,19 +295,13 @@ impl GitHubCodeTools {
         )
         .await
         {
-            Ok((result, local_repo)) => {
+            Ok((result, _local_repo)) => {
                 // Successful search, convert result to JSON
                 let json_result = result.to_json()?;
 
-                // Clean up the local repository after successful search
-                if let Err(e) = local_repo.cleanup() {
-                    tracing::warn!(
-                        "Failed to clean up repository after successful search: {}",
-                        e
-                    );
-                } else {
-                    tracing::debug!("Successfully cleaned up repository after search");
-                }
+                // Note: We don't clean up the repository here to use it as a cache
+                // This improves performance for subsequent operations
+                tracing::debug!("Repository kept for caching");
 
                 Ok(json_result)
             }
@@ -315,25 +309,9 @@ impl GitHubCodeTools {
                 // Search failed, try to clean up repository if it was created
                 tracing::error!("Code search failed: {}", err);
 
-                // Try to parse the repository location and check for an existing local repo to clean up
-                if let Ok(repo_location) = RepositoryLocation::from_str(&repository_location) {
-                    // Attempt to get the local repository path - this won't create a new one
-                    if let Ok(existing_repo) = self
-                        .manager
-                        .get_local_path_for_repository(&repo_location)
-                        .await
-                    {
-                        // Try to clean up the repository
-                        if let Err(cleanup_err) = existing_repo.cleanup() {
-                            tracing::warn!(
-                                "Failed to clean up repository after error: {}",
-                                cleanup_err
-                            );
-                        } else {
-                            tracing::debug!("Successfully cleaned up repository after error");
-                        }
-                    }
-                }
+                // Note: We don't clean up the repository here even on error
+                // to preserve it for potential future operations
+                tracing::debug!("Repository kept for caching even after error");
 
                 // Return the original error
                 Err(err)
@@ -373,13 +351,10 @@ impl GitHubCodeTools {
         // Use the services module to handle repository refs listing
         let (refs_json, local_repo) = services::list_repository_refs(&self.manager, &repository_location).await?;
         
-        // Clean up the local repository if one was created
-        if let Some(repo) = local_repo {
-            if let Err(e) = repo.cleanup() {
-                tracing::warn!("Failed to clean up repository after successful refs listing: {}", e);
-            } else {
-                tracing::debug!("Successfully cleaned up repository after refs listing");
-            }
+        // Note: We don't clean up the repository here to use it as a cache
+        // This improves performance for subsequent operations
+        if local_repo.is_some() {
+            tracing::debug!("Repository kept for caching");
         }
         
         // Return the JSON result
