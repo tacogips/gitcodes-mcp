@@ -290,3 +290,165 @@ async fn test_list_local_repository_refs() {
         println!("Warning: Could not prepare repository for local refs test: {:?}", prepare_result.err());
     }
 }
+
+/// Tests the direct list_repository_refs method of LocalRepository
+/// 
+/// This test verifies that the list_repository_refs method directly on the
+/// LocalRepository struct correctly returns repository references as JSON.
+/// 
+/// Instead of trying to clone a remote repository, this test creates a temporary
+/// local git repository to test with, making it more reliable in environments
+/// where network access might be restricted.
+#[tokio::test]
+async fn test_local_repository_list_refs_direct() {
+    // Create a temporary directory for our test repository
+    let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+    let repo_path = temp_dir.path();
+    
+    // Initialize a git repository in the temporary directory
+    let init_result = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_path)
+        .output();
+    
+    // Skip test if git command fails (git might not be installed)
+    let init_output = match init_result {
+        Ok(output) => output,
+        Err(e) => {
+            println!("Skipping test_local_repository_list_refs_direct: 'git' command failed: {}", e);
+            return;
+        }
+    };
+    
+    if !init_output.status.success() {
+        println!("Skipping test_local_repository_list_refs_direct: Failed to initialize git repository: {}", 
+                String::from_utf8_lossy(&init_output.stderr));
+        return;
+    }
+    
+    // Configure git user for the test repository
+    let _ = std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo_path)
+        .output();
+        
+    let _ = std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo_path)
+        .output();
+    
+    // Create a test file and commit it to create the main branch
+    let test_file_path = repo_path.join("test_file.txt");
+    std::fs::write(&test_file_path, "This is a test file.").expect("Failed to write test file");
+    
+    // Add the file to git
+    let _ = std::process::Command::new("git")
+        .args(["add", "test_file.txt"])
+        .current_dir(repo_path)
+        .output();
+    
+    // Commit the file
+    let commit_result = std::process::Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(repo_path)
+        .output();
+    
+    if let Ok(output) = commit_result {
+        if !output.status.success() {
+            println!("Warning: Failed to commit test file: {}", String::from_utf8_lossy(&output.stderr));
+        }
+    }
+    
+    // Create a feature branch
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "-b", "feature/test-feature"])
+        .current_dir(repo_path)
+        .output();
+    
+    // Create a tag
+    let _ = std::process::Command::new("git")
+        .args(["tag", "-a", "v0.1.0", "-m", "Test tag"])
+        .current_dir(repo_path)
+        .output();
+    
+    // Create a LocalRepository instance pointing to our test repository
+    let local_repo = gitcodes_mcp::gitcodes::local_repository::LocalRepository::new(
+        repo_path.to_path_buf()
+    );
+    
+    // Call the list_repository_refs method directly on the LocalRepository instance
+    let refs_result = local_repo.list_repository_refs().await;
+    
+    match refs_result {
+        Ok(refs_json) => {
+            // Parse the JSON response
+            let refs_value: JsonValue = serde_json::from_str(&refs_json)
+                .expect("Failed to parse JSON response");
+            
+            // Verify the refs are returned as a JSON array
+            assert!(refs_value.is_array(), "References should be returned as a JSON array");
+            
+            // Extract branches and tags from the array
+            let refs_array = refs_value.as_array().unwrap();
+            
+            // Collect branches and tags by examining the "ref" field of each element
+            let branches: Vec<&str> = refs_array.iter()
+                .filter_map(|item| {
+                    if let Some(ref_path) = item["ref"].as_str() {
+                        if ref_path.starts_with("refs/heads/") {
+                            // Extract just the branch name without the "refs/heads/" prefix
+                            Some(&ref_path["refs/heads/".len()..]) 
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+                
+            let tags: Vec<&str> = refs_array.iter()
+                .filter_map(|item| {
+                    if let Some(ref_path) = item["ref"].as_str() {
+                        if ref_path.starts_with("refs/tags/") {
+                            // Extract just the tag name without the "refs/tags/" prefix
+                            Some(&ref_path["refs/tags/".len()..]) 
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            
+            // Print the extracted branches and tags
+            println!("Branches from direct call: {:?}", branches);
+            println!("Tags from direct call: {:?}", tags);
+            
+            // Verify we have at least the branches we created
+            assert!(branches.contains(&"main"), "Branch 'main' should exist in repository");
+            assert!(branches.contains(&"feature/test-feature"), "Branch 'feature/test-feature' should exist in repository");
+            
+            // Verify tag exists
+            assert!(tags.contains(&"v0.1.0"), "Tag 'v0.1.0' should exist in repository");
+            
+            // Verify each reference has a SHA
+            for item in refs_array {
+                assert!(item["object"]["sha"].is_string(), "Each reference should have a SHA");
+                let sha = item["object"]["sha"].as_str().unwrap();
+                assert!(!sha.is_empty(), "SHA should not be empty");
+                // SHA should be a hex string (typically 40 chars for full SHA-1)
+                assert!(sha.chars().all(|c| c.is_ascii_hexdigit()), "SHA should be a hex string");
+            }
+            
+            println!("Successfully retrieved {} branches and {} tags directly from LocalRepository", 
+                    branches.len(), tags.len());
+        },
+        Err(e) => {
+            panic!("Failed to list repository refs directly: {}", e);
+        }
+    }
+    
+    // The temporary directory will be automatically cleaned up when it goes out of scope
+}
