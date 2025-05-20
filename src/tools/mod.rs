@@ -174,10 +174,16 @@ impl GitHubCodeTools {
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
     #[tool(
-        description = "Search for GitHub repositories. Searches GitHub's API for repositories matching your query. Supports sorting by stars, forks, or update date, and pagination for viewing more results. Example usage: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"rust http client\"}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"game engine\", \"sort_by\": \"Stars\", \"order\": \"Descending\"}}`. With pagination: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"machine learning\", \"per_page\": 50, \"page\": 2}}`"
+        description = "Search for repositories on Git providers (currently only GitHub is supported). Searches GitHub's API for repositories matching your query. Supports sorting by stars, forks, or update date, and pagination for viewing more results.  sorting, pagination, and more. Example usage: `{"name": "search_repositories", "arguments": {"query": "rust http client"}}`. With provider: `{"name": "search_repositories", "arguments": {"provider": "github", "query": "rust web framework"}}`. Additional examples: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"rust http client\"}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"game engine\", \"sort_by\": \"Stars\", \"order\": \"Descending\"}}`. With pagination: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"machine learning\", \"per_page\": 50, \"page\": 2}}`"
     )]
     async fn search_repositories(
         &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Git provider to search (optional, default is 'github'). Currently, only 'github' is supported as a valid provider."
+        )]
+        provider: Option<String>,
+
         #[tool(param)]
         #[schemars(
             description = "Search query (required) - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'. Maximum length is 256 characters."
@@ -208,17 +214,49 @@ impl GitHubCodeTools {
         )]
         page: Option<u32>,
     ) -> String {
-        // Create a SearchParams struct from the individual parameters
-        let _params = SearchParams {
-            query,
-            sort_by,
-            order,
-            per_page,
-            page,
+        use crate::gitcodes::repository_manager::providers::GitProvider;
+        use std::str::FromStr;
+
+        // Parse the provider string or use default (GitHub)
+        let git_provider = match provider.as_deref() {
+            Some(provider_str) => match GitProvider::from_str(provider_str) {
+                Ok(provider) => provider,
+                Err(_) => {
+                    return format!(
+                        "Invalid provider: '{}'. Currently only 'github' is supported.",
+                        provider_str
+                    );
+                }
+            },
+            None => GitProvider::Github, // Default to GitHub if not provided
         };
 
-        // TODO: Implement repository search functionality
-        "Search functionality is temporarily disabled during refactoring.".to_string()
+        // Convert SortOption enum to string representation
+        let sort_option_str = sort_by.map(|sort| match sort {
+            SortOption::Relevance => "relevance".to_string(),
+            SortOption::Stars => "stars".to_string(),
+            SortOption::Forks => "forks".to_string(),
+            SortOption::Updated => "updated".to_string(),
+        });
+
+        // Convert OrderOption enum to string representation
+        let order_option_str = order.map(|order| match order {
+            OrderOption::Ascending => "ascending".to_string(),
+            OrderOption::Descending => "descending".to_string(),
+        });
+
+        // Execute the search against the specified provider using the repository manager
+        match self.manager.search_repositories(
+            git_provider,
+            query,
+            sort_option_str,
+            order_option_str,
+            per_page,
+            page,
+        ).await {
+            Ok(result) => result,
+            Err(err) => format!("Search failed: {}", err),
+        }
     }
 
     /// Search code in a GitHub repository

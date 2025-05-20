@@ -17,7 +17,7 @@ pub struct GithubRemoteInfo {
 #[strum(serialize_all = "lowercase")]
 pub enum GithubSortOption {
     /// No specific sort, use GitHub's default relevance sorting
-    #[strum(serialize = "")]
+    #[strum(serialize = "relevance")]
     Relevance,
     /// Sort by number of stars (popularity)
     #[strum(serialize = "stars")]
@@ -214,7 +214,10 @@ impl GithubClient {
     /// Executes a GitHub API search repository request
     ///
     /// Sends the HTTP request to the GitHub API's repository search endpoint and handles the response.
-    pub async fn execute_search_repository_request(&self, params: &GithubSearchParams) -> Result<String, String> {
+    pub async fn execute_search_repository_request(
+        &self,
+        params: &GithubSearchParams,
+    ) -> Result<String, String> {
         let url = Self::construct_search_url(params);
         // Set up the API request
         let mut req_builder = self.client.get(url).header(
@@ -291,16 +294,19 @@ impl GithubClient {
     ///
     /// A JSON string containing all references in the repository, including branches and tags.
     /// The response includes ref names and their corresponding SHA values.
-    pub async fn list_repository_refs(&self, repo_info: &GitRemoteRepositoryInfo) -> Result<String, String> {
+    pub async fn list_repository_refs(
+        &self,
+        repo_info: &GitRemoteRepositoryInfo,
+    ) -> Result<String, String> {
         // Construct the API URL for listing refs
         let url_str = format!(
             "https://api.github.com/repos/{}/{}/git/refs",
-            repo_info.user,
-            repo_info.repo
+            repo_info.user, repo_info.repo
         );
 
         // Parse the URL to ensure it's valid
-        let url = url_str.parse::<reqwest::Url>()
+        let url = url_str
+            .parse::<reqwest::Url>()
             .map_err(|e| format!("Failed to parse GitHub API URL: {}", e))?;
 
         // Set up the API request

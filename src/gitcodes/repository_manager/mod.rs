@@ -510,13 +510,25 @@ impl RepositoryManager {
         &self,
         provider: providers::GitProvider,
         query: String,
-        sort_by: Option<providers::github::GithubSortOption>,
-        order: Option<providers::github::GithubOrderOption>,
+        sort_option: Option<String>,  // Generic sort option name (will be provider-specific)
+        order_option: Option<String>, // Generic order option name (will be provider-specific)
         per_page: Option<u8>,
         page: Option<u32>,
     ) -> Result<String, String> {
         match provider {
             providers::GitProvider::Github => {
+                use std::str::FromStr;
+
+                // Map generic sort option to GitHub-specific sort option using EnumString
+                let sort_by = sort_option
+                    .as_deref()
+                    .and_then(|s| providers::github::GithubSortOption::from_str(s.to_lowercase().as_str()).ok());
+
+                // Map generic order option to GitHub-specific order option using EnumString
+                let order = order_option
+                    .as_deref()
+                    .and_then(|s| providers::github::GithubOrderOption::from_str(s.to_lowercase().as_str()).ok());
+
                 // Create GitHub search parameters
                 let params = providers::github::GithubSearchParams {
                     query,
