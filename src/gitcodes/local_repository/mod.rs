@@ -357,6 +357,41 @@ impl LocalRepository {
     ///     let refs = repo.list_repository_refs().await.unwrap();
     /// }
     /// ```
+    ///
+    /// # Implementation Details
+    ///
+    /// This method fetches updates from all configured remotes in the repository using
+    /// the native `gix` library. For each remote:
+    ///
+    /// 1. It uses `find_fetch_remote` to get a properly configured remote
+    /// 2. Connects to the remote with `connect(gix::remote::Direction::Fetch)`
+    /// 3. Prepares the fetch operation with `prepare_fetch`
+    /// 4. Executes the fetch with `receive`
+    ///
+    /// If at least one remote was successfully fetched, the operation is considered
+    /// successful. If all remote fetches fail, the last error message is returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The repository is invalid
+    /// - The repository has no configured remotes
+    /// - All remote fetch operations failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example() -> Result<(), String> {
+    /// # use gitcodes_mcp::gitcodes::local_repository::LocalRepository;
+    /// # use std::path::PathBuf;
+    /// #
+    /// # let repo_path = PathBuf::from("/path/to/repo");
+    /// # let repo = LocalRepository::new(repo_path);
+    /// // Fetch latest changes from all remotes
+    /// repo.fetch_remote().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn fetch_remote(&self) -> Result<(), String> {
         // Verify the repository exists and is valid
         if let Err(e) = self.validate() {
