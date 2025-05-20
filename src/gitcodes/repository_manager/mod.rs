@@ -361,16 +361,7 @@ impl RepositoryManager {
             }
         }
     }
-}
 
-impl Default for RepositoryManager {
-    fn default() -> Self {
-        Self::with_default_cache_dir()
-    }
-}
-
-/// Extension methods for working with GitHub repositories
-impl RepositoryManager {
     /// Returns a GitHub API client instance
     ///
     /// Creates a new GitHub client with the manager's authentication token
@@ -382,5 +373,152 @@ impl RepositoryManager {
     pub fn get_github_client(&self) -> providers::github::GithubClient {
         let client = reqwest::Client::new();
         providers::github::GithubClient::new(client, self.github_token.clone())
+    }
+
+    /// Search for repositories across different Git providers
+    ///
+    /// This method performs a search for repositories on the specified Git provider
+    /// based on the provided query and search parameters. It abstracts the provider-specific
+    /// implementation details and provides a unified interface for searching repositories.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider` - The Git provider to search (currently only GitHub is supported)
+    /// * `query` - The search query string
+    /// * `sort_by` - Optional sort option for results
+    /// * `order` - Optional sort direction
+    /// * `per_page` - Optional number of results per page (1-100)
+    /// * `page` - Optional page number
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, String>` - JSON string containing search results or an error message
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubSortOption, GithubOrderOption};
+    ///
+    /// async fn example() {
+    ///     let repo_manager = RepositoryManager::default();
+    ///
+    ///     // Basic search with minimal parameters
+    ///     match repo_manager.search_repositories(
+    ///         GitProvider::Github,
+    ///         "rust http client".to_string(),
+    ///         None,
+    ///         None,
+    ///         None,
+    ///         None
+    ///     ).await {
+    ///         Ok(results) => println!("Found repositories: {}", results),
+    ///         Err(e) => eprintln!("Search failed: {}", e),
+    ///     }
+    ///
+    ///     // Search with all parameters
+    ///     match repo_manager.search_repositories(
+    ///         GitProvider::Github,
+    ///         "language:rust stars:>1000".to_string(),
+    ///         Some(GithubSortOption::Stars),
+    ///         Some(GithubOrderOption::Descending),
+    ///         Some(50),
+    ///         Some(1)
+    ///     ).await {
+    ///         Ok(results) => println!("Found top Rust repositories: {}", results),
+    ///         Err(e) => eprintln!("Search failed: {}", e),
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Authentication
+    ///
+    /// Uses the provider-specific token configured in the RepositoryManager instance.
+    /// Authentication increases rate limits and enables access to private repositories.
+    pub async fn search_repositories(
+        &self,
+        provider: providers::GitProvider,
+        query: String,
+        sort_by: Option<providers::github::GithubSortOption>,
+        order: Option<providers::github::GithubOrderOption>,
+        per_page: Option<u8>,
+        page: Option<u32>,
+    ) -> Result<String, String> {
+        match provider {
+            providers::GitProvider::Github => {
+                // Create GitHub search parameters
+                let params = providers::github::GithubSearchParams {
+                    query,
+                    sort_by,
+                    order,
+                    per_page,
+                    page,
+                };
+
+                // Use the GitHub client to perform the search
+                self.search_github_repositories(params).await
+            } // Add more provider implementations here in the future
+        }
+    }
+
+    /// Search for GitHub repositories matching the specified query
+    ///
+    /// This method performs a search for repositories on GitHub based on the provided
+    /// search parameters. It handles authentication and API communication internally.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - GitHub search parameters including query, sort options, and pagination
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, String>` - JSON string containing search results or an error message
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubSearchParams, GithubSortOption, GithubOrderOption};
+    ///
+    /// async fn example() {
+    ///     let repo_manager = RepositoryManager::default();
+    ///
+    ///     // Basic search with defaults
+    ///     let params = GithubSearchParams {
+    ///         query: "rust http client".to_string(),
+    ///         sort_by: None,
+    ///         order: None,
+    ///         per_page: None,
+    ///         page: None,
+    ///     };
+    ///
+    ///     match repo_manager.search_github_repositories(params).await {
+    ///         Ok(results) => println!("Found repositories: {}", results),
+    ///         Err(e) => eprintln!("Search failed: {}", e),
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Authentication
+    ///
+    /// Uses the GitHub token configured in the RepositoryManager instance.
+    /// Without a token, limited to 60 requests/hour.
+    /// With a token, allows 5,000 requests/hour.
+    async fn search_github_repositories(
+        &self,
+        params: providers::github::GithubSearchParams,
+    ) -> Result<String, String> {
+        // Get a GitHub client instance
+        let github_client = self.get_github_client();
+
+        // Execute the search and return the results
+        github_client.search_repositories(params).await
+    }
+}
+
+impl Default for RepositoryManager {
+    fn default() -> Self {
+        Self::with_default_cache_dir()
     }
 }
