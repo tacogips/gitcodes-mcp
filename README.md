@@ -216,7 +216,7 @@ Searches for code patterns within a GitHub repository.
 
 Parameters:
 
-- `repository` (required): Repository URL (formats: "https://github.com/user/repo", "git@github.com:user/repo.git", "github:user/repo")
+- `repository` (required): Repository URL (formats: "git@github.com:user/repo.git" (most reliable for grep), "https://github.com/user/repo", "github:user/repo")
 - `ref_name` (optional): Branch or tag name (default: main or master)
 - `pattern` (required): Search pattern
 - `case_sensitive` (optional): Whether to be case-sensitive (default: false)
@@ -230,7 +230,7 @@ Example:
 {
   "name": "grep_repository",
   "arguments": {
-    "repository": "https://github.com/tokio-rs/tokio",
+    "repository": "git@github.com:tokio-rs/tokio.git",
     "ref_name": "master",
     "pattern": "async fn",
     "case_sensitive": false,
@@ -245,7 +245,7 @@ Lists branches and tags for a GitHub repository.
 
 Parameters:
 
-- `repository` (required): Repository URL (formats: "https://github.com/user/repo", "git@github.com:user/repo.git", "github:user/repo")
+- `repository` (required): Repository URL (formats: "git@github.com:user/repo.git" (most reliable), "https://github.com/user/repo", "github:user/repo")
 
 Example:
 
@@ -271,6 +271,8 @@ Example:
 - Repositories are automatically updated (git pull) when accessed
 - Cache directory paths follow a deterministic naming pattern based on repository owner and name
 - Git references (branches, tags) can be specified for search operations
+- Automatic URL format fallback: HTTPS URLs are automatically converted to SSH format if the initial clone fails
+- Detailed error messages with specific suggestions based on error type
 - Type-safe enumeration system for search options with compile-time validation
 - Domain-specific enum types with automatic conversion between generic and provider-specific options
 - Lightweight type system for repository locations (GitHub URL vs. local path)

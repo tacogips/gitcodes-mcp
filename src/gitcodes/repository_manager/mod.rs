@@ -406,14 +406,44 @@ impl RepositoryManager {
         use gix::create::Kind;
         use gix::open::Options as OpenOptions;
 
-        // Initialize a repo for fetching
-        let mut fetch = match PrepareFetch::new(
+        // Try to initialize a repo for fetching
+        let mut fetch_result = PrepareFetch::new(
             auth_url.as_str(),
-            repo_dir,
+            repo_dir.clone(),
             Kind::WithWorktree, // We want a standard clone with worktree
             gix::create::Options::default(),
             OpenOptions::default(),
-        ) {
+        );
+        
+        // If HTTPS URL fails, try converting to SSH URL format as a fallback
+        if fetch_result.is_err() && clone_url.starts_with("https://github.com") {
+            tracing::info!(
+                "HTTPS clone failed, attempting fallback to SSH URL format"
+            );
+            
+            // Clean up any partial clone directory
+            if repo_dir.exists() {
+                let _ = std::fs::remove_dir_all(&repo_dir);
+            }
+            
+            // Convert https://github.com/user/repo to git@github.com:user/repo.git
+            let github_path = clone_url.trim_start_matches("https://github.com/");
+            let ssh_url = format!("git@github.com:{}.git", github_path);
+            
+            tracing::info!("Trying SSH URL: {}", ssh_url);
+            
+            // Try again with SSH URL
+            fetch_result = PrepareFetch::new(
+                ssh_url.as_str(),
+                repo_dir.clone(),
+                Kind::WithWorktree,
+                gix::create::Options::default(),
+                OpenOptions::default(),
+            );
+        }
+        
+        // Handle the result of our fetch preparation (either initial or fallback)
+        let mut fetch = match fetch_result {
             Ok(fetch) => fetch,
             Err(e) => return Err(format!("Failed to prepare repository for fetching: {}", e)),
         };
@@ -444,7 +474,15 @@ impl RepositoryManager {
                         if repo_dir.exists() {
                             let _ = std::fs::remove_dir_all(repo_dir);
                         }
-                        Err(format!("Failed to checkout repository: {}", e))
+                        
+                        // Provide more descriptive error for checkout failures
+                        let error_message = if e.to_string().contains("reference") || e.to_string().contains("ref") {
+                            format!("Failed to checkout repository: {}. The specified branch or tag may not exist", e)
+                        } else {
+                            format!("Failed to checkout repository: {}", e)
+                        };
+                        
+                        Err(error_message)
                     }
                 }
             }
@@ -453,7 +491,21 @@ impl RepositoryManager {
                 if repo_dir.exists() {
                     let _ = std::fs::remove_dir_all(repo_dir);
                 }
-                Err(format!("Failed to clone repository: {}", e))
+                
+                // Provide more specific error messages based on error type
+                let error_message = if e.to_string().contains("I/O error") || e.to_string().contains("io error") {
+                    if clone_url.starts_with("https://github.com") {
+                        format!("Failed to clone repository via HTTPS: {}. SSH URL format (git@github.com:user/repo.git) might work better", e)
+                    } else {
+                        format!("Failed to clone repository (network error): {}", e)
+                    }
+                } else if e.to_string().contains("authentication") || e.to_string().contains("credential") {
+                    format!("Failed to clone repository (authentication error): {}. Ensure you've provided a valid GitHub token if this is a private repository", e)
+                } else {
+                    format!("Failed to clone repository: {}", e)
+                };
+                
+                Err(error_message)
             }
         }
     }

@@ -320,8 +320,8 @@ Clones the specified GitHub repository locally and greps the code. Supports both
 ```rust
 pub struct GrepParams {
     // Repository URL (required) - supports the following formats:
-    // - https://github.com/{user_name}/{repo}
-    // - git@github.com:{user_name}/{repo}.git
+    // - git@github.com:{user_name}/{repo}.git (most reliable for git operations)
+    // - https://github.com/{user_name}/{repo} (with automatic fallback to SSH if HTTPS fails)
     // - github:{user_name}/{repo}
     pub repository: String,
     // Branch or tag (optional, default is main or master)
@@ -483,8 +483,8 @@ Retrieves a list of branches and tags for the specified GitHub repository.
 ```rust
 pub struct ListRefsRequest {
     // Repository URL (required) - supports the following formats:
-    // - https://github.com/{user_name}/{repo}
-    // - git@github.com:{user_name}/{repo}.git
+    // - git@github.com:{user_name}/{repo}.git (most reliable)
+    // - https://github.com/{user_name}/{repo} (with automatic fallback to SSH if HTTPS fails)
     // - github:{user_name}/{repo}
     pub repository: String,
 }
@@ -676,6 +676,8 @@ The codebase now uses a global singleton pattern for the `RepositoryManager`:
 - Implemented repository operations using the `gix` API:
   - Shallow cloning with `PrepareFetch` and `Shallow::DepthAtRemote`
   - Two-phase clone: `fetch_then_checkout` followed by `main_worktree`
+  - Automatic URL format conversion from HTTPS to SSH when HTTPS clone fails
+  - Improved error handling with specific guidance based on error type
   - Automatic authentication via URL modification instead of credential helpers
   - Repository reference listing with `repo.references()` iteration
 - Benefits:

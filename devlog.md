@@ -610,6 +610,51 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
 
 ## Implementation Notes
 
+### HTTPS to SSH URL Fallback for Git Clone Operations
+
+Added a fallback mechanism to automatically convert HTTPS GitHub URLs to SSH format when clone operations fail. This addresses network connectivity issues when using HTTPS URLs for git operations.
+
+```rust
+// If HTTPS URL fails, try converting to SSH URL format as a fallback
+if fetch_result.is_err() && clone_url.starts_with("https://github.com") {
+    tracing::info!(
+        "HTTPS clone failed, attempting fallback to SSH URL format"
+    );
+    
+    // Convert https://github.com/user/repo to git@github.com:user/repo.git
+    let github_path = clone_url.trim_start_matches("https://github.com/");
+    let ssh_url = format!("git@github.com:{}.git", github_path);
+    
+    tracing::info!("Trying SSH URL: {}", ssh_url);
+    
+    // Try again with SSH URL
+    fetch_result = PrepareFetch::new(
+        ssh_url.as_str(),
+        repo_dir.clone(),
+        Kind::WithWorktree,
+        gix::create::Options::default(),
+        OpenOptions::default(),
+    );
+}
+```
+
+Improved error messages to provide more specific guidance based on error type:
+
+```rust
+// Provide more specific error messages based on error type
+let error_message = if e.to_string().contains("I/O error") {
+    if clone_url.starts_with("https://github.com") {
+        format!("Failed to clone repository via HTTPS: {}. SSH URL format might work better", e)
+    } else {
+        format!("Failed to clone repository (network error): {}", e)
+    }
+} else if e.to_string().contains("authentication") {
+    format!("Failed to clone repository (authentication error): {}. Check your GitHub token", e)
+} else {
+    format!("Failed to clone repository: {}", e)
+};
+```
+
 ### Native Git Integration with Two-Phase Clone
 
 - Migrated from direct git command execution to the native Rust `gix` library

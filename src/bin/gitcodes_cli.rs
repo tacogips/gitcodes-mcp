@@ -336,9 +336,13 @@ async fn main() -> Result<()> {
                     let error_msg = format!("Failed to search code: {}", e);
                     let suggestion = if error_msg.contains("clone") || error_msg.contains("Failed to parse repository location") {
                         if error_msg.contains("invalid remote git url") {
-                            "\nSuggestion: The repository location format appears to be invalid. Try the following:\n  - For GitHub: Use 'https://github.com/user/repo', 'github:user/repo', or 'git@github.com:user/repo.git'\n  - For local repositories: Use an absolute path or relative path to an existing local git repository"
+                            "\nSuggestion: The repository location format appears to be invalid. Try the following:\n  - For GitHub: Use 'git@github.com:user/repo.git' (SSH format works most reliably)\n  - Alternative formats: 'https://github.com/user/repo' or 'github:user/repo'\n  - For local repositories: Use an absolute path or relative path to an existing local git repository"
+                        } else if error_msg.contains("HTTPS") {
+                            "\nSuggestion: There was an issue cloning via HTTPS. Try the following:\n  - Use SSH URL format instead: 'git@github.com:user/repo.git'\n  - Check your network connection or firewall settings\n  - Verify the repository exists and is accessible\n  - For private repositories, provide a GitHub token with '-t'"
+                        } else if error_msg.contains("authentication") {
+                            "\nSuggestion: Authentication failed when cloning the repository. Try the following:\n  - For private repositories, provide a GitHub token with '-t'\n  - Check if your token has the correct permissions\n  - Try using SSH URL format with properly configured SSH keys: 'git@github.com:user/repo.git'"
                         } else {
-                            "\nSuggestion: Failed to clone repository. Try the following:\n  - Check your network connection\n  - Verify the repository exists and is accessible\n  - Ensure you have proper permissions (provide a GitHub token with '-t' if it's a private repository)\n  - Check if the ref/branch/tag exists in the repository"
+                            "\nSuggestion: Failed to clone repository. Try the following:\n  - Use SSH URL format: 'git@github.com:user/repo.git' (most reliable)\n  - Check your network connection\n  - Verify the repository exists and is accessible\n  - Ensure you have proper permissions (provide a GitHub token with '-t' if it's a private repository)\n  - Check if the ref/branch/tag exists in the repository"
                         }
                     } else if error_msg.contains("pattern") {
                         "\nSuggestion: There was an issue with your search pattern. Try the following:\n  - Simplify your search pattern\n  - Escape special regex characters if you're not using regex\n  - Use the --case-sensitive option if needed"
