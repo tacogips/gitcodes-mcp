@@ -11,6 +11,10 @@ pub use search_result::CodeSearchResult;
 pub struct LocalRepository {
     repository_location: PathBuf,
 }
+/// struct CodeSearchParams の escape_regexの記述は不正確。escapeこのstructを作製する側ではなく、mcpとしてこの本toolを使用するAI agent側の責務なので、toolのdescriptionして書かれている必要がある。
+/// このstructのfieldになる値を受け取っているtoolsのmethodのmacroのdescriptionに記載して。また、CodeSearchParams のうち、toolsのdescription
+///
+///
 /// Code search parameters for searching in a repository
 ///
 /// This struct encapsulates all the parameters needed for a code search.
@@ -222,7 +226,10 @@ impl LocalRepository {
     ///
     /// let results = grep_in_repository(params).await?;
     /// ```
-    pub async fn grep_in_repository(&self, params: CodeSearchParams) -> Result<CodeSearchResult, String> {
+    pub async fn grep_in_repository(
+        &self,
+        params: CodeSearchParams,
+    ) -> Result<CodeSearchResult, String> {
         // Validate the repository before searching
         if let Err(e) = self.validate() {
             return Err(format!("Repository validation failed: {}", e));

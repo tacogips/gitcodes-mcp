@@ -106,37 +106,7 @@ pub struct GitHubCodeTools {
 }
 
 impl GitHubCodeTools {
-    /// Helper method to escape regex special characters for literal text search
-    ///
-    /// When a user wants to search for text that contains special regex characters (like '.' or '*')
-    /// but wants those characters treated as literal text, this function escapes those characters
-    /// by adding backslashes. This allows regex engines to interpret them as literal characters
-    /// rather than regex metacharacters.
-    ///
-    /// For example, the pattern "file.txt" would normally match "filex.txt" because '.' matches any character.
-    /// But after escaping, it becomes "file\.txt" which only matches the literal string "file.txt".
-    ///
-    /// # Parameters
-    ///
-    /// * `pattern` - The original search pattern that may contain regex special characters
-    ///
-    /// # Returns
-    ///
-    /// A new string with all regex special characters properly escaped
-    fn escape_regex_special_chars(pattern: &str) -> String {
-        let mut escaped = String::with_capacity(pattern.len() * 2);
-        for c in pattern.chars() {
-            match c {
-                '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\'
-                | '|' => {
-                    escaped.push('\\');
-                    escaped.push(c);
-                }
-                _ => escaped.push(c),
-            }
-        }
-        escaped
-    }
+
 
     /// Creates a new GitHubCodeTools instance with optional authentication and custom repository cache dir
     ///
@@ -336,7 +306,7 @@ impl GitHubCodeTools {
     /// 2. Code search is performed on the local files
     /// 3. Results are formatted and returned
     #[tool(
-        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. Example usage with GitHub: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With local path: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"fn main\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
+        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. The pattern is interpreted as a regular expression, and it's your responsibility to escape special characters for literal searches. Examples: Simple search: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. Literal text search for 'file.txt': `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"file\\.txt\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
     )]
     async fn grep_repository(
         &self,
@@ -354,7 +324,7 @@ impl GitHubCodeTools {
 
         #[tool(param)]
         #[schemars(
-            description = "Search pattern (required) - the text pattern to search for in the code. Supports regular expressions by default."
+            description = "Search pattern (required) - the text pattern to search for in the code. Interpreted as a regular expression. You can use regex syntax such as: simple literals like 'function'; wildcards like 'log.txt' (matches 'log1txt' too because '.' matches any character); character classes '[0-9]+'; word boundaries '\bword\b'; line anchors '^function'; alternatives 'error|warning'; repetitions '.*'. For literal text search, YOU MUST escape special characters yourself. For example, to search for the literal string 'file.txt', use 'file\\.txt'; to search for 'array[0]', use 'array\\[0\\]'; to search for '2+2=4', use '2\\+2=4'. Escape the following characters when searching for them literally: '.', '*', '+', '?', '^', '$', '[', ']', '(', ')', '{', '}', '|', '\\'. You can use this logic to escape a pattern for literal search: for each character c in the pattern, if c is one of '.^$*+?()[]{}\\|', prepend it with '\\'."
         )]
         pattern: String,
 
@@ -364,11 +334,7 @@ impl GitHubCodeTools {
         )]
         case_sensitive: Option<bool>,
 
-        #[tool(param)]
-        #[schemars(
-            description = "Whether to use regex (optional, default is true). Controls whether the pattern is interpreted as a regular expression or literal text."
-        )]
-        use_regex: Option<bool>,
+
 
         #[tool(param)]
         #[schemars(
@@ -385,21 +351,12 @@ impl GitHubCodeTools {
         // Get the effective case sensitivity (default to false if not specified)
         let case_sensitive = case_sensitive.unwrap_or(false);
 
-        // Process the pattern based on use_regex flag
-        // If use_regex is false, escape regex special characters
-        let search_pattern = if use_regex.unwrap_or(true) {
-            // Use pattern as-is for regex search
-            pattern.to_string()
-        } else {
-            // Escape regex special characters for literal text search
-            Self::escape_regex_special_chars(&pattern)
-        };
-
         // Process code search within the repository (grep)
+        // The pattern is used as-is - the caller is responsible for any regex escaping
         let result = perform_grep_in_repository(
             &self.manager,
             &repository_location,
-            search_pattern,
+            pattern,
             ref_name.as_deref(),
             case_sensitive,
             file_extensions.as_ref(),
