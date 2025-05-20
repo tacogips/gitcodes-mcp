@@ -262,7 +262,18 @@ async fn main() -> Result<()> {
                 },
                 Err(err) => {
                     tracing::error!("Search failed: {}", err);
-                    anyhow::bail!("Search failed: {}", err)
+                    
+                    // Provide more user-friendly error message with suggestions
+                    let error_msg = format!("Search failed: {}", err);
+                    let suggestion = if error_msg.contains("API rate limit") {
+                        "\nSuggestion: You may have exceeded GitHub's API rate limits. Try the following:\n  - Use a GitHub token with '-t' option\n  - Wait a few minutes and try again\n  - Reduce the number of requests"
+                    } else if error_msg.contains("authentication") || error_msg.contains("401") {
+                        "\nSuggestion: Authentication failed. Try the following:\n  - Check that your GitHub token is valid and has not expired\n  - Ensure the token has appropriate permissions\n  - Regenerate your GitHub token if necessary"
+                    } else {
+                        "\nSuggestion: Check your network connection and GitHub credentials."
+                    };
+                    
+                    anyhow::bail!("{}{}", error_msg, suggestion)
                 },
             }
         }
@@ -320,7 +331,22 @@ async fn main() -> Result<()> {
                 }
                 Err(e) => {
                     tracing::error!("Failed to search code: {}", e);
-                    anyhow::bail!("Failed to search code: {}", e)
+                    
+                    // Provide more user-friendly error message with suggestions
+                    let error_msg = format!("Failed to search code: {}", e);
+                    let suggestion = if error_msg.contains("clone") || error_msg.contains("Failed to parse repository location") {
+                        if error_msg.contains("invalid remote git url") {
+                            "\nSuggestion: The repository location format appears to be invalid. Try the following:\n  - For GitHub: Use 'https://github.com/user/repo', 'github:user/repo', or 'git@github.com:user/repo.git'\n  - For local repositories: Use an absolute path or relative path to an existing local git repository"
+                        } else {
+                            "\nSuggestion: Failed to clone repository. Try the following:\n  - Check your network connection\n  - Verify the repository exists and is accessible\n  - Ensure you have proper permissions (provide a GitHub token with '-t' if it's a private repository)\n  - Check if the ref/branch/tag exists in the repository"
+                        }
+                    } else if error_msg.contains("pattern") {
+                        "\nSuggestion: There was an issue with your search pattern. Try the following:\n  - Simplify your search pattern\n  - Escape special regex characters if you're not using regex\n  - Use the --case-sensitive option if needed"
+                    } else {
+                        "\nSuggestion: Check your repository location and search parameters."
+                    };
+                    
+                    anyhow::bail!("{}{}", error_msg, suggestion)
                 }
             }
         }
@@ -330,10 +356,30 @@ async fn main() -> Result<()> {
             tracing::debug!("Listing references for repository: {}", repository_location);
 
             // Get the refs directly from the repository manager
-            let (refs_json, local_repo_opt) = manager
+            let refs_result = manager
                 .list_repository_refs(&repository_location)
-                .await
-                .map_err(|e| anyhow::anyhow!(e))?;
+                .await;
+                
+            let (refs_json, local_repo_opt) = match refs_result {
+                Ok(result) => result,
+                Err(e) => {
+                    tracing::error!("Failed to list repository references: {}", e);
+                    
+                    // Provide more user-friendly error message with suggestions
+                    let error_msg = format!("Failed to list repository references: {}", e);
+                    let suggestion = if error_msg.contains("clone") {
+                        "\nSuggestion: Failed to access repository. Try the following:\n  - Check your network connection\n  - Verify the repository exists and is accessible\n  - Ensure you have proper permissions (provide a GitHub token with '-t' if it's a private repository)"
+                    } else if error_msg.contains("API") || error_msg.contains("rate limit") {
+                        "\nSuggestion: You may have exceeded GitHub's API rate limits. Try the following:\n  - Use a GitHub token with '-t' option\n  - Wait a few minutes and try again"
+                    } else if error_msg.contains("not found") || error_msg.contains("404") {
+                        "\nSuggestion: Repository not found. Try the following:\n  - Check the spelling of the repository name\n  - Ensure the repository exists and is public (or you have access to it)\n  - Use the correct repository format (user/repo)"
+                    } else {
+                        "\nSuggestion: Check the repository location and your access permissions."
+                    };
+                    
+                    return Err(anyhow::anyhow!("{}{}", error_msg, suggestion));
+                }
+            };
 
             // Format and print the JSON result in a more user-friendly way
             match serde_json::from_str::<serde_json::Value>(&refs_json) {

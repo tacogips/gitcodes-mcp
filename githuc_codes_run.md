@@ -236,7 +236,7 @@ cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-
 
 ### Improved Output Formatting
 
-We improved the output formatting for commands that previously returned raw JSON data and reduced logging noise by default. Here are examples of the improvements:
+We improved the output formatting for commands that previously returned raw JSON data, reduced logging noise by default, and enhanced error handling with user-friendly suggestions. Here are examples of the improvements:
 
 #### Repository Search - New Format
 
@@ -304,8 +304,13 @@ tag: v0.0.0                              commit  831bab9e8b529d3f2f430c4d797f440
    - [FIXED] Replaced direct `eprintln!` usage with the tracing framework for consistent error and warning messages
 
 3. **Error Handling**:
-   - The error messages are generally informative but could benefit from more user-friendly suggestions for resolution
-   - For example, when repository cloning fails, it could suggest checking network connectivity or GitHub token permissions
+   - [FIXED] Previously, error messages were informative but lacked actionable suggestions
+   - Now provides specific, user-friendly suggestions for common error scenarios:
+     - Repository cloning failures: Suggests checking network, permissions, repository existence
+     - Invalid repository URLs: Provides format examples for both remote and local repositories
+     - API rate limits: Suggests using a token, waiting, or reducing requests
+     - Authentication issues: Recommends checking token validity and permissions
+     - Search pattern problems: Offers tips for simplifying or escaping patterns
 
 4. **Binary Name Confusion**:
    - There are multiple binaries in the project (gitcodes, gitcodes-mcp) which could cause confusion
