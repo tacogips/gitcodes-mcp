@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tracing_subscriber::{self, EnvFilter};
+use serde_json;
 
 use gitcodes_mcp::gitcodes::repository_manager;
 use gitcodes_mcp::gitcodes::LocalRepository;
@@ -225,8 +226,32 @@ async fn main() -> Result<()> {
                 .await
             {
                 Ok(result) => {
-                    // Print the result to stdout
-                    println!("{}", result);
+                    // Format and print a more user-friendly output from the JSON result
+                    match serde_json::from_str::<serde_json::Value>(&result) {
+                        Ok(json) => {
+                            // Check if the expected structure exists
+                            if let Some(items) = json.get("items").and_then(|i| i.as_array()) {
+                                for (i, repo) in items.iter().enumerate() {
+                                    let name = repo.get("full_name").and_then(|n| n.as_str()).unwrap_or("<unnamed>");
+                                    let description = repo.get("description").and_then(|d| d.as_str()).unwrap_or("<no description>");
+                                    let url = repo.get("html_url").and_then(|u| u.as_str()).unwrap_or("<no url>");
+                                    let stars = repo.get("stargazers_count").and_then(|s| s.as_u64()).unwrap_or(0);
+                                    
+                                    println!("{}. {} - {} stars", i + 1, name, stars);
+                                    println!("   Description: {}", description);
+                                    println!("   URL: {}", url);
+                                    println!();
+                                }
+                            } else {
+                                // Fallback to printing raw JSON if structure isn't as expected
+                                println!("{}", result);
+                            }
+                        },
+                        Err(_) => {
+                            // Fallback to printing raw result if it's not valid JSON
+                            println!("{}", result);
+                        }
+                    }
                     Ok(())
                 },
                 Err(err) => {
@@ -304,8 +329,33 @@ async fn main() -> Result<()> {
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
 
-            // Simply print the JSON result
-            println!("{}", refs_json);
+            // Format and print the JSON result in a more user-friendly way
+            match serde_json::from_str::<serde_json::Value>(&refs_json) {
+                Ok(json) => {
+                    if let Some(refs) = json.as_array() {
+                        println!("{:<40} {:<7} {:<40}", "Reference", "Type", "SHA");
+                        println!("{:-<40} {:-<7} {:-<40}", "", "", "");
+                        
+                        for ref_obj in refs {
+                            let ref_name = ref_obj.get("ref").and_then(|r| r.as_str()).unwrap_or("<unknown>");
+                            let obj_type = ref_obj.get("object").and_then(|o| o.get("type")).and_then(|t| t.as_str()).unwrap_or("<unknown>");
+                            let sha = ref_obj.get("object").and_then(|o| o.get("sha")).and_then(|s| s.as_str()).unwrap_or("<unknown>");
+                            
+                            // Format the reference name to be more readable
+                            let display_ref = ref_name.replace("refs/heads/", "branch: ").replace("refs/tags/", "tag: ");
+                            
+                            println!("{:<40} {:<7} {:<40}", display_ref, obj_type, sha);
+                        }
+                    } else {
+                        // Fallback to raw JSON if structure isn't as expected
+                        println!("{}", refs_json);
+                    }
+                },
+                Err(_) => {
+                    // Fallback to raw JSON if parsing fails
+                    println!("{}", refs_json);
+                }
+            }
             
             // Clean up the repository if it exists
             cleanup_repository_opt(local_repo_opt);

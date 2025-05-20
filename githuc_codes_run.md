@@ -232,12 +232,68 @@ cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-
 **Issues:**
 - No issues noted, but the output is raw JSON without any formatting, which could be difficult to read for users
 
+## Improvements Made
+
+### Improved Output Formatting
+
+We improved the output formatting for commands that previously returned raw JSON data. Here are examples of the new output formats:
+
+#### Repository Search - New Format
+
+```bash
+cargo run --bin gitcodes -- repository-search 'language:rust stars:>1000' --per-page 5
+```
+
+**Output:**
+```
+1. rust-lang/rust - 103636 stars
+   Description: Empowering everyone to build reliable and efficient software.
+   URL: https://github.com/rust-lang/rust
+
+2. denoland/deno - 103042 stars
+   Description: A modern runtime for JavaScript and TypeScript.
+   URL: https://github.com/denoland/deno
+
+3. tauri-apps/tauri - 92661 stars
+   Description: Build smaller, faster, and more secure desktop and mobile applications with a web frontend.
+   URL: https://github.com/tauri-apps/tauri
+
+4. rustdesk/rustdesk - 88603 stars
+   Description: An open-source remote desktop application designed for self-hosting, as an alternative to TeamViewer.
+   URL: https://github.com/rustdesk/rustdesk
+
+5. unionlabs/union - 63685 stars
+   Description: The trust-minimized, zero-knowledge bridging protocol, designed for censorship resistance, extremely high security, and usage in decentralized finance.
+   URL: https://github.com/unionlabs/union
+```
+
+#### List Refs - New Format
+
+```bash
+cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-test-1'
+```
+
+**Output:**
+```
+Found 5 references:
+Reference                                Type    SHA
+---------------------------------------- ------- ----------------------------------------
+branch: bugfix/api-client                commit  e32ffddbfd02194dcec46c990bcf30cbe22d7ada
+branch: feature/authentication           commit  f3eee488ecc18ef7ca089f5e5788a8f40ef26357
+branch: feature/metrics                  commit  fef32b503c2d090392e0cd7a3f6c3e1d05d3276d
+branch: main                             commit  831bab9e8b529d3f2f430c4d797f440d7c8e8a27
+tag: v0.0.0                              commit  831bab9e8b529d3f2f430c4d797f440d7c8e8a27
+```
+
 ## Overall Issues and Observations
 
 1. **Output Format Inconsistency**: 
-   - The `repository-search` and `list-refs` commands output raw data (JSON) without any formatting or user-friendly presentation
+   - The `repository-search` and `list-refs` commands originally output raw data (JSON) without any formatting or user-friendly presentation
    - The `grep` command outputs results in a simple file:line:content format
-   - This inconsistency in output presentation makes it difficult for users to work with the different commands in a unified way
+   - This inconsistency in output presentation made it difficult for users to work with the different commands in a unified way
+   - [FIXED] Improved the formatting for both `repository-search` and `list-refs` commands to display relevant information in a user-friendly format:
+     - For `repository-search`: Shows repository name, stars, description, and URL in a readable format
+     - For `list-refs`: Shows formatted reference names (branches/tags), type, and SHA values in a tabular format
 
 2. **Logging Noise**:
    - All commands produce INFO-level logging to stderr by default, which clutters the output
