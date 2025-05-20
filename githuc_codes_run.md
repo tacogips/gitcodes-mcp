@@ -27,107 +27,8 @@ Options:
           GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
   -c, --cache-dir <REPOSITORY_CACHE_DIR>
           Custom directory for storing repository cache data Defaults to system temp directory if not specified
-  -d, --debug
-          Enable debug logging
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
-
-### Command: Repository Search Help
-
-```bash
-cargo run --bin gitcodes -- repository-search --help
-```
-
-**Output:**
-```
-Search for GitHub repositories
-
-Usage: gitcodes repository-search [OPTIONS] <QUERY>
-
-Arguments:
-  <QUERY>  Search query - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'
-
-Options:
-      --sort-by <SORT_BY>
-          How to sort results (default is 'relevance') [default: relevance] [possible values: relevance, stars, forks, updated]
-  -t, --github-token <GITHUB_TOKEN>
-          GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
-  -c, --cache-dir <REPOSITORY_CACHE_DIR>
-          Custom directory for storing repository cache data Defaults to system temp directory if not specified
-      --order <ORDER>
-          Sort order (default is 'descending') [default: descending] [possible values: ascending, descending]
-  -d, --debug
-          Enable debug logging
-      --per-page <PER_PAGE>
-          Results per page (default is 30, max 100) [default: 30]
-      --page <PAGE>
-          Result page number (default is 1) [default: 1]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
-
-### Command: Grep Help
-
-```bash
-cargo run --bin gitcodes -- grep --help
-```
-
-**Output:**
-```
-Search code in a GitHub repository
-
-Usage: gitcodes grep [OPTIONS] <REPOSITORY_LOCATION> <PATTERN>
-
-Arguments:
-  <REPOSITORY_LOCATION>  Repository URL or local file path - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths
-  <PATTERN>              Search pattern - the text pattern to search for in the code. Supports regular expressions by default
-
-Options:
-  -r, --ref-name <REF_NAME>
-          Branch, Commit or tag (default is 'main' or 'master')
-  -t, --github-token <GITHUB_TOKEN>
-          GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
-  -c, --cache-dir <REPOSITORY_CACHE_DIR>
-          Custom directory for storing repository cache data Defaults to system temp directory if not specified
-      --case-sensitive <CASE_SENSITIVE>
-          Whether to be case-sensitive [default: false] [possible values: true, false]
-  -d, --debug
-          Enable debug logging
-  -e, --ext <FILE_EXTENSIONS>
-          File extensions to search
-      --exclude <EXCLUDE_DIRS>
-          Directories to exclude from search
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
-
-### Command: List Refs Help
-
-```bash
-cargo run --bin gitcodes -- list-refs --help
-```
-
-**Output:**
-```
-List branches and tags for a GitHub repository
-
-Usage: gitcodes list-refs [OPTIONS] <REPOSITORY_LOCATION>
-
-Arguments:
-  <REPOSITORY_LOCATION>  Repository URL or local file path - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths
-
-Options:
-  -t, --github-token <GITHUB_TOKEN>
-          GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
-  -c, --cache-dir <REPOSITORY_CACHE_DIR>
-          Custom directory for storing repository cache data Defaults to system temp directory if not specified
+  -v, --verbose
+          Show verbose output including INFO-level logs
   -d, --debug
           Enable debug logging
   -h, --help
@@ -145,100 +46,29 @@ cargo run --bin gitcodes -- repository-search 'rust http client' --sort-by stars
 ```
 
 **Output:**
-(Output was too long to include in full, but contains search results for GitHub repositories matching the query 'rust http client', sorted by stars in ascending order, with 5 results per page, starting from page 1)
+```
+1. 3box/ceramic-http-client-rs - 0 stars
+   Description: Rust library for talking with ceramic over http api
+   URL: https://github.com/3box/ceramic-http-client-rs
 
-**Issues:**
-- No issues noted
+2. DavidPZ142/Rust_httpClient - 0 stars
+   Description: <no description>
+   URL: https://github.com/DavidPZ142/Rust_httpClient
+
+3. OniOni/rust-http - 0 stars
+   Description: Toy Rust Http Client
+   URL: https://github.com/OniOni/rust-http
+
+4. bayes343/rust-http-client - 0 stars
+   Description: Rust based HTTP client
+   URL: https://github.com/bayes343/rust-http-client
+
+5. ItsHyde-dev/http-client-rust - 0 stars
+   Description: http client for reading requests from a file built using rust
+   URL: https://github.com/ItsHyde-dev/http-client-rust
+```
 
 ### Command: Repository Search with Advanced Query
-
-```bash
-cargo run --bin gitcodes -- repository-search 'language:rust stars:>1000'
-```
-
-**Output:**
-(Output was too long to include in full, but contains search results for GitHub repositories with language Rust and more than 1000 stars, using default sorting and pagination)
-
-**Issues:**
-- No issues noted
-
-## Command: Grep (Code Search)
-
-### Command: Grep from Remote Repository
-
-```bash
-cargo run --bin gitcodes -- grep 'https://github.com/tacogips/gitcodes-mcp-test-1' 'fn main'
-```
-
-**Output:**
-```
-2025-05-20T15:34:15.156078Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:188: GitCodes CLI initialized
-2025-05-20T15:34:15.156121Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:246: Searching for code pattern in repository: https://github.com/tacogips/gitcodes-mcp-test-1
-2025-05-20T15:34:15.156128Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:250: Pattern: fn main
-2025-05-20T15:34:15.156207Z  INFO ThreadId(01) src/gitcodes/repository_manager/mod.rs:381: Cloning repository from https://github.com/tacogips/gitcodes-mcp-test-1 to /tmp/mcp_gitcodes_tacogips_gitcodes-mcp-test-1_a24676bed193f048
-2025-05-20T15:34:15.163821Z ERROR ThreadId(01) src/bin/gitcodes_cli.rs:291: Failed to search code: Failed to clone repository: An IO error occurred when talking to the server
-Error: Failed to search code: Failed to clone repository: An IO error occurred when talking to the server
-```
-
-**Issues:**
-- Failed to clone repository - likely due to network or permission issues
-
-### Command: Grep from Local Repository
-
-```bash
-cargo run --bin gitcodes -- grep './test-repo' 'fn main'
-```
-
-**Output:**
-```
-2025-05-20T15:34:28.300088Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:188: GitCodes CLI initialized
-2025-05-20T15:34:28.300126Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:246: Searching for code pattern in repository: ./test-repo
-2025-05-20T15:34:28.300132Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:250: Pattern: fn main
-./test-repo/src/bin/main.rs:47:async fn main() -> Result<(), Box<dyn Error>> {
-
-2025-05-20T15:34:28.307140Z  WARN ThreadId(01) src/bin/gitcodes_cli.rs:142: Failed to clean up repository: Refusing to delete directory './test-repo' that doesn't match temporary repository pattern
-```
-
-**Issues:**
-- Warning about failing to clean up the local repository, but this is expected behavior as it shouldn't delete local repositories not created as temporary ones
-
-### Command: Grep with File Extensions and Exclusions
-
-```bash
-cargo run --bin gitcodes -- -d grep './test-repo' 'let' -e rs --exclude target
-```
-
-**Output:**
-(Output was too long to include in full, but shows numerous matches for the pattern 'let' in .rs files, excluding the target directory, with additional debug information due to the -d flag)
-
-**Issues:**
-- No issues noted, though the debug output is very verbose
-
-## Command: List Refs
-
-### Command: List Refs for Repository
-
-```bash
-cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-test-1'
-```
-
-**Output:**
-```
-2025-05-20T15:34:15.414267Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:188: GitCodes CLI initialized
-2025-05-20T15:34:15.414305Z  INFO ThreadId(01) src/bin/gitcodes_cli.rs:299: Listing references for repository: https://github.com/tacogips/gitcodes-mcp-test-1
-[{"ref":"refs/heads/bugfix/api-client","node_id":"REF_kwDOOolQYrxyZWZzL2hlYWRzL2J1Z2ZpeC9hcGktY2xpZW50","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/refs/heads/bugfix/api-client","object":{"sha":"e32ffddbfd02194dcec46c990bcf30cbe22d7ada","type":"commit","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/commits/e32ffddbfd02194dcec46c990bcf30cbe22d7ada"}},{"ref":"refs/heads/feature/authentication","node_id":"REF_kwDOOolQYtoAIXJlZnMvaGVhZHMvZmVhdHVyZS9hdXRoZW50aWNhdGlvbg","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/refs/heads/feature/authentication","object":{"sha":"f3eee488ecc18ef7ca089f5e5788a8f40ef26357","type":"commit","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/commits/f3eee488ecc18ef7ca089f5e5788a8f40ef26357"}},{"ref":"refs/heads/feature/metrics","node_id":"REF_kwDOOolQYrpyZWZzL2hlYWRzL2ZlYXR1cmUvbWV0cmljcw","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/refs/heads/feature/metrics","object":{"sha":"fef32b503c2d090392e0cd7a3f6c3e1d05d3276d","type":"commit","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/commits/fef32b503c2d090392e0cd7a3f6c3e1d05d3276d"}},{"ref":"refs/heads/main","node_id":"REF_kwDOOolQYq9yZWZzL2hlYWRzL21haW4","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/refs/heads/main","object":{"sha":"831bab9e8b529d3f2f430c4d797f440d7c8e8a27","type":"commit","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/commits/831bab9e8b529d3f2f430c4d797f440d7c8e8a27"}},{"ref":"refs/tags/v0.0.0","node_id":"REF_kwDOOolQYrByZWZzL3RhZ3MvdjAuMC4w","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/refs/tags/v0.0.0","object":{"sha":"831bab9e8b529d3f2f430c4d797f440d7c8e8a27","type":"commit","url":"https://api.github.com/repos/tacogips/gitcodes-mcp-test-1/git/commits/831bab9e8b529d3f2f430c4d797f440d7c8e8a27"}}]
-```
-
-**Issues:**
-- No issues noted, but the output is raw JSON without any formatting, which could be difficult to read for users
-
-## Improvements Made
-
-### Improved Output Formatting
-
-We improved the output formatting for commands that previously returned raw JSON data, reduced logging noise by default, and enhanced error handling with user-friendly suggestions. Here are examples of the improvements:
-
-#### Repository Search - New Format
 
 ```bash
 cargo run --bin gitcodes -- repository-search 'language:rust stars:>1000' --per-page 5
@@ -254,23 +84,68 @@ cargo run --bin gitcodes -- repository-search 'language:rust stars:>1000' --per-
    Description: A modern runtime for JavaScript and TypeScript.
    URL: https://github.com/denoland/deno
 
-3. tauri-apps/tauri - 92661 stars
+3. tauri-apps/tauri - 92663 stars
    Description: Build smaller, faster, and more secure desktop and mobile applications with a web frontend.
    URL: https://github.com/tauri-apps/tauri
 
-4. rustdesk/rustdesk - 88603 stars
+4. rustdesk/rustdesk - 88605 stars
    Description: An open-source remote desktop application designed for self-hosting, as an alternative to TeamViewer.
    URL: https://github.com/rustdesk/rustdesk
 
-5. unionlabs/union - 63685 stars
+5. unionlabs/union - 63686 stars
    Description: The trust-minimized, zero-knowledge bridging protocol, designed for censorship resistance, extremely high security, and usage in decentralized finance.
    URL: https://github.com/unionlabs/union
 ```
 
-#### List Refs - New Format
+## Command: Grep (Code Search)
+
+### Command: Grep with SSH URL Format
 
 ```bash
-cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-test-1'
+cargo run --bin gitcodes -- grep 'git@github.com:tacogips/gitcodes-mcp-test-1.git' 'fn main'
+```
+
+**Output:**
+```
+/tmp/mcp_gitcodes_tacogips_gitcodes-mcp-test-1_ba7ba25a9cfd2599/src/bin/main.rs:47:async fn main() -> Result<(), Box<dyn Error>> {
+```
+
+### Command: Grep with HTTP URL Format (Network Error)
+
+```bash
+cargo run --bin gitcodes -- grep 'https://github.com/tacogips/gitcodes-mcp-test-1' 'fn main'
+```
+
+**Output:**
+```
+Error: Failed to search code: Failed to clone repository: An IO error occurred when talking to the server
+Suggestion: Failed to clone repository. Try the following:
+  - Check your network connection
+  - Verify the repository exists and is accessible
+  - Ensure you have proper permissions (provide a GitHub token with '-t' if it's a private repository)
+  - Check if the ref/branch/tag exists in the repository
+```
+
+### Command: Grep with invalid repository path
+
+```bash
+cargo run --bin gitcodes -- grep './test-repo' 'fn main'
+```
+
+**Output:**
+```
+Error: Failed to search code: Failed to parse repository location: invalid remote git url: ./test-repo
+Suggestion: The repository location format appears to be invalid. Try the following:
+  - For GitHub: Use 'https://github.com/user/repo', 'github:user/repo', or 'git@github.com:user/repo.git'
+  - For local repositories: Use an absolute path or relative path to an existing local git repository
+```
+
+## Command: List Refs
+
+### Command: List Refs for Repository (github: format)
+
+```bash
+cargo run --bin gitcodes -- list-refs 'github:tacogips/gitcodes-mcp-test-1'
 ```
 
 **Output:**
@@ -284,44 +159,49 @@ branch: main                             commit  831bab9e8b529d3f2f430c4d797f440
 tag: v0.0.0                              commit  831bab9e8b529d3f2f430c4d797f440d7c8e8a27
 ```
 
-## Overall Issues and Observations
+## Repository Location Format Summary
 
-1. **Output Format Inconsistency**: 
-   - The `repository-search` and `list-refs` commands originally output raw data (JSON) without any formatting or user-friendly presentation
-   - The `grep` command outputs results in a simple file:line:content format
-   - This inconsistency in output presentation made it difficult for users to work with the different commands in a unified way
-   - [FIXED] Improved the formatting for both `repository-search` and `list-refs` commands to display relevant information in a user-friendly format:
-     - For `repository-search`: Shows repository name, stars, description, and URL in a readable format
-     - For `list-refs`: Shows formatted reference names (branches/tags), type, and SHA values in a tabular format
+This section summarizes the behavior of GitCodes CLI with different repository location formats.
 
-2. **Logging Noise**:
-   - All commands originally produced INFO-level logging to stderr by default, which cluttered the output
-   - Even without the debug flag, users would see log messages mixed with command output
-   - [FIXED] Added a `-v/--verbose` flag to control log verbosity:
-     - By default, only WARNING and ERROR logs are shown
-     - With `-v/--verbose`, INFO-level logs are also shown
-     - With `-d/--debug`, DEBUG-level logs and more detailed information are shown
-   - [FIXED] Replaced direct `eprintln!` usage with the tracing framework for consistent error and warning messages
+| Format | List-Refs | Grep | Notes |
+|--------|-----------|------|-------|
+| `github:user/repo` | ✅ Works | ❌ Network errors | Good for list-refs |
+| `git@github.com:user/repo.git` | ✅ Works | ✅ Works | Most reliable format |
+| `https://github.com/user/repo` | ✅ Works | ❌ Network errors | Good for list-refs |
+| `user/repo` | ❌ Invalid | ❌ Invalid | Not recognized |
+| Local paths | ❌ Issues | ❌ Issues | Path handling needs improvement |
 
-3. **Error Handling**:
-   - [FIXED] Previously, error messages were informative but lacked actionable suggestions
-   - Now provides specific, user-friendly suggestions for common error scenarios:
-     - Repository cloning failures: Suggests checking network, permissions, repository existence
-     - Invalid repository URLs: Provides format examples for both remote and local repositories
-     - API rate limits: Suggests using a token, waiting, or reducing requests
-     - Authentication issues: Recommends checking token validity and permissions
-     - Search pattern problems: Offers tips for simplifying or escaping patterns
+## Improvements Made
 
-4. **Binary Name Confusion**:
-   - There are multiple binaries in the project (gitcodes, gitcodes-mcp) which could cause confusion
-   - It might be better to standardize on a single main binary name or clarify their distinct purposes
+1. **Output Format Improvements**: 
+   - Changed raw JSON output to formatted, human-readable output
+   - Repository search now shows structured list with name, stars, description, and URL
+   - List-refs now displays a clean tabular format
 
-5. **Cleanup Issues**:
-   - The tool appropriately avoids deleting local repositories but emits a warning when it doesn't clean up
-   - Consider silencing these warnings for local repositories or documenting this behavior better
+2. **Reduced Logging Noise**:
+   - Added `-v/--verbose` flag to control log verbosity
+   - By default, only WARNING and ERROR logs are shown
+   - With `-v/--verbose`, INFO-level logs are also shown
+   - With `-d/--debug`, DEBUG-level logs are shown
+   - Replaced direct `eprintln!` usage with tracing framework
 
-6. **JSON Output Readability**:
-   - [FIXED] Previously recommended adding a `--pretty` flag for JSON output or alternative structured formats
-   - This issue has been resolved by eliminating raw JSON output entirely and replacing it with formatted, human-readable output for all commands
-   - The `repository-search` command now shows a structured list of repositories with key information
-   - The `list-refs` command now displays a clean tabular format with reference details
+3. **Enhanced Error Handling**:
+   - Added user-friendly suggestions for common error scenarios
+   - Provided specific guidance for repository cloning failures
+   - Added format examples for valid repository URLs
+   - Included suggestions for API rate limits and authentication issues
+
+## Outstanding Issues
+
+1. **Binary Name Confusion**: 
+   - Multiple binaries in the project (gitcodes, gitcodes-mcp)
+   - Consider standardizing on a single main binary name
+
+2. **Cleanup Warnings**:
+   - Warnings when not cleaning up local repositories
+   - Consider silencing these for explicitly provided local paths
+
+3. **Repository Location Support**:
+   - SSH format (`git@github.com:user/repo.git`) works most consistently
+   - Network issues with some formats need investigation
+   - Local repository path handling needs improvement

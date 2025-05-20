@@ -33,3 +33,4 @@ result
 rust-sdk
 
 **/.claude/settings.local.json
+./test-repo
