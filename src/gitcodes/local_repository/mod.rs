@@ -383,28 +383,39 @@ impl LocalRepository {
             return Err("Repository has no configured remotes".to_string());
         }
         
-        // For each remote, try to fetch
+        // For each remote, try to fetch using gix
         for remote_name in remote_names {
             // Convert from Cow<BStr> to regular String
             let remote_name_str = remote_name.to_string();
             
             // Get the remote
-            let fetch_result = std::process::Command::new("git")
-                .args(["fetch", &remote_name_str])
-                .current_dir(&self.repository_location)
-                .output();
-                
-            match fetch_result {
-                Ok(output) => {
-                    if !output.status.success() {
-                        let error_msg = String::from_utf8_lossy(&output.stderr);
-                        return Err(format!("Failed to fetch from remote '{}': {}", remote_name_str, error_msg));
+            match repo.remote_at(&remote_name_str) {
+                Ok(remote) => {
+                    // Create a basic fetch configuration
+                    let mut fetch_config = match remote.fetch_prepare_inner() {
+                        Ok(config) => config,
+                        Err(e) => {
+                            return Err(format!("Failed to prepare fetch configuration for remote '{}': {}", remote_name_str, e));
+                        }
+                    };
+                    
+                    // Setup a progress handle that discards output
+                    let mut progress = gix::progress::Discard;
+                    
+                    // Execute the fetch
+                    match fetch_config.fetch(&mut progress, &gix::interrupt::IS_INTERRUPTED) {
+                        Ok(_outcome) => {
+                            // Fetch completed successfully
+                        },
+                        Err(e) => {
+                            return Err(format!("Failed to fetch from remote '{}': {}", remote_name_str, e));
+                        }
                     }
                 },
                 Err(e) => {
-                    return Err(format!("Failed to execute git fetch for remote '{}': {}", remote_name_str, e));
+                    return Err(format!("Failed to get remote '{}': {}", remote_name_str, e));
                 }
-            }
+            };
         }
         
         Ok(())
