@@ -310,7 +310,7 @@ async fn main() -> Result<()> {
                         }
                     } else {
                         // Let user know if no matches were found
-                        eprintln!("No matches found.");
+                        tracing::warn!("No matches found.");
                     }
                     
                     // Clean up the repository when finished

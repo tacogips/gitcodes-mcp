@@ -301,6 +301,7 @@ tag: v0.0.0                              commit  831bab9e8b529d3f2f430c4d797f440
      - By default, only WARNING and ERROR logs are shown
      - With `-v/--verbose`, INFO-level logs are also shown
      - With `-d/--debug`, DEBUG-level logs and more detailed information are shown
+   - [FIXED] Replaced direct `eprintln!` usage with the tracing framework for consistent error and warning messages
 
 3. **Error Handling**:
    - The error messages are generally informative but could benefit from more user-friendly suggestions for resolution
@@ -315,5 +316,7 @@ tag: v0.0.0                              commit  831bab9e8b529d3f2f430c4d797f440
    - Consider silencing these warnings for local repositories or documenting this behavior better
 
 6. **JSON Output Readability**:
-   - Consider adding a `--pretty` flag for commands that output JSON to format it in a more readable way
-   - Alternatively, provide a structured output format that's easier to read without additional processing
+   - [FIXED] Previously recommended adding a `--pretty` flag for JSON output or alternative structured formats
+   - This issue has been resolved by eliminating raw JSON output entirely and replacing it with formatted, human-readable output for all commands
+   - The `repository-search` command now shows a structured list of repositories with key information
+   - The `list-refs` command now displays a clean tabular format with reference details
