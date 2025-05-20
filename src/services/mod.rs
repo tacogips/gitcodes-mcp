@@ -135,7 +135,7 @@ pub async fn list_repository_refs(
                 .await?;
 
             // Use the local repository to list refs
-            let refs_json = local_repo.list_repository_refs(&repository_location).await?;
+            let refs_json = local_repo.list_repository_refs().await?;
 
             // Return both the JSON results and the local repository reference
             Ok((refs_json, Some(local_repo)))

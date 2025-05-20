@@ -226,11 +226,6 @@ impl LocalRepository {
     /// This function uses the gix library to open the repository and enumerate all its references.
     /// References include branches and tags, and are returned with their names and SHA values.
     ///
-    /// # Parameters
-    ///
-    /// * `repository_location` - The location of the repository (not used in this implementation 
-    ///                          as we already have the repository path)
-    ///
     /// # Returns
     ///
     /// A Result containing either a JSON string with an array of objects representing repository references,
@@ -254,7 +249,7 @@ impl LocalRepository {
     /// ```
     ///
     /// This matches the GitHub API format for references.
-    pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> Result<String, String> {
+    pub async fn list_repository_refs(&self) -> Result<String, String> {
         // Open the repository
         let repo = match gix::open(&self.repository_location) {
             Ok(repo) => repo,
