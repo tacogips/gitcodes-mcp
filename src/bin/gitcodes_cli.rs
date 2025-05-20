@@ -77,9 +77,7 @@ enum Commands {
         #[arg(long, default_value = "false")]
         case_sensitive: Option<bool>,
 
-        /// Whether to use regex
-        #[arg(long, default_value = "true")]
-        use_regex: Option<bool>,
+
 
         /// File extensions to search
         #[arg(short = 'e', long = "ext", value_delimiter = ',')]
@@ -198,7 +196,6 @@ async fn main() -> Result<()> {
             ref_name,
             pattern,
             case_sensitive,
-            use_regex,
             file_extensions,
             exclude_dirs,
         } => {
