@@ -6,6 +6,47 @@ This file documents the architectural decisions and implementation patterns for 
 
 ## Type System Patterns
 
+### Structured Return Types over JSON Strings
+
+- **Pattern:** Use structured types with proper serialization support instead of returning JSON strings
+- **Example:** Changed `search_code` to return a proper `CodeSearchResult` struct instead of a JSON string
+- **Implementation:**
+  ```rust
+  // Instead of:
+  pub async fn perform_code_search(...) -> Result<String, String> {
+      // Process search and format as JSON string
+      let json_results = json!({
+          "matches": all_results,
+          "pattern": pattern,
+          // ... other fields
+      });
+      to_string_pretty(&json_results)
+  }
+  
+  // Use structured type:
+  pub async fn perform_code_search(...) -> Result<CodeSearchResult, String> {
+      // Process search
+      Ok(CodeSearchResult::new(
+          all_results,
+          pattern,
+          repo_path,
+          case_sensitive,
+          file_extensions,
+          exclude_dirs
+      ))
+  }
+  
+  // With a helper method for backward compatibility if needed:
+  impl CodeSearchResult {
+      pub fn to_json(&self) -> Result<String, String> {
+          serde_json::to_string_pretty(self)
+              .map_err(|e| format!("Failed to convert search results to JSON: {}", e))
+      }
+  }
+  ```
+- **Benefits:** Type safety, easier to use in consuming code, better abstraction, better documentation
+- **When to apply:** When returning complex structured data that might be processed further before serialization
+
 ### Use Native Types Over Single-Field Wrappers
 
 - **Pattern:** Replace wrapper types with native Rust types when they don't add significant behavior
@@ -237,6 +278,71 @@ This file documents the architectural decisions and implementation patterns for 
 - **Benefits:** Easier to learn API, consistent usage patterns
 
 ### Wrapper Pattern For Tool Integration
+
+## Testing Patterns
+
+### Dynamic Test Assertion Patterns
+
+- **Pattern:** Make tests adaptable to different test repositories by finding relevant test data dynamically  
+- **Example:** In directory exclusion tests, we first identify which directories actually contain matches
+- **Implementation:**
+  ```rust
+  // Instead of hardcoding a directory to exclude:
+  let api_match_count = matches.iter().filter(|m| {
+      file_path.contains("/api/")
+  }).count();
+  
+  // Dynamically find directories with matches:
+  let mut dirs_with_matches = std::collections::HashSet::new();
+  for match_item in matches_no_exclusion {
+      let file_path = match_item["file_path"].as_str().unwrap();
+      if let Some(parent) = std::path::Path::new(file_path).parent() {
+          if let Some(dir_name) = parent.file_name() {
+              if let Some(dir_str) = dir_name.to_str() {
+                  dirs_with_matches.insert(dir_str.to_string());
+              }
+          }
+      }
+  }
+  
+  // Use first available directory for the test
+  let dir_to_exclude = dirs_with_matches.iter().next().unwrap().clone();
+  ```
+- **When to apply:** When tests need to work across different test repositories or with varying data
+
+### Search Functionality Testing
+
+- **Pattern:** Test different aspects of search with specifically tailored test cases
+- **Example:** For code search, we test basic pattern matching, case sensitivity, file extension filtering, directory exclusion, and regex patterns separately
+- **Implementation:**
+  ```rust
+  // Basic search test
+  #[tokio::test]
+  async fn test_search_code_basic_pattern() { ... }
+  
+  // Case sensitivity test
+  #[tokio::test]
+  async fn test_search_code_case_sensitive() { ... }
+  
+  // File extension filtering test
+  #[tokio::test]
+  async fn test_search_code_file_extension_filter() { ... }
+  ```
+- **When to apply:** When testing complex functionality with multiple features that need separate verification
+
+### Path Pattern Improvements
+
+- **Pattern:** Use more robust directory exclusion patterns with leading wildcards
+- **Example:** Changed directory exclusion pattern format from `{dir}/**` to `**/{dir}/**`
+- **Implementation:**
+  ```rust
+  // Original pattern - only works for top-level directories
+  exclude_glob: dirs.iter().map(|dir| format!("{}/**", dir)).collect()
+  
+  // Improved pattern - works for directories at any level
+  exclude_glob: dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()
+  ```
+- **When to apply:** When working with glob patterns that need to match at any level of directory hierarchy
 
 - **Pattern:** Use wrapper classes to separate core functionality from tool integration
 - **Example:** `GitHubCodeTools` wrapper for MCP integration around `GitHubService`

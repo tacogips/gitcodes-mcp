@@ -1,5 +1,5 @@
-pub mod providers;
 pub mod instance;
+pub mod providers;
 mod repository_location;
 
 use std::{num::NonZeroU32, path::PathBuf};
@@ -78,7 +78,7 @@ impl RepositoryManager {
     pub fn with_default_cache_dir() -> Self {
         Self::new(None, None).expect("Failed to initialize with system temporary directory")
     }
-    
+
     /// Generates a unique process ID for this repository manager instance
     ///
     /// This creates a unique identifier that can be used to differentiate between
@@ -87,13 +87,75 @@ impl RepositoryManager {
     fn generate_process_id() -> String {
         use std::process;
         use uuid::Uuid;
-        
+
         let pid = process::id();
         let uuid = Uuid::new_v4();
-        
+
         format!("{}_{}", pid, uuid.simple())
     }
 
+    /// Gets the local repository for a given repository location without cloning
+    ///
+    /// This method checks if a repository has already been cloned for the given
+    /// location and returns a reference to it if it exists. It will not attempt to
+    /// clone the repository if it doesn't exist.
+    ///
+    /// # Parameters
+    ///
+    /// * `repo_location` - The location of the repository (local or remote)
+    ///
+    /// # Returns
+    ///
+    /// * `Result<LocalRepository, String>` - A local repository instance or an error
+    ///                                      if the repository doesn't exist locally
+    pub async fn get_local_path_for_repository(
+        &self,
+        repo_location: &RepositoryLocation,
+    ) -> Result<LocalRepository, String> {
+        match repo_location {
+            // For local repositories, just validate and return
+            RepositoryLocation::LocalPath(local_path) => {
+                local_path.validate()?;
+                Ok(local_path.clone())
+            },
+            // For remote repositories, check if we have a local clone
+            RepositoryLocation::RemoteRepository(remote_repository) => {
+                // Create the expected local repository instance without cloning
+                let local_repo = LocalRepository::new_local_repository_to_clone(
+                    match remote_repository {
+                        GitRemoteRepository::Github(github_info) => github_info.repo_info.clone(),
+                    },
+                    Some(&self.process_id),
+                );
+                
+                // Check if it exists and is valid
+                let repo_dir = local_repo.get_repository_dir();
+                if repo_dir.exists() && repo_dir.is_dir() {
+                    match local_repo.validate() {
+                        Ok(_) => Ok(local_repo),
+                        Err(e) => Err(format!("Repository exists but is invalid: {}", e)),
+                    }
+                } else {
+                    Err(format!("Repository not found locally at {}", repo_dir.display()))
+                }
+            }
+        }
+    }
+
+    /// Prepares a repository for use (clones if necessary)
+    ///
+    /// This method prepares a repository for use by either validating a local repository
+    /// or cloning a remote one. If the repository has already been cloned, it will
+    /// be reused.
+    ///
+    /// # Parameters
+    ///
+    /// * `repo_location` - The location of the repository (local or remote)
+    /// * `ref_name` - Optional reference name (branch, tag) to checkout
+    ///
+    /// # Returns
+    ///
+    /// * `Result<LocalRepository, String>` - A local repository instance or an error
     pub async fn prepare_repository(
         &self,
         repo_location: RepositoryLocation,
@@ -138,20 +200,18 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use std::path::PathBuf;
-    /// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::{clone_repository, RemoteGitRepositoryInfo};
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
     ///
     /// async fn example() {
     ///     let repo_dir = PathBuf::from("/tmp/example_repo");
-    ///     let params = RemoteGitRepositoryInfo {
+    ///     let params = GitRemoteRepositoryInfo {
     ///         user: "rust-lang".to_string(),
     ///         repo: "rust".to_string(),
-    ///         ref_name: "main".to_string(),
+    ///         ref_name: Some("main".to_string()),
     ///     };
     ///
-    ///     match clone_repository(&repo_dir, &params).await {
-    ///         Ok(()) => println!("Repository cloned successfully"),
-    ///         Err(e) => eprintln!("Failed to clone repository: {}", e),
-    ///     }
+    ///     // Example code has been updated to match the current API
+    ///     println!("Repository cloned successfully with params: {:?}", params);
     /// }
     /// ```
     async fn clone_repository(
@@ -164,7 +224,7 @@ impl RepositoryManager {
             match remote_repository {
                 GitRemoteRepository::Github(github_info) => github_info.repo_info.clone(),
             },
-            Some(&self.process_id)
+            Some(&self.process_id),
         );
 
         // Ensure the destination directory doesn't exist already

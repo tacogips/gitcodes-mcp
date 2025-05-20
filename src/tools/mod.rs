@@ -1,4 +1,5 @@
-use crate::gitcodes::{*, repository_manager};
+use crate::gitcodes::{repository_manager, *};
+use crate::services;
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -58,8 +59,11 @@ impl GitHubCodeTools {
     pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
         // Initialize the global repository manager with these parameters
         // This will only have an effect the first time it's called
-        let manager = repository_manager::instance::init_repository_manager(github_token, repository_cache_dir);
-        
+        let manager = repository_manager::instance::init_repository_manager(
+            github_token,
+            repository_cache_dir,
+        );
+
         Self {
             manager: manager.clone(),
         }
@@ -83,7 +87,9 @@ impl GitHubCodeTools {
     pub fn with_service(_manager: RepositoryManager) -> Self {
         // Get the global repository manager
         let manager = repository_manager::instance::get_repository_manager();
-        Self { manager: manager.clone() }
+        Self {
+            manager: manager.clone(),
+        }
     }
 }
 
@@ -204,7 +210,7 @@ impl GitHubCodeTools {
         page: Option<u32>,
     ) -> String {
         // Create a SearchParams struct from the individual parameters
-        let params = SearchParams {
+        let _params = SearchParams {
             query,
             sort_by,
             order,
@@ -233,7 +239,7 @@ impl GitHubCodeTools {
     /// 2. Code search is performed on the local files
     /// 3. Results are formatted and returned
     #[tool(
-        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. Example usage with GitHub: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. With local path: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"fn main\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
+        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. The pattern is interpreted as a regular expression, and it's your responsibility to escape special characters for literal searches. Examples: Simple search: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. Literal text search for 'file.txt': `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"file\\.txt\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
     )]
     async fn grep_repository(
         &self,
@@ -245,13 +251,13 @@ impl GitHubCodeTools {
 
         #[tool(param)]
         #[schemars(
-            description = "Branch or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to search in. If the specified branch doesn't exist, falls back to 'main' or 'master'."
+            description = "Branch, Commit or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to search in. If the specified branch doesn't exist, falls back to 'main' or 'master'."
         )]
         ref_name: Option<String>,
 
         #[tool(param)]
         #[schemars(
-            description = "Search pattern (required) - the text pattern to search for in the code. Supports regular expressions by default."
+            description = "Search pattern (required) - the text pattern to search for in the code. Interpreted as a regular expression. You can use regex syntax such as: simple literals like 'function'; wildcards like 'log.txt' (matches 'log1txt' too because '.' matches any character); character classes '[0-9]+'; word boundaries '\\bword\\b'; line anchors '^function'; alternatives 'error|warning'; repetitions '.*'. For literal text search, YOU MUST escape special characters yourself. For example, to search for the literal string 'file.txt', use 'file\\.txt'; to search for 'array[0]', use 'array\\[0\\]'; to search for '2+2=4', use '2\\+2=4'. Escape the following characters when searching for them literally: '.', '*', '+', '?', '^', '$', '[', ']', '(', ')', '{', '}', '|', '\\'. You can use this logic to escape a pattern for literal search: for each character c in the pattern, if c is one of '.^$*+?()[]{}\\|', prepend it with '\\'."
         )]
         pattern: String,
 
@@ -260,12 +266,6 @@ impl GitHubCodeTools {
             description = "Whether to be case-sensitive (optional, default is false). When true, matching is exact with respect to letter case. When false, matches any letter case."
         )]
         case_sensitive: Option<bool>,
-
-        #[tool(param)]
-        #[schemars(
-            description = "Whether to use regex (optional, default is true). Controls whether the pattern is interpreted as a regular expression or literal text."
-        )]
-        use_regex: Option<bool>,
 
         #[tool(param)]
         #[schemars(
@@ -279,25 +279,68 @@ impl GitHubCodeTools {
         )]
         exclude_dirs: Option<Vec<String>>,
     ) -> Result<String, String> {
-        // TODO: Implement search code functionality with RepositoryLocation
-        // Need to import FromStr trait to use from_str method properly
-        
-        // Temporarily return a placeholder response
-        Ok("Search code functionality is temporarily disabled during refactoring.".to_string())
-        //let params = GrepParams {
-        //    repository_location: repo_location,
-        //    ref_name,
-        //    pattern,
-        //    case_sensitive,
-        //    use_regex,
-        //    file_extensions,
-        //    exclude_dirs,
-        //};
+        // Get the effective case sensitivity (default to false if not specified)
+        let case_sensitive = case_sensitive.unwrap_or(false);
 
-        //match self.manager.grep_repository(params).await {
-        //    Ok(result) => result,
-        //    Err(error) => format!("Search failed: {}", error),
-        //}
+        // Process code search within the repository (grep)
+        // Handle repository cleanup in both success and error cases
+        let search_result = match services::perform_grep_in_repository(
+            &self.manager,
+            &repository_location,
+            pattern,
+            ref_name.as_deref(),
+            case_sensitive,
+            file_extensions.as_ref(),
+            exclude_dirs.as_ref(),
+        )
+        .await
+        {
+            Ok((result, local_repo)) => {
+                // Successful search, convert result to JSON
+                let json_result = result.to_json()?;
+
+                // Clean up the local repository after successful search
+                if let Err(e) = local_repo.cleanup() {
+                    tracing::warn!(
+                        "Failed to clean up repository after successful search: {}",
+                        e
+                    );
+                } else {
+                    tracing::debug!("Successfully cleaned up repository after search");
+                }
+
+                Ok(json_result)
+            }
+            Err(err) => {
+                // Search failed, try to clean up repository if it was created
+                tracing::error!("Code search failed: {}", err);
+
+                // Try to parse the repository location and check for an existing local repo to clean up
+                if let Ok(repo_location) = RepositoryLocation::from_str(&repository_location) {
+                    // Attempt to get the local repository path - this won't create a new one
+                    if let Ok(existing_repo) = self
+                        .manager
+                        .get_local_path_for_repository(&repo_location)
+                        .await
+                    {
+                        // Try to clean up the repository
+                        if let Err(cleanup_err) = existing_repo.cleanup() {
+                            tracing::warn!(
+                                "Failed to clean up repository after error: {}",
+                                cleanup_err
+                            );
+                        } else {
+                            tracing::debug!("Successfully cleaned up repository after error");
+                        }
+                    }
+                }
+
+                // Return the original error
+                Err(err)
+            }
+        };
+
+        search_result
     }
 
     /// List branches and tags for a GitHub repository
@@ -325,9 +368,12 @@ impl GitHubCodeTools {
         #[schemars(
             description = "Repository URL or local file path (posix only) (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
-        repo_location_str: String,
+        _repo_location_str: String,
     ) -> Result<String, String> {
         // TODO: Implement repository refs listing functionality
-        Ok("Repository refs listing functionality is temporarily disabled during refactoring.".to_string())
+        Ok(
+            "Repository refs listing functionality is temporarily disabled during refactoring."
+                .to_string(),
+        )
     }
 }

@@ -20,13 +20,14 @@
 //! ### 2. Programmatic API
 //!
 //! ```no_run
-//! // Provide a token directly when creating the service
-//! use gitcodes_mcp::tools::gitcodes::{git_service::GitHubService, GitHubCodeTools};
+//! // Provide a token directly to the repository manager
+//! use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
 //!
-//! let git_service = GitHubService::new(Some("your_github_token".to_string()), None);
+//! let repository_manager = RepositoryManager::new(Some("your_github_token".to_string()), None).unwrap();
 //!
-//! // Or when creating the tools wrapper
-//! let github_tools = GitHubCodeTools::new(Some("your_github_token".to_string()), None);
+//! // Or use the global repository manager instance
+//! use gitcodes_mcp::gitcodes::repository_manager::instance;
+//! let manager = instance::init_repository_manager(Some("your_github_token".to_string()), None);
 //! ```
 //!
 //! ### GitHub Token
@@ -72,14 +73,14 @@
 //! ### 2. Programmatic API
 //!
 //! ```no_run
-//! // Provide a token directly when creating the service
-//! use gitcodes_mcp::tools::gitcodes::git_service::GitHubService;
+//! // Provide a token directly when creating the repository manager
+//! use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
 //!
-//! let git_service = GitHubService::new(Some("your_github_token".to_string()), None);
+//! let repository_manager = RepositoryManager::new(Some("your_github_token".to_string()), None).unwrap();
 //! ```
 
-mod local_repository;
-mod repository_manager;
+pub mod local_repository;
+pub mod repository_manager;
 
 pub use local_repository::*;
 

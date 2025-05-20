@@ -12,9 +12,9 @@ pub struct SseServerApp {
 
 impl SseServerApp {
     pub fn new(
-        bind_addr: SocketAddr, 
+        bind_addr: SocketAddr,
         github_token: Option<String>,
-        repository_cache_dir: Option<PathBuf>
+        repository_cache_dir: Option<PathBuf>,
     ) -> Self {
         Self {
             bind_addr,
@@ -27,8 +27,9 @@ impl SseServerApp {
         let sse_server = SseServer::serve(self.bind_addr).await?;
         let github_token = self.github_token.clone();
         let repository_cache_dir = self.repository_cache_dir.clone();
-        let cancellation_token =
-            sse_server.with_service(move || GitHubCodeTools::new(github_token.clone(), repository_cache_dir.clone()));
+        let cancellation_token = sse_server.with_service(move || {
+            GitHubCodeTools::new(github_token.clone(), repository_cache_dir.clone())
+        });
 
         // Wait for Ctrl+C signal to gracefully shutdown
         tokio::signal::ctrl_c().await?;

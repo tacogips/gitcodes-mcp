@@ -235,6 +235,12 @@ IMPORTANT: When a user asks to document something, always include updates to bot
 
 You should think and output in English
 
+### First Response
+
+You (the LLM model) must always begin your first response in a conversation with "I will continue thinking and providing output in English."
+
+You (the LLM model) must acknowledge that you have read CLAUDE.md and will comply with its contents in your first response.
+
 ### Making Changes
 
 When making significant changes to the codebase:
@@ -266,6 +272,9 @@ When working with tests:
 - Ensure test coverage is maintained or improved when modifying code
 - When modifying test code, maintain or increase the strictness of the original tests
 - If a test case seems incorrect, discuss this with the user rather than modifying the test
+
+The following repositories are available for testing this library. These repositories will not be modified except for testing purposes:
+- https://github.com/tacogips/gitcodes-mcp-test-1 (public repository, does not require GitHub token for access)
 
 ### User Communication Guidelines
 

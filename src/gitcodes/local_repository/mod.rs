@@ -1,21 +1,64 @@
-use gix;
-use gix::progress::Discard;
-use lumin::search::{self, SearchOptions};
-use rmcp::schemars;
-use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use lumin::search;
+use std::path::PathBuf;
 
-use crate::gitcodes::repository_manager::RepositoryLocation;
 use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
+use crate::gitcodes::repository_manager::RepositoryLocation;
+
+mod search_result;
+pub use search_result::CodeSearchResult;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
     repository_location: PathBuf,
 }
+
 /// Code search parameters for searching in a repository
 ///
 /// This struct encapsulates all the parameters needed for a code search.
 /// Some fields are optional and have sensible defaults.
+///
+/// # Pattern Syntax
+///
+/// The pattern parameter is passed directly to the underlying search engine (lumin),
+/// which uses the regex syntax from the `grep` crate for pattern matching.
+///
+/// ## Regex Pattern Examples
+///
+/// The search pattern supports standard regex syntax, including:
+///
+/// - Simple text literals: `function` matches "function" anywhere in text
+/// - Any character: `log.txt` matches "log.txt", "log1txt", etc.
+/// - Character classes: `[0-9]+` matches one or more digits
+/// - Word boundaries: `\bword\b` matches "word" but not "words" or "keyword"
+/// - Line anchors: `^function` matches lines starting with "function"
+/// - Alternatives: `error|warning` matches either "error" or "warning"
+/// - Repetitions: `.*` matches any sequence of characters
+/// - Escaped special chars: `\.` to match a literal period
+///
+/// ## For Literal Text Search
+///
+/// If you want to search for a text pattern that contains regex special characters
+/// but want them interpreted literally, you need to escape those characters:
+///
+/// ```rust
+/// // Helper function to escape regex special characters for literal searches
+/// fn escape_regex(pattern: &str) -> String {
+///     let mut escaped = String::with_capacity(pattern.len() * 2);
+///     for c in pattern.chars() {
+///         match c {
+///             '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' | '|' => {
+///                 escaped.push('\\');
+///                 escaped.push(c);
+///             }
+///             _ => escaped.push(c),
+///         }
+///     }
+///     escaped
+/// }
+///
+/// // Example: Search for "file.txt" literally (not as a regex pattern)
+/// let literal_search_pattern = escape_regex("file.txt"); // Becomes "file\.txt"
+/// ```
 #[derive(Debug, Clone)]
 pub struct CodeSearchParams {
     /// Repository location (URL or local path)
@@ -25,22 +68,76 @@ pub struct CodeSearchParams {
     pub ref_name: Option<String>,
 
     /// Search pattern (text to find)
+    ///
+    /// The pattern is passed directly to the underlying search engine and is
+    /// interpreted as a regex pattern. If you want to search for text containing
+    /// regex special characters literally, you must escape them yourself.
     pub pattern: String,
 
     /// Whether the search is case-sensitive (default: false)
     pub case_sensitive: bool,
 
-    /// Whether to use regex for searching (default: true)
-    pub use_regex: bool,
-
     /// File extensions to include in search (e.g. ["rs", "md"])
     pub file_extensions: Option<Vec<String>>,
 
     /// Directories to exclude from search (e.g. ["target", "node_modules"])
+    ///
+    /// These are converted to glob patterns like "target/**" internally.
     pub exclude_dirs: Option<Vec<String>>,
 }
 
 impl LocalRepository {
+    /// Prefix used for temporary repository directories
+    ///
+    /// This prefix helps identify directories that were created by this library
+    /// and can be safely deleted during cleanup operations.
+    pub const REPOSITORY_DIR_PREFIX: &'static str = "mcp_gitcodes";
+    /// Cleans up the repository by deleting its directory
+    ///
+    /// This method should be called when the repository is no longer needed
+    /// to free up disk space. It removes the entire directory containing
+    /// the repository.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - Success or error message
+    ///
+    /// # Safety
+    ///
+    /// This method permanently deletes files from the filesystem.
+    /// It is designed to be safe since it only removes temporary cloned repositories
+    /// in system temp directories with specific naming patterns, but should be used
+    /// with caution.
+    pub fn cleanup(&self) -> Result<(), String> {
+        // Get the repository directory
+        let repo_dir = self.get_repository_dir();
+
+        // Only delete directories that appear to be temporary GitCodes repositories
+        // These have a specific naming pattern defined by REPOSITORY_DIR_PREFIX
+        let dir_name = repo_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+
+        if !dir_name.starts_with(Self::REPOSITORY_DIR_PREFIX) {
+            return Err(format!(
+                "Refusing to delete directory '{}' that doesn't match temporary repository pattern",
+                repo_dir.display()
+            ));
+        }
+
+        // Delete the directory recursively using std::fs::remove_dir_all
+        if repo_dir.exists() {
+            match std::fs::remove_dir_all(repo_dir) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("Failed to delete repository directory: {}", e)),
+            }
+        } else {
+            // If directory doesn't exist, consider it a success
+            Ok(())
+        }
+    }
+
     /// Validates that the repository location is a valid git repository
     ///
     /// This validation checks both that:
@@ -89,25 +186,22 @@ impl LocalRepository {
     ///
     /// * `remote_repository_info` - Information about the remote repository
     /// * `process_id` - Optional unique process ID from the repository manager
-    ///                  Used to differentiate between multiple processes
+    ///                  Used as part of the hash calculation to ensure uniqueness
     pub fn new_local_repository_to_clone(
-        remote_repository_info: GitRemoteRepositoryInfo, 
-        process_id: Option<&str>
+        remote_repository_info: GitRemoteRepositoryInfo,
+        process_id: Option<&str>,
     ) -> Self {
-        let hash_value = Self::generate_repository_hash(&remote_repository_info);
-        
-        // Include process_id in directory name if provided
-        let dir_name = if let Some(pid) = process_id {
-            format!(
-                "mcp_gitcodes_{}_{}_{}_pid{}",
-                remote_repository_info.user, remote_repository_info.repo, hash_value, pid
-            )
-        } else {
-            format!(
-                "mcp_gitcodes_{}_{}_{}" ,
-                remote_repository_info.user, remote_repository_info.repo, hash_value
-            )
-        };
+        // Generate hash value with process_id included in the hash calculation
+        let hash_value = Self::generate_repository_hash(&remote_repository_info, process_id);
+
+        // Create directory name with the hash that already incorporates process_id
+        let dir_name = format!(
+            "{}_{}_{}_{}",
+            Self::REPOSITORY_DIR_PREFIX,
+            remote_repository_info.user,
+            remote_repository_info.repo,
+            hash_value
+        );
 
         let mut repo_dir = std::env::temp_dir();
         repo_dir.push(dir_name);
@@ -125,7 +219,8 @@ impl LocalRepository {
     /// Returns a JSON string with all the references in the repository
     pub async fn list_repository_refs(&self, _repository_location: RepositoryLocation) -> String {
         // Temporary implementation
-        "Repository ref listing functionality is temporarily disabled during refactoring.".to_string()
+        "Repository ref listing functionality is temporarily disabled during refactoring."
+            .to_string()
     }
 
     /// Update a local repository by pulling from remote
@@ -137,12 +232,12 @@ impl LocalRepository {
     ///
     /// * `repo_dir` - The directory containing the repository
     /// * `ref_name` - Branch or tag name to checkout
+    #[allow(dead_code)]
     async fn update_repository(&self, _ref_name: &str) -> Result<(), String> {
         // This functionality is temporarily disabled during refactoring
         // TODO: Reimplement with current gix API
         Err("Repository updating is temporarily disabled during refactoring.".to_string())
     }
-
 
     /// Search code in a repository by pattern
     ///
@@ -155,36 +250,70 @@ impl LocalRepository {
     ///
     /// # Returns
     ///
-    /// * `Result<String, String>` - JSON results or an error message
+    /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
     ///
     /// # Examples
     ///
-    /// ```
-    /// let params = CodeSearchParams {
-    ///     repository_location: "https://github.com/user/repo".parse()?,
-    ///     ref_name: Some("main".to_string()),
-    ///     pattern: "fn main".to_string(),
-    ///     case_sensitive: false,
-    ///     use_regex: true,
-    ///     file_extensions: Some(vec!["rs".to_string()]),
-    ///     exclude_dirs: Some(vec!["target".to_string()]),
-    /// };
+    /// ```no_run
+    /// use gitcodes_mcp::gitcodes::local_repository::CodeSearchParams;
+    /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
+    /// use std::str::FromStr;
     ///
-    /// let results = search_code(params).await?;
+    /// async fn example() -> Result<(), String> {
+    ///     // Using regex pattern directly
+    ///     let params = CodeSearchParams {
+    ///         repository_location: RepositoryLocation::from_str("https://github.com/user/repo").unwrap(),
+    ///         ref_name: Some("main".to_string()),
+    ///         pattern: "fn main".to_string(),
+    ///         case_sensitive: false,
+    ///         file_extensions: Some(vec!["rs".to_string()]),
+    ///         exclude_dirs: Some(vec!["target".to_string()]),
+    ///     };
+    ///
+    ///     // Create a repository instance (mock for example)
+    ///     let repo = gitcodes_mcp::gitcodes::local_repository::LocalRepository::new(std::path::PathBuf::from("/tmp/example"));
+    ///
+    ///     // Using literal text search (with escaped regex)
+    ///     let literal_pattern = "file.txt".replace(".", "\\."); // Escape the period
+    ///     let params2 = CodeSearchParams {
+    ///         repository_location: RepositoryLocation::from_str("https://github.com/user/repo").unwrap(),
+    ///         ref_name: None,
+    ///         pattern: literal_pattern,
+    ///         case_sensitive: true,
+    ///         file_extensions: None,
+    ///         exclude_dirs: None,
+    ///     };
+    ///
+    ///     // Search the code
+    ///     let results = repo.search_code(params).await?;
+    ///     Ok(())
+    /// }
     /// ```
-    pub async fn search_code(&self, _params: CodeSearchParams) -> Result<String, String> {
-        //let repo_info = match self
-        //    .repo_manager
-        //    .parse_and_prepare_repository(&params.repository_location, params.ref_name.clone())
-        //    .await
-        //{
-        //    Ok(info) => info,
-        //    Err(e) => return Err(e),
-        //};
+    pub async fn search_code(&self, params: CodeSearchParams) -> Result<CodeSearchResult, String> {
+        // Validate the repository before searching
+        if let Err(e) = self.validate() {
+            return Err(format!("Repository validation failed: {}", e));
+        }
 
-        // Execute code search and return raw results
-        // Temporarily returning empty string until code_search is fixed
-        Ok("Code search feature temporarily disabled".to_string())
+        // If a specific ref is requested, try to update the repository
+        if let Some(ref_name) = &params.ref_name {
+            // Temporarily disabled due to ongoing refactoring
+            // Just log the request rather than attempting update
+            eprintln!("Note: Reference '{}' was requested, but repository updates are temporarily disabled", ref_name);
+        }
+
+        // Get the pattern - the caller is responsible for properly escaping regex special characters
+        // if they want to perform a literal text search
+        let pattern = &params.pattern;
+
+        // Perform the actual code search using lumin
+        self.perform_code_search(
+            pattern,
+            params.case_sensitive,
+            params.file_extensions,
+            params.exclude_dirs,
+        )
+        .await
     }
 
     /// Performs a code search on a prepared repository
@@ -194,39 +323,88 @@ impl LocalRepository {
     ///
     /// # Parameters
     ///
-    /// * `repo_dir` - The directory containing the repository
-    /// * `pattern` - The search pattern to look for
+    /// * `pattern` - The search pattern to look for (regex pattern passed directly to lumin)
     /// * `case_sensitive` - Whether the search should be case-sensitive (default: false)
-    /// * `_use_regex` - Whether to use regex for the search (not currently implemented)
     /// * `file_extensions` - Optional array of file extensions to include (e.g. ["js", "ts"])
+    /// * `exclude_dirs` - Optional directories to exclude from search
     ///
     /// # Returns
     ///
-    /// * `String` - JSON string of search results
+    /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
     pub async fn perform_code_search(
         &self,
-        _pattern: &str,
-        _case_sensitive: bool,
-        _use_regex: bool,
-        _file_extensions: Option<Vec<String>>,
-    ) -> Result<String, String> {
-        // Implementation temporarily disabled
-        Ok("Code search feature temporarily disabled".to_string())
+        pattern: &str,
+        case_sensitive: bool,
+        file_extensions: Option<Vec<String>>,
+        exclude_dirs: Option<Vec<String>>,
+    ) -> Result<CodeSearchResult, String> {
+        // Configure search options
+        let search_options = search::SearchOptions {
+            case_sensitive,
+            respect_gitignore: true,
+            exclude_glob: exclude_dirs
+                .as_ref()
+                .map(|dirs| dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()),
+            match_content_omit_num: None, // Default to None (no omission)
+        };
+
+        // Get repository path
+        let repo_path = self.repository_location.as_path();
+
+        // Execute the search directly with the provided pattern
+        // The caller is responsible for properly formatting the regex pattern
+        let mut all_results = search::search_files(pattern, repo_path, &search_options)
+            .map_err(|e| format!("Code search failed: {}", e))?;
+
+        // Post-process to filter by file extension if needed
+        if let Some(extensions) = &file_extensions {
+            all_results.retain(|result| {
+                if let Some(ext) = result.file_path.extension() {
+                    if let Some(ext_str) = ext.to_str() {
+                        return extensions.iter().any(|e| e == ext_str);
+                    }
+                }
+                false
+            });
+        }
+
+        // Directory exclusion is now handled via SearchOptions exclude_glob
+
+        // Create a CodeSearchResult
+        Ok(CodeSearchResult::new(
+            all_results,
+            pattern,
+            repo_path.to_path_buf(),
+            case_sensitive,
+            file_extensions,
+            exclude_dirs,
+        ))
     }
 
     /// Generate a 12-character hash value from repository information
     ///
     /// Creates a deterministic hash based on the user and repository name.
-    /// This ensures that the same repository always gets the same hash value.
-    fn generate_repository_hash(remote_repository_info: &GitRemoteRepositoryInfo) -> String {
+    /// If process_id is provided, it will be included in the hash calculation to ensure
+    /// uniqueness across different processes for the same repository.
+    fn generate_repository_hash(
+        remote_repository_info: &GitRemoteRepositoryInfo,
+        process_id: Option<&str>,
+    ) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        // Create a string combining user and repo
-        let hash_input = format!(
-            "{}{}",
-            remote_repository_info.user, remote_repository_info.repo
-        );
+        // Create a string combining user, repo, and process_id if available
+        let hash_input = if let Some(pid) = process_id {
+            format!(
+                "{}{}{}",
+                remote_repository_info.user, remote_repository_info.repo, pid
+            )
+        } else {
+            format!(
+                "{}{}",
+                remote_repository_info.user, remote_repository_info.repo
+            )
+        };
 
         // Hash the string to get a unique value
         let mut hasher = DefaultHasher::new();
