@@ -20,6 +20,10 @@ struct Cli {
     /// Defaults to system temp directory if not specified
     #[arg(short = 'c', long = "cache-dir", global = true)]
     repository_cache_dir: Option<PathBuf>,
+    
+    /// Show verbose output including INFO-level logs
+    #[arg(short, long, global = true)]
+    verbose: bool,
 
     /// Enable debug logging
     #[arg(short, long, global = true)]
@@ -166,8 +170,10 @@ async fn main() -> Result<()> {
     // Initialize logging
     let level = if cli.debug {
         tracing::Level::DEBUG
-    } else {
+    } else if cli.verbose {
         tracing::Level::INFO
+    } else {
+        tracing::Level::WARN  // Only show warnings and errors by default
     };
 
     tracing_subscriber::fmt()
@@ -186,13 +192,13 @@ async fn main() -> Result<()> {
         cli.repository_cache_dir.clone(),
     );
 
-    tracing::info!("GitCodes CLI initialized");
+    tracing::debug!("GitCodes CLI initialized");
     if cli.github_token.is_some() {
-        tracing::info!("Using GitHub token from command line arguments");
+        tracing::debug!("Using GitHub token from command line arguments");
     }
 
     if let Some(dir) = &cli.repository_cache_dir {
-        tracing::info!("Using custom repository cache directory: {}", dir.display());
+        tracing::debug!("Using custom repository cache directory: {}", dir.display());
     }
 
     // Process the command
@@ -268,13 +274,13 @@ async fn main() -> Result<()> {
             file_extensions,
             exclude_dirs,
         } => {
-            tracing::info!(
+            tracing::debug!(
                 "Searching for code pattern in repository: {}",
                 repository_location
             );
-            tracing::info!("Pattern: {}", pattern);
+            tracing::debug!("Pattern: {}", pattern);
             if let Some(r) = &ref_name {
-                tracing::info!("Ref: {}", r);
+                tracing::debug!("Ref: {}", r);
             }
 
             // Use the services module to perform the grep operation
@@ -321,7 +327,7 @@ async fn main() -> Result<()> {
         Commands::ListRefs {
             repository_location,
         } => {
-            tracing::info!("Listing references for repository: {}", repository_location);
+            tracing::debug!("Listing references for repository: {}", repository_location);
 
             // Get the refs directly from the repository manager
             let (refs_json, local_repo_opt) = manager

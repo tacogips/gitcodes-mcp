@@ -236,7 +236,7 @@ cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-
 
 ### Improved Output Formatting
 
-We improved the output formatting for commands that previously returned raw JSON data. Here are examples of the new output formats:
+We improved the output formatting for commands that previously returned raw JSON data and reduced logging noise by default. Here are examples of the improvements:
 
 #### Repository Search - New Format
 
@@ -275,7 +275,6 @@ cargo run --bin gitcodes -- list-refs 'https://github.com/tacogips/gitcodes-mcp-
 
 **Output:**
 ```
-Found 5 references:
 Reference                                Type    SHA
 ---------------------------------------- ------- ----------------------------------------
 branch: bugfix/api-client                commit  e32ffddbfd02194dcec46c990bcf30cbe22d7ada
@@ -296,9 +295,12 @@ tag: v0.0.0                              commit  831bab9e8b529d3f2f430c4d797f440
      - For `list-refs`: Shows formatted reference names (branches/tags), type, and SHA values in a tabular format
 
 2. **Logging Noise**:
-   - All commands produce INFO-level logging to stderr by default, which clutters the output
-   - Even without the debug flag, users still see log messages mixed with command output
-   - Consider making the default log level more quiet (WARNING or ERROR only) and only show INFO with a verbose flag
+   - All commands originally produced INFO-level logging to stderr by default, which cluttered the output
+   - Even without the debug flag, users would see log messages mixed with command output
+   - [FIXED] Added a `-v/--verbose` flag to control log verbosity:
+     - By default, only WARNING and ERROR logs are shown
+     - With `-v/--verbose`, INFO-level logs are also shown
+     - With `-d/--debug`, DEBUG-level logs and more detailed information are shown
 
 3. **Error Handling**:
    - The error messages are generally informative but could benefit from more user-friendly suggestions for resolution
