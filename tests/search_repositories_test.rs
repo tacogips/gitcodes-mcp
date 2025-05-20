@@ -9,7 +9,7 @@ use std::env;
 use std::str::FromStr;
 
 use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
-use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
+use gitcodes_mcp::gitcodes::repository_manager::{SortOption, OrderOption, RepositoryManager};
 use serde_json::Value;
 
 /// Creates a Repository Manager for testing
@@ -43,29 +43,26 @@ async fn test_search_repositories_parameter_conversion() {
     // (provider, sort_option, order_option)
     let test_cases = vec![
         // Default case - no sort, no order
-        ("github", None, None),
+        ("github", None::<SortOption>, None::<OrderOption>),
     
         // Sort by stars
-        ("github", Some("stars"), None),
+        ("github", Some(SortOption::Stars), None),
     
         // Sort by forks
-        ("github", Some("forks"), None),
+        ("github", Some(SortOption::Forks), None),
     
         // Sort by updated
-        ("github", Some("updated"), None),
+        ("github", Some(SortOption::Updated), None),
     
         // Test relevance
-        ("github", Some("relevance"), None), // GitHub API treats "" as default
+        ("github", Some(SortOption::Relevance), None),
     
         // Test order alone
-        ("github", None, Some("ascending")),
-        ("github", None, Some("descending")),
-    
-        // Test case insensitivity
-        ("github", Some("StArS"), Some("AsCeNdInG")),
+        ("github", None, Some(OrderOption::Ascending)),
+        ("github", None, Some(OrderOption::Descending)),
     
         // Full combination
-        ("github", Some("forks"), Some("descending")),
+        ("github", Some(SortOption::Forks), Some(OrderOption::Descending)),
     ];
 
     // Use a very specific query that will return few results to avoid hitting rate limits
@@ -85,8 +82,8 @@ async fn test_search_repositories_parameter_conversion() {
             .search_repositories(
                 provider,
                 query.to_string(),
-                sort_option.map(String::from),
-                order_option.map(String::from),
+                sort_option.clone(), // Clone to avoid move
+                order_option.clone(), // Clone to avoid move
                 Some(5),  // Limit results to 5 per page
                 Some(1),  // First page
             )
@@ -124,76 +121,54 @@ async fn test_search_repositories_parameter_conversion() {
     }
 }
 
-/// Tests error handling for invalid search parameters
+/// Tests basic repository searching without parameters
 ///
-/// This test verifies that:
-/// 1. Invalid sort options result in default sorting
-/// 2. Invalid order options result in default ordering
-/// 3. The search still succeeds with invalid parameters (GitHub API ignores them)
+/// This test verifies that the search still succeeds without any sorting parameters
+/// since the function now enforces valid enum values at compile time
 #[tokio::test]
-async fn test_search_repositories_invalid_parameters() {
+async fn test_search_repositories_basic() {
     let manager = create_test_manager();
-    
-    // Test cases with invalid parameters
-    // Each tuple contains:
-    // (sort_option, order_option)
-    let test_cases = vec![
-        // Invalid sort option
-        (Some("invalid_sort"), None),
-        
-        // Invalid order option
-        (None, Some("invalid_order")),
-        
-        // Both invalid
-        (Some("invalid_sort"), Some("invalid_order")),
-    ];
     
     // Use a very specific query that will return few results
     let query = "gitcodes-mcp-test-repo language:rust stars:0";
     
-    for (sort_option, order_option) in test_cases {
-        println!(
-            "Testing with invalid parameters - sort: {:?}, order: {:?}",
-            sort_option, order_option
-        );
+    // Execute the search with minimal parameters
+    println!("Testing with minimal parameters");
+    
+    let result = manager
+        .search_repositories(
+            GitProvider::Github,
+            query.to_string(),
+            None,  // No sort option
+            None,  // No order option
+            Some(5),  // Limit results to 5 per page
+            Some(1),  // First page
+        )
+        .await;
         
-        // Execute the search
-        let result = manager
-            .search_repositories(
-                GitProvider::Github,
-                query.to_string(),
-                sort_option.map(String::from),
-                order_option.map(String::from),
-                Some(5),  // Limit results to 5 per page
-                Some(1),  // First page
-            )
-            .await;
-        
-        // With GitHub API, invalid parameters should be ignored and the search should still succeed
-        match result {
-            Ok(json_result) => {
-                // Parse the JSON result
-                let parsed: Value = serde_json::from_str(&json_result)
-                    .expect("Failed to parse search results JSON");
-                
-                // Verify the result structure
-                assert!(parsed.is_object(), "Search result should be an object");
-                assert!(parsed.get("items").is_some(), "Result should have 'items' field");
-                assert!(parsed["items"].is_array(), "Items should be an array");
-                
-                println!("Search succeeded with invalid parameters");
-            },
-            Err(e) => {
-                // Skip rate limit errors, which are expected when running tests frequently
-                if e.contains("rate limit") {
-                    println!("Skipping due to rate limit: {}", e);
-                    continue;
-                }
-                
-                // For invalid parameters, GitHub should ignore them rather than fail,
-                // so any other error is unexpected
-                panic!("Search failed unexpectedly: {}", e);
+    // Check if the search was successful
+    match result {
+        Ok(json_result) => {
+            // Parse the JSON result
+            let parsed: Value = serde_json::from_str(&json_result)
+                .expect("Failed to parse search results JSON");
+            
+            // Verify the result structure
+            assert!(parsed.is_object(), "Search result should be an object");
+            assert!(parsed.get("items").is_some(), "Result should have 'items' field");
+            assert!(parsed["items"].is_array(), "Items should be an array");
+            
+            println!("Search succeeded with minimal parameters");
+        },
+        Err(e) => {
+            // Skip rate limit errors, which are expected when running tests frequently
+            if e.contains("rate limit") {
+                println!("Skipping due to rate limit: {}", e);
+                return;
             }
+            
+            // Other errors should fail the test
+            panic!("Basic search failed: {}", e);
         }
     }
 }

@@ -31,7 +31,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Search for GitHub repositories
-    Search {
+    RepositorySearch {
         /// Search query for repositories
         #[arg(
             help = "Search query - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'"
@@ -170,7 +170,7 @@ async fn main() -> Result<()> {
 
     // Process the command
     match cli.command {
-        Commands::Search {
+        Commands::RepositorySearch {
             query,
             sort_by,
             order,

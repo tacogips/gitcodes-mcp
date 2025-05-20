@@ -8,8 +8,57 @@ use gix::{progress::Discard, remote::fetch::Shallow};
 use providers::GitRemoteRepository;
 pub use repository_location::RepositoryLocation;
 use tracing;
+use rmcp::schemars;
 
 use crate::gitcodes::local_repository::LocalRepository;
+
+// Sorting options for repository search
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum SortOption {
+    Relevance,
+    Stars,
+    Forks,
+    Updated,
+}
+
+// Order options for repository search
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum OrderOption {
+    Ascending,
+    Descending,
+}
+
+// Implement conversion from SortOption to GithubSortOption
+impl From<SortOption> for providers::github::GithubSortOption {
+    fn from(value: SortOption) -> Self {
+        match value {
+            SortOption::Relevance => Self::Relevance,
+            SortOption::Stars => Self::Stars,
+            SortOption::Forks => Self::Forks,
+            SortOption::Updated => Self::Updated,
+        }
+    }
+}
+
+// Implement conversion from OrderOption to GithubOrderOption
+impl From<OrderOption> for providers::github::GithubOrderOption {
+    fn from(value: OrderOption) -> Self {
+        match value {
+            OrderOption::Ascending => Self::Ascending,
+            OrderOption::Descending => Self::Descending,
+        }
+    }
+}
+
+// Search parameters
+#[derive(Debug, Clone)]
+pub struct SearchParams {
+    pub query: String,
+    pub sort_by: Option<SortOption>,
+    pub order: Option<OrderOption>,
+    pub per_page: Option<u8>,
+    pub page: Option<u32>,
+}
 
 /// Repository manager for Git operations
 ///
@@ -468,8 +517,8 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
+    /// use gitcodes_mcp::gitcodes::repository_manager::{SortOption, OrderOption};
     /// use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
-    /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubSortOption, GithubOrderOption};
     ///
     /// async fn example() {
     ///     let repo_manager = RepositoryManager::default();
@@ -491,8 +540,8 @@ impl RepositoryManager {
     ///     match repo_manager.search_repositories(
     ///         GitProvider::Github,
     ///         "language:rust stars:>1000".to_string(),
-    ///         Some("stars".to_string()),    // Convert enum to string
-    ///         Some("desc".to_string()),     // Convert enum to string
+    ///         Some(SortOption::Stars),    // Use enum directly from this module
+    ///         Some(OrderOption::Descending),     // Use enum directly from this module
     ///         Some(50),
     ///         Some(1)
     ///     ).await {
@@ -510,24 +559,18 @@ impl RepositoryManager {
         &self,
         provider: providers::GitProvider,
         query: String,
-        sort_option: Option<String>,  // Generic sort option name (will be provider-specific)
-        order_option: Option<String>, // Generic order option name (will be provider-specific)
+        sort_option: Option<SortOption>,  // Generic sort option from this module
+        order_option: Option<OrderOption>, // Generic order option from this module
         per_page: Option<u8>,
         page: Option<u32>,
     ) -> Result<String, String> {
         match provider {
             providers::GitProvider::Github => {
-                use std::str::FromStr;
-
-                // Map generic sort option to GitHub-specific sort option using EnumString
-                let sort_by = sort_option
-                    .as_deref()
-                    .and_then(|s| providers::github::GithubSortOption::from_str(s.to_lowercase().as_str()).ok());
-
-                // Map generic order option to GitHub-specific order option using EnumString
-                let order = order_option
-                    .as_deref()
-                    .and_then(|s| providers::github::GithubOrderOption::from_str(s.to_lowercase().as_str()).ok());
+                // Convert generic SortOption to GitHub-specific GithubSortOption
+                let sort_by = sort_option.map(providers::github::GithubSortOption::from);
+                
+                // Convert generic OrderOption to GitHub-specific GithubOrderOption
+                let order = order_option.map(providers::github::GithubOrderOption::from);
 
                 // Create GitHub search parameters
                 let params = providers::github::GithubSearchParams {
@@ -561,7 +604,8 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
-    /// use gitcodes_mcp::gitcodes::repository_manager::providers::{GitProvider, github::{GithubSortOption, GithubOrderOption}};
+    /// use gitcodes_mcp::gitcodes::repository_manager::{SortOption, OrderOption};
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
     ///
     /// async fn example() {
     ///     let repo_manager = RepositoryManager::default();
@@ -570,8 +614,8 @@ impl RepositoryManager {
     ///     match repo_manager.search_repositories(
     ///         GitProvider::Github,
     ///         "rust http client".to_string(),
-    ///         Some("stars".to_string()),    // Convert enum to string
-    ///         Some("desc".to_string()),     // Convert enum to string
+    ///         Some(SortOption::Stars),    // Use enum from this module
+    ///         Some(OrderOption::Descending),     // Use enum from this module
     ///         Some(10),
     ///         Some(1)
     ///     ).await {

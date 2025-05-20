@@ -558,6 +558,54 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
       }
   }
   ```
+
+### Strong Type Safety with Domain-Specific Enums
+
+- **Pattern:** Use domain-specific enums rather than strings for type safety
+- **Example:** Moved `SortOption` and `OrderOption` enums from tools module to repository_manager module
+- **Implementation:**
+  ```rust
+  // In repository_manager module where these are primarily used
+  pub enum SortOption {
+      Relevance,
+      Stars,
+      Forks,
+      Updated,
+  }
+  
+  pub enum OrderOption {
+      Ascending,
+      Descending,
+  }
+  
+  // Implement conversion from generic SortOption to provider-specific options
+  impl From<SortOption> for providers::github::GithubSortOption {
+      fn from(value: SortOption) -> Self {
+          match value {
+              SortOption::Relevance => Self::Relevance,
+              SortOption::Stars => Self::Stars,
+              SortOption::Forks => Self::Forks,
+              SortOption::Updated => Self::Updated,
+          }
+      }
+  }
+  
+  // In repository_manager's search_repositories method, accept enums directly
+  pub async fn search_repositories(
+      &self,
+      provider: providers::GitProvider,
+      query: String,
+      sort_option: Option<SortOption>,  // Generic sort option
+      order_option: Option<OrderOption>, // Generic order option
+      per_page: Option<u8>,
+      page: Option<u32>,
+  ) -> Result<String, String> {
+      // Convert generic enums to provider-specific ones
+      let sort_by = sort_option.map(providers::github::GithubSortOption::from);
+      // ...
+  }
+  ```
+- **Benefits:** Prevents invalid input at compile time, eliminates runtime string conversion, improves type safety, and enables IDE autocompletion
 - **Benefits:** Centralized conversion logic, consistent string representations
 
 ## Implementation Notes

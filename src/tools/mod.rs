@@ -3,31 +3,8 @@ use crate::services;
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
 
-// Sorting options
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum SortOption {
-    Relevance,
-    Stars,
-    Forks,
-    Updated,
-}
-
-// Order options
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum OrderOption {
-    Ascending,
-    Descending,
-}
-
-// Search parameters
-#[derive(Debug, Clone)]
-pub struct SearchParams {
-    pub query: String,
-    pub sort_by: Option<SortOption>,
-    pub order: Option<OrderOption>,
-    pub per_page: Option<u8>,
-    pub page: Option<u32>,
-}
+// Re-export SortOption and OrderOption from repository_manager
+pub use crate::gitcodes::repository_manager::{OrderOption, SortOption, SearchParams};
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
@@ -231,26 +208,15 @@ impl GitHubCodeTools {
             None => GitProvider::Github, // Default to GitHub if not provided
         };
 
-        // Convert SortOption enum to string representation
-        let sort_option_str = sort_by.map(|sort| match sort {
-            SortOption::Relevance => "relevance".to_string(),
-            SortOption::Stars => "stars".to_string(),
-            SortOption::Forks => "forks".to_string(),
-            SortOption::Updated => "updated".to_string(),
-        });
-
-        // Convert OrderOption enum to string representation
-        let order_option_str = order.map(|order| match order {
-            OrderOption::Ascending => "ascending".to_string(),
-            OrderOption::Descending => "descending".to_string(),
-        });
+        // Now we can pass the SortOption and OrderOption directly to search_repositories
+        // since it accepts these types directly
 
         // Execute the search against the specified provider using the repository manager
         match self.manager.search_repositories(
             git_provider,
             query,
-            sort_option_str,
-            order_option_str,
+            sort_by, // Pass directly since repository_manager uses the same enum types
+            order,  // Pass directly since repository_manager uses the same enum types
             per_page,
             page,
         ).await {
