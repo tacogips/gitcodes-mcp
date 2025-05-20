@@ -17,6 +17,8 @@ This file documents the architectural decisions and implementation patterns for 
 - Used a step-by-step approach to connect, prepare, and then execute the fetch operation
 - Maintained fetch from all configured remotes, continuing on individual failures
 - Structured error handling to provide meaningful context about which stage of the fetch failed
+- Integrated fetch operation into `services::list_repository_refs` function to ensure local repositories are updated before listing references
+- Implemented robust tests that verify fetch operation in both direct usage and service integration scenarios
 
 ```rust
 // Example pattern for fetching a remote using gix

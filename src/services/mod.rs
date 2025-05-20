@@ -85,7 +85,10 @@ pub async fn perform_grep_in_repository(
 /// This pure function handles the entire refs listing process:
 /// 1. Parses a repository location string into a RepositoryLocation
 /// 2. For GitHub repositories, uses the GitHub API to fetch refs
-/// 3. For local repositories, uses git commands to list refs
+/// 3. For local repositories:
+///    a. Prepares the repository using the repository manager
+///    b. Fetches the latest updates from remote
+///    c. Lists refs from the local repository
 ///
 /// # Parameters
 ///
@@ -133,6 +136,13 @@ pub async fn list_repository_refs(
             let local_repo = repository_manager
                 .prepare_repository(local_repository, None)
                 .await?;
+
+            // Fetch updates from remote before listing refs to ensure we have the latest changes
+            // Ignore fetch errors as we can still list existing refs even if fetch fails
+            if let Err(e) = local_repo.fetch_remote().await {
+                eprintln!("Warning: Failed to fetch latest updates from remote: {}", e);
+                // Continue with listing refs despite fetch failure
+            }
 
             // Use the local repository to list refs
             let refs_json = local_repo.list_repository_refs().await?;
