@@ -2,7 +2,6 @@ use crate::gitcodes::{repository_manager, *};
 use crate::services;
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 // Sorting options
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -284,7 +283,9 @@ impl GitHubCodeTools {
 
         // Process code search within the repository (grep)
         // Handle repository cleanup in both success and error cases
-        let search_result = match services::perform_grep_in_repository(
+        
+
+        match services::perform_grep_in_repository(
             &self.manager,
             &repository_location,
             pattern,
@@ -316,9 +317,7 @@ impl GitHubCodeTools {
                 // Return the original error
                 Err(err)
             }
-        };
-
-        search_result
+        }
     }
 
     /// List branches and tags for a GitHub repository

@@ -66,7 +66,7 @@ async fn test_grep_basic_pattern() {
         "Match doesn't contain file_path"
     );
     assert!(
-        first_match.line_content.len() > 0,
+        !first_match.line_content.is_empty(),
         "Match doesn't contain line_content"
     );
 

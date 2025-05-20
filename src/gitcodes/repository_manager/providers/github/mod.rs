@@ -214,13 +214,12 @@ impl GithubClient {
     /// Executes a GitHub API search request
     ///
     /// Sends the HTTP request to the GitHub API and handles the response.
-    //TODO(tacogips) this method should return Result<String,String> instead of String
-    pub async fn execute_search_request(&self, params: &GithubSearchParams) -> String {
+    pub async fn execute_search_request(&self, params: &GithubSearchParams) -> Result<String, String> {
         let url = Self::construct_search_url(params);
         // Set up the API request
         let mut req_builder = self.client.get(url).header(
             "User-Agent",
-            "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
+            "gitcodes-mcp/0.1.0 (https://github.com/tacogips/gitcodes-mcp)",
         );
 
         // Add authentication token if available
@@ -231,7 +230,7 @@ impl GithubClient {
         // Execute API request
         let response = match req_builder.send().await {
             Ok(resp) => resp,
-            Err(e) => return format!("Failed to search repositories: {}", e),
+            Err(e) => return Err(format!("Failed to search repositories: {}", e)),
         };
 
         // Check if the request was successful
@@ -242,13 +241,13 @@ impl GithubClient {
                 Err(_) => "Unknown error".to_string(),
             };
 
-            return format!("GitHub API error {}: {}", status, error_text);
+            return Err(format!("GitHub API error {}: {}", status, error_text));
         }
 
         // Return the raw JSON response
         match response.text().await {
-            Ok(text) => text,
-            Err(e) => format!("Failed to read response body: {}", e),
+            Ok(text) => Ok(text),
+            Err(e) => Err(format!("Failed to read response body: {}", e)),
         }
     }
 
@@ -268,8 +267,7 @@ impl GithubClient {
     /// GitHub API has rate limits that vary based on authentication:
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
-    pub async fn search_repositories(&self, params: GithubSearchParams) -> String {
-        //TODO(tacogips) this method should return anyhow::Result<String> instead of String
+    pub async fn search_repositories(&self, params: GithubSearchParams) -> Result<String, String> {
         // Execute the search request
         self.execute_search_request(&params).await
     }

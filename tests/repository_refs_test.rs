@@ -12,7 +12,6 @@ use gitcodes_mcp::services;
 use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tempfile;
 
 /// Creates a Repository Manager for testing
 fn create_test_manager() -> RepositoryManager {

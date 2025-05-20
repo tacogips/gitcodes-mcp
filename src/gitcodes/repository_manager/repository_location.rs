@@ -24,9 +24,9 @@ impl FromStr for RepositoryLocation {
         // Check if it's a local path first
         //TODO(exists) check if it's a local path
         if Path::new(sanitized_location).exists() {
-            return Ok(RepositoryLocation::LocalPath(LocalRepository::new(
+            Ok(RepositoryLocation::LocalPath(LocalRepository::new(
                 PathBuf::from(sanitized_location),
-            )));
+            )))
         } else {
             let remote_repository = GitRemoteRepository::parse_url(repo_location_path_or_url)
                 .map_err(|e| e.to_string())?;

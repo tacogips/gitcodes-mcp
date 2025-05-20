@@ -2,7 +2,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::str::FromStr;
-use tokio;
 use tracing_subscriber::{self, EnvFilter};
 
 use gitcodes_mcp::gitcodes::{repository_manager, RepositoryLocation};
@@ -212,7 +211,7 @@ async fn main() -> Result<()> {
             use gitcodes_mcp::services;
             
             match services::perform_grep_in_repository(
-                &manager,
+                manager,
                 &repository_location,
                 pattern,
                 ref_name.as_deref(),
@@ -286,7 +285,7 @@ async fn main() -> Result<()> {
             use gitcodes_mcp::services;
             
             // Get the refs from the services module
-            let (refs_json, local_repo_opt) = services::list_repository_refs(&manager, &repository_location).await
+            let (refs_json, local_repo_opt) = services::list_repository_refs(manager, &repository_location).await
                 .map_err(|e| anyhow::anyhow!(e))?;
             
             // Simply print the JSON result
