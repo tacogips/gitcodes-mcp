@@ -38,11 +38,6 @@ fn create_test_manager() -> RepositoryManager {
 /// 4. Return the results in a valid JSON format
 #[tokio::test]
 async fn test_list_repository_refs_github() {
-    // Skip the test if there appears to be issues with HTTP client
-    if std::env::var("SKIP_HTTP_TESTS").is_ok() {
-        println!("Skipping HTTP tests due to SKIP_HTTP_TESTS environment variable");
-        return;
-    }
     
     // Use public test repository with various URL formats
     let repo_urls = vec![

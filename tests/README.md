@@ -2,13 +2,13 @@
 
 ## HTTP Tests
 
-The GitHub API tests in `github_api_test.rs` require HTTP connectivity and OpenSSL to be properly installed in the environment. In environments where these dependencies are not available, the tests are designed to be skippable.
+The GitHub API tests in `github_api_test.rs` require HTTP connectivity to be properly available in the environment. The project uses `rustls`, a pure-Rust TLS implementation that doesn't depend on any system TLS libraries, making it more portable across different environments. However, in environments where network connectivity is restricted, the tests are designed to be skippable.
 
 ### Running HTTP Tests
 
 To run the HTTP tests successfully:
 
-1. Ensure OpenSSL development libraries are installed (`libssl-dev` on Ubuntu, `openssl-devel` on Fedora)
+1. No specific TLS libraries are required as the project uses `rustls` (a pure-Rust TLS implementation)
 2. Ensure the environment has internet connectivity
 3. Run the tests normally: `cargo test --test github_api_test`
 
