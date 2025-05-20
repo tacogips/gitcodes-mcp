@@ -7,9 +7,10 @@ This file documents the architectural decisions and implementation patterns for 
 ### Repository Reference Listing with Native Git Integration
 
 - Implemented `list_repository_refs` function using the `gix` Rust library instead of shell commands
-- Returns a structured JSON array of all repository references (branches and tags)
+- Returns a Result with either JSON data or error message
+- Uses strongly-typed structs (GitRefObject, RefObject) for serialization instead of raw JSON construction
 - References include both name and SHA hash for proper version identification
-- Handles errors gracefully by returning formatted error messages as JSON objects
+- Follows idiomatic Rust error handling instead of encoded errors in JSON
 - Matches GitHub API format for consistency between local and remote repositories
 
 ```rust

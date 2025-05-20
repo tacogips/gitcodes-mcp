@@ -10,6 +10,9 @@ use crate::gitcodes::repository_manager::RepositoryLocation;
 mod search_result;
 pub use search_result::CodeSearchResult;
 
+mod reference;
+pub use reference::GitRefObject;
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LocalRepository {
     repository_location: PathBuf,
@@ -236,7 +239,7 @@ impl LocalRepository {
     ///
     /// # Format
     ///
-    /// The returned JSON is an array of objects with the following structure:
+    /// The returned JSON is an array of GitRefObject structs with the following structure:
     /// ```json
     /// [
     ///   {
@@ -249,6 +252,8 @@ impl LocalRepository {
     ///   ...
     /// ]
     /// ```
+    ///
+    /// This matches the GitHub API format for references.
     pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> Result<String, String> {
         // Open the repository
         let repo = match gix::open(&self.repository_location) {
@@ -284,7 +289,7 @@ impl LocalRepository {
             }
         };
 
-        // Process the references into JSON objects
+        // Process the references into structured objects
         let mut result = Vec::new();
         for reference in all_refs {
             if let Ok(r) = reference {
@@ -295,14 +300,8 @@ impl LocalRepository {
                 let target = r.target();
                 let sha = target.id().to_hex().to_string();
                 
-                // Create the JSON object for this reference
-                let ref_obj = serde_json::json!({
-                    "ref": ref_name,
-                    "object": {
-                        "sha": sha,
-                        "type": "commit" // Assuming all references point to commits
-                    }
-                });
+                // Create a properly structured reference object
+                let ref_obj = GitRefObject::new(ref_name, sha);
                 
                 result.push(ref_obj);
             }
