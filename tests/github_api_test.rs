@@ -100,11 +100,6 @@ async fn test_list_repository_refs_github() {
                 println!("Successfully retrieved and verified repository refs for {}", repo_url);
             },
             Err(e) => {
-                // If there's an error about 'scheme is not http', it's likely due to missing TLS support
-                if e.contains("scheme is not http") || e.contains("failed to lookup address information") {
-                    println!("Skipping test due to HTTP connectivity issues: {}", e);
-                    return;
-                }
                 panic!("Failed to list repository refs for {}: {}", repo_url, e);
             }
         }
@@ -117,11 +112,6 @@ async fn test_list_repository_refs_github() {
 /// to the GitHub API and retrieve repository references.
 #[tokio::test]
 async fn test_github_client_list_refs() {
-    // Skip the test if there appears to be issues with HTTP client
-    if std::env::var("SKIP_HTTP_TESTS").is_ok() {
-        println!("Skipping HTTP tests due to SKIP_HTTP_TESTS environment variable");
-        return;
-    }
     
     // Create test manager
     let manager = create_test_manager();
@@ -162,11 +152,6 @@ async fn test_github_client_list_refs() {
             println!("GitHub client successfully retrieved repository refs");
         },
         Err(e) => {
-            // If there's an error about 'scheme is not http', it's likely due to missing TLS support
-            if e.contains("scheme is not http") || e.contains("failed to lookup address information") {
-                println!("Skipping test due to HTTP connectivity issues: {}", e);
-                return;
-            }
             panic!("GitHub client failed to list repository refs: {}", e);
         }
     }
@@ -178,11 +163,6 @@ async fn test_github_client_list_refs() {
 /// when given invalid repository information.
 #[tokio::test]
 async fn test_list_repository_refs_error_handling() {
-    // Skip the test if there appears to be issues with HTTP client
-    if std::env::var("SKIP_HTTP_TESTS").is_ok() {
-        println!("Skipping HTTP tests due to SKIP_HTTP_TESTS environment variable");
-        return;
-    }
     
     // Create test manager
     let manager = create_test_manager();
@@ -199,13 +179,6 @@ async fn test_list_repository_refs_error_handling() {
     // Check the error message
     if let Err(error_message) = result {
         println!("Error message: {}", error_message);
-        
-        // If there's an error about 'scheme is not http', it's likely due to missing TLS support
-        if error_message.contains("scheme is not http") || error_message.contains("failed to lookup address information") {
-            println!("Skipping test due to HTTP connectivity issues: {}", error_message);
-            return;
-        }
-        
         assert!(error_message.contains("404") || error_message.contains("not found"), 
                 "Error message should indicate repository not found");
     }
