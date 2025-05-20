@@ -195,9 +195,9 @@ async fn main() -> Result<()> {
             repository_location,
             ref_name,
             pattern,
-            case_sensitive: _,
-            file_extensions: _,
-            exclude_dirs: _,
+            case_sensitive,
+            file_extensions,
+            exclude_dirs,
         } => {
             tracing::info!(
                 "Searching for code pattern in repository: {}",
@@ -208,31 +208,51 @@ async fn main() -> Result<()> {
                 tracing::info!("Ref: {}", r);
             }
 
-            // Parse the repository location
-            match RepositoryLocation::from_str(&repository_location) {
-                Ok(repo_location) => {
-                    // Prepare the repository (clone or reuse local)
-                    match manager.prepare_repository(repo_location, ref_name).await {
-                        Ok(local_repo) => {
-                            tracing::info!(
-                                "Repository prepared at: {}",
-                                local_repo.get_repository_dir().display()
-                            );
-                            // NOTE: Placeholder response since the actual implementation is temporarily disabled
-                            println!("Search code functionality is temporarily disabled during refactoring.");
-                            println!("Repository: {}", repository_location);
-                            println!("Pattern: {}", pattern);
-                            Ok(())
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to prepare repository: {}", e);
-                            anyhow::bail!("Failed to prepare repository: {}", e)
-                        }
+            // Use the services module to perform the grep operation
+            use gitcodes_mcp::services;
+            
+            match services::perform_grep_in_repository(
+                &manager,
+                &repository_location,
+                pattern,
+                ref_name.as_deref(),
+                case_sensitive.unwrap_or(false),
+                file_extensions.as_ref(),
+                exclude_dirs.as_ref(),
+            ).await {
+                Ok(result) => {
+                    // Print summary of results
+                    println!("Found {} matches for pattern '{}' in repository {}", 
+                        result.matches.len(), 
+                        result.pattern,
+                        result.repository
+                    );
+                    
+                    // Print search options used
+                    println!("Search options:");
+                    println!("  Case sensitive: {}", result.case_sensitive);
+                    if let Some(exts) = &result.file_extensions {
+                        println!("  File extensions: {}", exts.join(", "));
                     }
-                }
+                    if let Some(dirs) = &result.exclude_dirs {
+                        println!("  Excluded directories: {}", dirs.join(", "));
+                    }
+                    
+                    // Print each match
+                    if !result.matches.is_empty() {
+                        println!("\nMatches:");
+                        for m in &result.matches {
+                            println!("{}:{}:{}", m.path.display(), m.line_number, m.content);
+                        }
+                    } else {
+                        println!("No matches found.");
+                    }
+                    
+                    Ok(())
+                },
                 Err(e) => {
-                    tracing::error!("Invalid repository location: {}", e);
-                    anyhow::bail!("Invalid repository location: {}", e)
+                    tracing::error!("Failed to search code: {}", e);
+                    anyhow::bail!("Failed to search code: {}", e)
                 }
             }
         }
