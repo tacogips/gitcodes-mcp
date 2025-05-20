@@ -655,7 +655,40 @@ The codebase now uses a global singleton pattern for the `RepositoryManager`:
   - Shallow cloning with `PrepareFetch` and `Shallow::DepthAtRemote`
   - Two-phase clone: `fetch_then_checkout` followed by `main_worktree`
   - Automatic authentication via URL modification instead of credential helpers
+  - Repository reference listing with `repo.references()` iteration
 - Benefits:
   - No dependency on external git commands
   - Better error handling and type safety
   - Improved performance with native Rust implementation
+  - Consistent API access across all git operations
+
+#### Repository References Listing
+
+- Implemented in `LocalRepository::list_repository_refs()`
+- Returns all references (branches and tags) in the repository as a JSON array
+- Each reference includes:
+  - Full reference name (e.g., `refs/heads/main`, `refs/tags/v1.0.0`)
+  - SHA-1 object identifier for the referenced commit
+  - Object type (typically "commit")
+- Format matches the GitHub API reference listing for consistency
+- Error handling returns properly formatted JSON with error messages
+- Usage example:
+
+```json
+[
+  {
+    "ref": "refs/heads/main",
+    "object": {
+      "sha": "8f92384c20cd034bd30e96c07845f2d43d490f94",
+      "type": "commit"
+    }
+  },
+  {
+    "ref": "refs/tags/v1.0.0",
+    "object": {
+      "sha": "7b9fc62ec24755d65c084edc4b8396dedce13e73",
+      "type": "commit"
+    }
+  }
+]
+```

@@ -4,6 +4,50 @@ This file documents the architectural decisions and implementation patterns for 
 
 **IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the patterns documented here.
 
+### Repository Reference Listing with Native Git Integration
+
+- Implemented `list_repository_refs` function using the `gix` Rust library instead of shell commands
+- Returns a structured JSON array of all repository references (branches and tags)
+- References include both name and SHA hash for proper version identification
+- Handles errors gracefully by returning formatted error messages as JSON objects
+- Matches GitHub API format for consistency between local and remote repositories
+
+```rust
+// Example implementation using gix to list repository references
+pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocation) -> String {
+    // Open the repository
+    match gix::open(self.repository_location.clone()) {
+        Ok(repo) => {
+            let mut refs = Vec::new();
+            
+            // Process all references in the repository
+            for reference in repo.references().ok()? {
+                if let Ok(r) = reference {
+                    // Extract ref name and SHA
+                    let ref_name = r.name().to_string();
+                    if let Some(target) = r.target().ok() {
+                        let sha = target.to_hex().to_string();
+                        refs.push(serde_json::json!({
+                            "ref": ref_name,
+                            "object": {
+                                "sha": sha,
+                                "type": "commit"
+                            }
+                        }));
+                    }
+                }
+            }
+            
+            // Convert to JSON string
+            serde_json::to_string(&refs).unwrap_or_else(|e| {
+                format!("{{\"error\": \"Failed to serialize: {}\"}}", e)
+            })
+        },
+        Err(e) => format!("{{\"error\": \"Failed to open repository: {}\"}}", e)
+    }
+}
+```
+
 ## Type System Patterns
 
 ### Structured Return Types over JSON Strings
