@@ -235,6 +235,10 @@ IMPORTANT: When a user asks to document something, always include updates to bot
 
 You should think and output in English
 
+### First Response
+
+You (the LLM model) must always begin your first response in a conversation with "I will continue thinking and providing output in English."
+
 ### Making Changes
 
 When making significant changes to the codebase:
