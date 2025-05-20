@@ -14,19 +14,19 @@ use std::path::PathBuf;
 pub struct CodeSearchResult {
     /// List of search matches found
     pub matches: Vec<LuminSearchResult>,
-    
+
     /// The search pattern that was used
     pub pattern: String,
-    
+
     /// Path to the repository that was searched
     pub repository: String,
-    
+
     /// Whether the search was case-sensitive
     pub case_sensitive: bool,
-    
+
     /// File extensions filter that was applied (if any)
     pub file_extensions: Option<Vec<String>>,
-    
+
     /// Directories that were excluded from the search (if any)
     pub exclude_dirs: Option<Vec<String>>,
 }
@@ -59,10 +59,10 @@ impl CodeSearchResult {
             exclude_dirs,
         }
     }
-    
+
     /// Converts the search result to a JSON string
     ///
-    /// This is useful for backward compatibility or when a JSON representation 
+    /// This is useful for backward compatibility or when a JSON representation
     /// is needed for interoperability with other systems.
     pub fn to_json(&self) -> Result<String, String> {
         serde_json::to_string_pretty(self)

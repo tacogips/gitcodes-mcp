@@ -52,7 +52,7 @@
 //! ```rust
 //! // Initialize the global repository manager (only happens once)
 //! let manager = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(
-//!     Some("github_token".to_string()), 
+//!     Some("github_token".to_string()),
 //!     None
 //! );
 //!

@@ -23,7 +23,7 @@ enum Commands {
         /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
         #[arg(short = 't', long)]
         github_token: Option<String>,
-        
+
         /// Custom directory for storing repository cache data
         /// Defaults to system temp directory if not specified
         #[arg(short = 'c', long = "cache-dir")]
@@ -42,7 +42,7 @@ enum Commands {
         /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
         #[arg(short = 't', long)]
         github_token: Option<String>,
-        
+
         /// Custom directory for storing repository cache data
         /// Defaults to system temp directory if not specified
         #[arg(short = 'c', long = "cache-dir")]
@@ -70,13 +70,16 @@ async fn main() -> Result<()> {
 }
 
 async fn run_stdio_server(
-    debug: bool, 
+    debug: bool,
     github_token: Option<String>,
-    repository_cache_dir: Option<std::path::PathBuf>
+    repository_cache_dir: Option<std::path::PathBuf>,
 ) -> Result<()> {
     // Initialize the global repository manager at startup
     // This ensures a single process_id is used throughout the application lifetime
-    let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(github_token.clone(), repository_cache_dir.clone());
+    let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(
+        github_token.clone(),
+        repository_cache_dir.clone(),
+    );
     // Initialize the tracing subscriber with stderr logging
     let level = if debug {
         tracing::Level::DEBUG
@@ -98,7 +101,7 @@ async fn run_stdio_server(
     if github_token.is_some() {
         tracing::info!("Using GitHub token from command line arguments");
     }
-    
+
     if let Some(dir) = &repository_cache_dir {
         tracing::info!("Using custom repository cache directory: {}", dir.display());
     }
@@ -110,14 +113,17 @@ async fn run_stdio_server(
 }
 
 async fn run_http_server(
-    address: String, 
-    debug: bool, 
+    address: String,
+    debug: bool,
     github_token: Option<String>,
-    repository_cache_dir: Option<std::path::PathBuf>
+    repository_cache_dir: Option<std::path::PathBuf>,
 ) -> Result<()> {
     // Initialize the global repository manager at startup
     // This ensures a single process_id is used throughout the application lifetime
-    let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(github_token.clone(), repository_cache_dir.clone());
+    let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(
+        github_token.clone(),
+        repository_cache_dir.clone(),
+    );
     // Setup tracing
     let level = if debug { "debug" } else { "info" };
 
@@ -141,13 +147,17 @@ async fn run_http_server(
     if github_token.is_some() {
         tracing::info!("Using GitHub token from command line arguments");
     }
-    
+
     if let Some(dir) = &repository_cache_dir {
         tracing::info!("Using custom repository cache directory: {}", dir.display());
     }
 
     // Create app and run server using the new rust-sdk implementation
-    let app = gitcodes_mcp::transport::sse_server::SseServerApp::new(addr, github_token, repository_cache_dir);
+    let app = gitcodes_mcp::transport::sse_server::SseServerApp::new(
+        addr,
+        github_token,
+        repository_cache_dir,
+    );
     app.serve().await?;
 
     Ok(())

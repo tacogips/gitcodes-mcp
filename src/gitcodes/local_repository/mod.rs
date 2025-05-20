@@ -67,7 +67,7 @@ pub struct CodeSearchParams {
     pub ref_name: Option<String>,
 
     /// Search pattern (text to find)
-    /// 
+    ///
     /// The pattern is passed directly to the underlying search engine and is
     /// interpreted as a regex pattern. If you want to search for text containing
     /// regex special characters literally, you must escape them yourself.
@@ -80,7 +80,7 @@ pub struct CodeSearchParams {
     pub file_extensions: Option<Vec<String>>,
 
     /// Directories to exclude from search (e.g. ["target", "node_modules"])
-    /// 
+    ///
     /// These are converted to glob patterns like "target/**" internally.
     pub exclude_dirs: Option<Vec<String>>,
 }
@@ -214,7 +214,7 @@ impl LocalRepository {
     /// let params = CodeSearchParams {
     ///     repository_location: "https://github.com/user/repo".parse()?,
     ///     ref_name: None,
-    ///     pattern: literal_pattern, 
+    ///     pattern: literal_pattern,
     ///     case_sensitive: true,
     ///     file_extensions: None,
     ///     exclude_dirs: None,
@@ -248,34 +248,6 @@ impl LocalRepository {
         )
         .await
     }
-    
-    /// Search code in a repository using GrepParams
-    ///
-    /// This is an alternative version of search_code that accepts a GrepParams struct
-    /// from the tools module. It converts the GrepParams to CodeSearchParams and then
-    /// performs the search.
-    ///
-    /// # Parameters
-    ///
-    /// * `params` - Parameters for the code search
-    ///
-    /// # Returns
-    ///
-    /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
-    pub async fn search_code_with_grep_params(&self, params: crate::tools::GrepParams) -> Result<CodeSearchResult, String> {
-        // Convert GrepParams to CodeSearchParams
-        let code_search_params = CodeSearchParams {
-            repository_location: params.repository_location,
-            ref_name: params.ref_name,
-            pattern: params.pattern,
-            case_sensitive: params.case_sensitive,
-            file_extensions: params.file_extensions,
-            exclude_dirs: params.exclude_dirs,
-        };
-        
-        // Call the original search_code method
-        self.search_code(code_search_params).await
-    }
 
     /// Performs a code search on a prepared repository
     ///
@@ -303,8 +275,10 @@ impl LocalRepository {
         let search_options = search::SearchOptions {
             case_sensitive,
             respect_gitignore: true,
-            exclude_glob: exclude_dirs.as_ref().map(|dirs| dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()),
-            match_content_omit_num: None,  // Default to None (no omission)
+            exclude_glob: exclude_dirs
+                .as_ref()
+                .map(|dirs| dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()),
+            match_content_omit_num: None, // Default to None (no omission)
         };
 
         // Get repository path

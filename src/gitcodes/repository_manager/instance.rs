@@ -44,6 +44,5 @@ pub fn init_repository_manager(
 ///
 /// The global RepositoryManager instance
 pub fn get_repository_manager() -> &'static RepositoryManager {
-    GLOBAL_REPOSITORY_MANAGER
-        .get_or_init(|| RepositoryManager::with_default_cache_dir())
+    GLOBAL_REPOSITORY_MANAGER.get_or_init(|| RepositoryManager::with_default_cache_dir())
 }

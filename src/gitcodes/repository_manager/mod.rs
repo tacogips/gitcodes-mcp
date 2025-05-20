@@ -1,5 +1,5 @@
-pub mod providers;
 pub mod instance;
+pub mod providers;
 mod repository_location;
 
 use std::{num::NonZeroU32, path::PathBuf};
@@ -78,7 +78,7 @@ impl RepositoryManager {
     pub fn with_default_cache_dir() -> Self {
         Self::new(None, None).expect("Failed to initialize with system temporary directory")
     }
-    
+
     /// Generates a unique process ID for this repository manager instance
     ///
     /// This creates a unique identifier that can be used to differentiate between
@@ -87,10 +87,10 @@ impl RepositoryManager {
     fn generate_process_id() -> String {
         use std::process;
         use uuid::Uuid;
-        
+
         let pid = process::id();
         let uuid = Uuid::new_v4();
-        
+
         format!("{}_{}", pid, uuid.simple())
     }
 
@@ -164,7 +164,7 @@ impl RepositoryManager {
             match remote_repository {
                 GitRemoteRepository::Github(github_info) => github_info.repo_info.clone(),
             },
-            Some(&self.process_id)
+            Some(&self.process_id),
         );
 
         // Ensure the destination directory doesn't exist already

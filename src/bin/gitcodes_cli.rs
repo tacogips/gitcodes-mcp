@@ -34,7 +34,9 @@ enum Commands {
     /// Search for GitHub repositories
     Search {
         /// Search query for repositories
-        #[arg(help = "Search query - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'")]
+        #[arg(
+            help = "Search query - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'"
+        )]
         query: String,
 
         /// How to sort results (default is 'relevance')
@@ -56,7 +58,9 @@ enum Commands {
     /// Search code in a GitHub repository
     Grep {
         /// Repository URL or local file path
-        #[arg(help = "Repository URL or local file path - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths")]
+        #[arg(
+            help = "Repository URL or local file path - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths"
+        )]
         repository_location: String,
 
         /// Branch, Commit or tag (default is 'main' or 'master')
@@ -64,7 +68,9 @@ enum Commands {
         ref_name: Option<String>,
 
         /// Search pattern - the text pattern to search for in the code
-        #[arg(help = "Search pattern - the text pattern to search for in the code. Supports regular expressions by default")]
+        #[arg(
+            help = "Search pattern - the text pattern to search for in the code. Supports regular expressions by default"
+        )]
         pattern: String,
 
         /// Whether to be case-sensitive
@@ -86,7 +92,9 @@ enum Commands {
     /// List branches and tags for a GitHub repository
     ListRefs {
         /// Repository URL or local file path
-        #[arg(help = "Repository URL or local file path - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths")]
+        #[arg(
+            help = "Repository URL or local file path - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths"
+        )]
         repository_location: String,
     },
 }
@@ -150,15 +158,15 @@ async fn main() -> Result<()> {
     // Initialize the global repository manager at startup
     // This ensures a single process_id is used throughout the application lifetime
     let manager = repository_manager::instance::init_repository_manager(
-        cli.github_token.clone(), 
-        cli.repository_cache_dir.clone()
+        cli.github_token.clone(),
+        cli.repository_cache_dir.clone(),
     );
 
     tracing::info!("GitCodes CLI initialized");
     if cli.github_token.is_some() {
         tracing::info!("Using GitHub token from command line arguments");
     }
-    
+
     if let Some(dir) = &cli.repository_cache_dir {
         tracing::info!("Using custom repository cache directory: {}", dir.display());
     }
@@ -184,7 +192,7 @@ async fn main() -> Result<()> {
                 println!("Order: {:?}", order);
             }
             Ok(())
-        },
+        }
         Commands::Grep {
             repository_location,
             ref_name,
@@ -194,65 +202,74 @@ async fn main() -> Result<()> {
             file_extensions,
             exclude_dirs,
         } => {
-            tracing::info!("Searching for code pattern in repository: {}", repository_location);
+            tracing::info!(
+                "Searching for code pattern in repository: {}",
+                repository_location
+            );
             tracing::info!("Pattern: {}", pattern);
             if let Some(r) = &ref_name {
                 tracing::info!("Ref: {}", r);
             }
-            
+
             // Parse the repository location
             match RepositoryLocation::from_str(&repository_location) {
                 Ok(repo_location) => {
                     // Prepare the repository (clone or reuse local)
                     match manager.prepare_repository(repo_location, ref_name).await {
                         Ok(local_repo) => {
-                            tracing::info!("Repository prepared at: {}", local_repo.get_repository_dir().display());
+                            tracing::info!(
+                                "Repository prepared at: {}",
+                                local_repo.get_repository_dir().display()
+                            );
                             // NOTE: Placeholder response since the actual implementation is temporarily disabled
                             println!("Search code functionality is temporarily disabled during refactoring.");
                             println!("Repository: {}", repository_location);
                             println!("Pattern: {}", pattern);
                             Ok(())
-                        },
+                        }
                         Err(e) => {
                             tracing::error!("Failed to prepare repository: {}", e);
                             anyhow::bail!("Failed to prepare repository: {}", e)
                         }
                     }
-                },
+                }
                 Err(e) => {
                     tracing::error!("Invalid repository location: {}", e);
                     anyhow::bail!("Invalid repository location: {}", e)
                 }
             }
-        },
+        }
         Commands::ListRefs {
             repository_location,
         } => {
             tracing::info!("Listing references for repository: {}", repository_location);
-            
+
             // Parse the repository location
             match RepositoryLocation::from_str(&repository_location) {
                 Ok(repo_location) => {
                     // Prepare the repository (clone or reuse local)
                     match manager.prepare_repository(repo_location, None).await {
                         Ok(local_repo) => {
-                            tracing::info!("Repository prepared at: {}", local_repo.get_repository_dir().display());
+                            tracing::info!(
+                                "Repository prepared at: {}",
+                                local_repo.get_repository_dir().display()
+                            );
                             // NOTE: Placeholder response since the actual implementation is temporarily disabled
                             println!("Repository refs listing functionality is temporarily disabled during refactoring.");
                             println!("Repository: {}", repository_location);
                             Ok(())
-                        },
+                        }
                         Err(e) => {
                             tracing::error!("Failed to prepare repository: {}", e);
                             anyhow::bail!("Failed to prepare repository: {}", e)
                         }
                     }
-                },
+                }
                 Err(e) => {
                     tracing::error!("Invalid repository location: {}", e);
                     anyhow::bail!("Invalid repository location: {}", e)
                 }
             }
-        },
+        }
     }
 }
