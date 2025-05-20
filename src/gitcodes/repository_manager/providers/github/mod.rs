@@ -211,10 +211,10 @@ impl GithubClient {
         unimplemented!()
     }
 
-    /// Executes a GitHub API search request
+    /// Executes a GitHub API search repository request
     ///
-    /// Sends the HTTP request to the GitHub API and handles the response.
-    pub async fn execute_search_request(&self, params: &GithubSearchParams) -> Result<String, String> {
+    /// Sends the HTTP request to the GitHub API's repository search endpoint and handles the response.
+    pub async fn execute_search_repository_request(&self, params: &GithubSearchParams) -> Result<String, String> {
         let url = Self::construct_search_url(params);
         // Set up the API request
         let mut req_builder = self.client.get(url).header(
@@ -268,8 +268,8 @@ impl GithubClient {
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
     pub async fn search_repositories(&self, params: GithubSearchParams) -> Result<String, String> {
-        // Execute the search request
-        self.execute_search_request(&params).await
+        // Execute the search repository request
+        self.execute_search_repository_request(&params).await
     }
 
     /// List branches and tags for a GitHub repository using the GitHub API
