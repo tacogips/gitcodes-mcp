@@ -151,6 +151,7 @@ fn construct_search_url(param: &SearchParams) -> String {
     // Implementation that handles parameter defaults and builds the search URL
 }
 
+// Unified SortOption enum in the repository_manager module
 pub enum SortOption {
     Relevance, // Default, no specific sort parameter
     Stars,     // Sort by number of stars (popularity)
@@ -158,9 +159,30 @@ pub enum SortOption {
     Updated,   // Sort by most recently updated
 }
 
+// Unified OrderOption enum in the repository_manager module
 pub enum OrderOption {
     Ascending,  // Sort in ascending order (lowest to highest, oldest to newest)
     Descending, // Sort in descending order (highest to lowest, newest to oldest)
+}
+
+// Provider-specific enums with conversion from generic options
+pub enum GithubSortOption {
+    Relevance, 
+    Stars,     
+    Forks,     
+    Updated,   
+}
+
+// Implement conversion from generic SortOption to GitHub-specific option
+impl From<SortOption> for GithubSortOption {
+    fn from(value: SortOption) -> Self {
+        match value {
+            SortOption::Relevance => Self::Relevance,
+            SortOption::Stars => Self::Stars,
+            SortOption::Forks => Self::Forks,
+            SortOption::Updated => Self::Updated,
+        }
+    }
 }
 ````
 

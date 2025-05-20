@@ -188,8 +188,8 @@ Searches for repositories on GitHub.
 Parameters:
 
 - `query` (required): The search query string
-- `sort_by` (optional): How to sort results (Options: "relevance", "stars", "forks", "updated")
-- `order` (optional): Sort order (Options: "asc", "desc", default: "desc")
+- `sort_by` (optional): How to sort results (Options: "Relevance", "Stars", "Forks", "Updated")
+- `order` (optional): Sort order (Options: "Ascending", "Descending", default: "Descending")
 - `per_page` (optional): Results per page (default: 30, max: 100)
 - `page` (optional): Page number (default: 1)
 
@@ -200,13 +200,15 @@ Example:
   "name": "search_repositories",
   "arguments": {
     "query": "rust http client",
-    "sort_by": "stars",
-    "order": "desc",
+    "sort_by": "Stars",
+    "order": "Descending",
     "per_page": 10,
     "page": 1
   }
 }
 ```
+
+**Note**: The `sort_by` and `order` parameters now accept enum values directly rather than strings, improving type safety and enabling IDE autocompletion. These options are standardized across different Git providers through a unified type system.
 
 ### 5. `grep_repository`
 
@@ -269,6 +271,8 @@ Example:
 - Repositories are automatically updated (git pull) when accessed
 - Cache directory paths follow a deterministic naming pattern based on repository owner and name
 - Git references (branches, tags) can be specified for search operations
+- Type-safe enumeration system for search options with compile-time validation
+- Domain-specific enum types with automatic conversion between generic and provider-specific options
 - Lightweight type system for repository locations (GitHub URL vs. local path)
 - Support for multiple authentication methods (command line, environment variable)
 

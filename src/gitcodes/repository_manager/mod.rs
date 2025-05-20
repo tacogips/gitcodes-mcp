@@ -12,23 +12,49 @@ use rmcp::schemars;
 
 use crate::gitcodes::local_repository::LocalRepository;
 
-// Sorting options for repository search
+/// Sorting options for repository search
+///
+/// This enum defines the generic sort options that can be used across different
+/// Git providers. It's used in the repository manager to provide a unified interface
+/// for sorting repository search results.
+///
+/// When passed to provider-specific methods, these generic options are converted
+/// to provider-specific sorting options using the `From` trait.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum SortOption {
+    /// No specific sort, uses the provider's default relevance sorting
     Relevance,
+    /// Sort by number of stars (popularity)
     Stars,
+    /// Sort by number of forks (derived projects)
     Forks,
+    /// Sort by most recently updated
     Updated,
 }
 
-// Order options for repository search
+/// Order options for repository search
+///
+/// This enum defines the generic order options (ascending or descending)
+/// that can be used across different Git providers. It's used in the 
+/// repository manager to provide a unified interface for ordering
+/// repository search results.
+///
+/// When passed to provider-specific methods, these generic options are converted
+/// to provider-specific order options using the `From` trait.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum OrderOption {
+    /// Sort in ascending order (lowest to highest, oldest to newest)
     Ascending,
+    /// Sort in descending order (highest to lowest, newest to oldest)
     Descending,
 }
 
-// Implement conversion from SortOption to GithubSortOption
+/// Implement conversion from generic SortOption to GitHub-specific GithubSortOption
+///
+/// This allows us to use generic `SortOption` values throughout the codebase
+/// and convert them to GitHub-specific options only when needed for API calls.
+/// This maintains a clean separation between our generic API and provider-specific
+/// implementation details.
 impl From<SortOption> for providers::github::GithubSortOption {
     fn from(value: SortOption) -> Self {
         match value {
@@ -40,7 +66,12 @@ impl From<SortOption> for providers::github::GithubSortOption {
     }
 }
 
-// Implement conversion from OrderOption to GithubOrderOption
+/// Implement conversion from generic OrderOption to GitHub-specific GithubOrderOption
+///
+/// This allows us to use generic `OrderOption` values throughout the codebase
+/// and convert them to GitHub-specific options only when needed for API calls.
+/// This maintains a clean separation between our generic API and provider-specific
+/// implementation details.
 impl From<OrderOption> for providers::github::GithubOrderOption {
     fn from(value: OrderOption) -> Self {
         match value {
@@ -50,13 +81,29 @@ impl From<OrderOption> for providers::github::GithubOrderOption {
     }
 }
 
-// Search parameters
+/// Repository search parameters
+///
+/// This struct encapsulates all the parameters needed for a repository search query.
+/// It uses the generic `SortOption` and `OrderOption` enums to provide a consistent
+/// interface across different Git providers.
+///
+/// When passed to provider-specific methods, these generic options are converted
+/// to provider-specific options using the `From` trait.
 #[derive(Debug, Clone)]
 pub struct SearchParams {
+    /// The search query string
     pub query: String,
+    
+    /// Optional sort option (defaults to Relevance if None)
     pub sort_by: Option<SortOption>,
+    
+    /// Optional order direction (defaults to Descending if None)
     pub order: Option<OrderOption>,
+    
+    /// Optional number of results per page (defaults to provider-specific value, typically 30)
     pub per_page: Option<u8>,
+    
+    /// Optional page number (defaults to 1 if None)
     pub page: Option<u32>,
 }
 
