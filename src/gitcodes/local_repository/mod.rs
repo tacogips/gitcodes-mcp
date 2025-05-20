@@ -248,6 +248,34 @@ impl LocalRepository {
         )
         .await
     }
+    
+    /// Search code in a repository using GrepParams
+    ///
+    /// This is an alternative version of search_code that accepts a GrepParams struct
+    /// from the tools module. It converts the GrepParams to CodeSearchParams and then
+    /// performs the search.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Parameters for the code search
+    ///
+    /// # Returns
+    ///
+    /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
+    pub async fn search_code_with_grep_params(&self, params: crate::tools::GrepParams) -> Result<CodeSearchResult, String> {
+        // Convert GrepParams to CodeSearchParams
+        let code_search_params = CodeSearchParams {
+            repository_location: params.repository_location,
+            ref_name: params.ref_name,
+            pattern: params.pattern,
+            case_sensitive: params.case_sensitive,
+            file_extensions: params.file_extensions,
+            exclude_dirs: params.exclude_dirs,
+        };
+        
+        // Call the original search_code method
+        self.search_code(code_search_params).await
+    }
 
     /// Performs a code search on a prepared repository
     ///

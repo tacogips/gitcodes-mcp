@@ -1,7 +1,7 @@
 use crate::gitcodes::{repository_manager, *};
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
-use std::str::FromStr;
+use repository_manager::RepositoryLocation;
 
 // Sorting options
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -29,6 +29,28 @@ pub struct SearchParams {
     pub page: Option<u32>,
 }
 
+/// Parameters for grep search in a repository
+#[derive(Debug, Clone)]
+pub struct GrepParams {
+    /// Repository location (URL or local path)
+    pub repository_location: RepositoryLocation,
+    
+    /// Optional specific branch or tag name
+    pub ref_name: Option<String>,
+    
+    /// Search pattern (text to find)
+    pub pattern: String,
+    
+    /// Whether the search is case-sensitive (default: false)
+    pub case_sensitive: bool,
+    
+    /// File extensions to include in search (e.g. ["rs", "md"])
+    pub file_extensions: Option<Vec<String>>,
+    
+    /// Directories to exclude from search (e.g. ["target", "node_modules"])
+    pub exclude_dirs: Option<Vec<String>>,
+}
+
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
 /// This struct is a thin wrapper around the RepositoryManager, specifically
@@ -40,6 +62,24 @@ pub struct GitHubCodeTools {
 }
 
 impl GitHubCodeTools {
+    /// Helper method to escape regex special characters for literal text search
+    ///
+    /// This converts a regular text pattern into a regex pattern where all special characters
+    /// are escaped, allowing it to be used for literal text search with regex engines.
+    fn escape_regex_special_chars(pattern: &str) -> String {
+        let mut escaped = String::with_capacity(pattern.len() * 2);
+        for c in pattern.chars() {
+            match c {
+                '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' | '|' => {
+                    escaped.push('\\');
+                    escaped.push(c);
+                }
+                _ => escaped.push(c),
+            }
+        }
+        escaped
+    }
+    
     /// Creates a new GitHubCodeTools instance with optional authentication and custom repository cache dir
     ///
     /// # Authentication
@@ -209,7 +249,7 @@ impl GitHubCodeTools {
         page: Option<u32>,
     ) -> String {
         // Create a SearchParams struct from the individual parameters
-        let params = SearchParams {
+        let _params = SearchParams {
             query,
             sort_by,
             order,
@@ -284,26 +324,95 @@ impl GitHubCodeTools {
         )]
         exclude_dirs: Option<Vec<String>>,
     ) -> Result<String, String> {
-        // TODO: Implement search code functionality with RepositoryLocation
-        // Need to import FromStr trait to use from_str method properly
-
-        // Temporarily return a placeholder response
-        Ok("Search code functionality is temporarily disabled during refactoring.".to_string())
-        //let params = GrepParams {
-        //    repository_location: repo_location,
-        //    ref_name,
-        //    pattern,
-        //    case_sensitive,
-        //    use_regex,
-        //    file_extensions,
-        //    exclude_dirs,
-        //};
-
-        //match self.manager.grep_repository(params).await {
-        //    Ok(result) => result,
-        //    Err(error) => format!("Search failed: {}", error),
-        //}
+        // Get the effective case sensitivity (default to false if not specified)
+        let case_sensitive = case_sensitive.unwrap_or(false);
+        
+        // Process repository search
+        let result = self.perform_repository_search(
+            &self.manager,
+            &repository_location,
+            &pattern,
+            ref_name.as_deref(),
+            case_sensitive,
+            file_extensions.as_ref(),
+            exclude_dirs.as_ref(),
+            use_regex,
+        ).await?;
+        
+        // Convert the search result to a JSON string
+        result.to_json()
     }
+    
+    /// Performs a code search in a repository by preparing the repository and executing the search
+    ///
+    /// This method encapsulates the process of parsing a repository location string, preparing
+    /// (cloning if necessary) the repository, and executing a code search. It has no side effects
+    /// and doesn't access any global state - all necessary parameters are passed explicitly.
+    ///
+    /// # Parameters
+    ///
+    /// * `repository_manager` - The repository manager for cloning/preparing repositories
+    /// * `repository_location_str` - The repository location string to parse
+    /// * `pattern` - The search pattern
+    /// * `ref_name` - Optional reference name (branch/tag)
+    /// * `case_sensitive` - Whether to perform a case-sensitive search
+    /// * `file_extensions` - Optional list of file extensions to filter by
+    /// * `exclude_dirs` - Optional list of directories to exclude
+    ///
+    /// # Returns
+    ///
+    /// * `Result<CodeSearchResult, String>` - The search results or an error message
+    ///
+    /// This function is designed to be easily unit testable as it takes all dependencies as parameters
+    /// and has no side effects.
+    async fn perform_repository_search(
+        &self,
+        repository_manager: &repository_manager::RepositoryManager,
+        repository_location_str: &str, 
+        pattern: &str,
+        ref_name: Option<&str>,
+        case_sensitive: bool,
+        file_extensions: Option<&Vec<String>>,
+        exclude_dirs: Option<&Vec<String>>,
+        use_regex: Option<bool>,
+    ) -> Result<crate::gitcodes::CodeSearchResult, String> {
+        use std::str::FromStr;
+        
+        // Parse the repository location string
+        let repository_location = RepositoryLocation::from_str(repository_location_str)
+            .map_err(|e| format!("Failed to parse repository location: {}", e))?;
+            
+        // Prepare the repository (clone if necessary)
+        let local_repo = repository_manager.prepare_repository(
+            repository_location.clone(),
+            ref_name.map(String::from),
+        ).await?;
+        
+        // Process the pattern based on use_regex flag
+        // If use_regex is false or not specified, escape regex special characters
+        let search_pattern = if use_regex.unwrap_or(true) {
+            // Use pattern as-is for regex search
+            pattern.to_string()
+        } else {
+            // Escape regex special characters for literal text search
+            Self::escape_regex_special_chars(pattern)
+        };
+        
+        // Create search parameters
+        let params = GrepParams {
+            repository_location: repository_location.clone(),
+            ref_name: ref_name.map(String::from),
+            pattern: search_pattern,
+            case_sensitive,
+            file_extensions: file_extensions.cloned(),
+            exclude_dirs: exclude_dirs.cloned(),
+        };
+        
+        // Execute the search
+        local_repo.search_code_with_grep_params(params).await
+    }
+    
+
 
     /// List branches and tags for a GitHub repository
     ///
@@ -330,7 +439,7 @@ impl GitHubCodeTools {
         #[schemars(
             description = "Repository URL or local file path (posix only) (required) - supports GitHub formats: 'https://github.com/user/repo', 'git@github.com:user/repo.git', 'github:user/repo', or local paths like '/path/to/repo'. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
-        repo_location_str: String,
+        _repo_location_str: String,
     ) -> Result<String, String> {
         // TODO: Implement repository refs listing functionality
         Ok(

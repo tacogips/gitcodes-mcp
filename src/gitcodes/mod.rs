@@ -78,7 +78,7 @@
 //! let git_service = GitHubService::new(Some("your_github_token".to_string()), None);
 //! ```
 
-mod local_repository;
+pub mod local_repository;
 pub mod repository_manager;
 
 pub use local_repository::*;
