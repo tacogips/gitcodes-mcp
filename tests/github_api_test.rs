@@ -5,11 +5,8 @@
 
 use std::env;
 
-use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
 use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
-use gitcodes_mcp::gitcodes::repository_manager::providers::GitRemoteRepository;
 use serde_json::Value;
-use std::str::FromStr;
 
 /// Creates a Repository Manager for testing
 fn create_test_manager() -> RepositoryManager {
@@ -117,26 +114,13 @@ async fn test_github_client_list_refs() {
     
     // Get test repository info
     let repo_url = "github:tacogips/gitcodes-mcp-test-1";
-    let repository_location = RepositoryLocation::from_str(repo_url)
-        .expect("Failed to parse repository URL");
     
-    // Extract GitHub repo info from the repository location
-    let github_repo = match repository_location {
-        RepositoryLocation::RemoteRepository(remote_repo) => match remote_repo {
-            GitRemoteRepository::Github(github_info) => github_info,
-        },
-        _ => panic!("Expected GitHub repository, got something else"),
-    };
-    
-    // Get the GitHub client
-    let github_client = manager.get_github_client();
-    
-    // Call the list_repository_refs method directly
-    let result = github_client.list_repository_refs(&github_repo.repo_info).await;
+    // Instead of using the private method get_github_client, use the public list_repository_refs method
+    let result = manager.list_repository_refs(repo_url).await;
     
     // Verify the result
     match result {
-        Ok(refs_json) => {
+        Ok((refs_json, _)) => {
             // Parse the JSON to verify it's valid
             let parsed: Value = serde_json::from_str(&refs_json)
                 .expect("Failed to parse repository refs JSON");

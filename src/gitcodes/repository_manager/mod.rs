@@ -491,8 +491,8 @@ impl RepositoryManager {
     ///     match repo_manager.search_repositories(
     ///         GitProvider::Github,
     ///         "language:rust stars:>1000".to_string(),
-    ///         Some(GithubSortOption::Stars),
-    ///         Some(GithubOrderOption::Descending),
+    ///         Some("stars".to_string()),    // Convert enum to string
+    ///         Some("desc".to_string()),     // Convert enum to string
     ///         Some(50),
     ///         Some(1)
     ///     ).await {
@@ -570,8 +570,8 @@ impl RepositoryManager {
     ///     match repo_manager.search_repositories(
     ///         GitProvider::Github,
     ///         "rust http client".to_string(),
-    ///         Some(GithubSortOption::Stars),
-    ///         Some(GithubOrderOption::Descending),
+    ///         Some("stars".to_string()),    // Convert enum to string
+    ///         Some("desc".to_string()),     // Convert enum to string
     ///         Some(10),
     ///         Some(1)
     ///     ).await {
