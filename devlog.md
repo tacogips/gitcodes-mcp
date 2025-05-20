@@ -4,6 +4,57 @@ This file documents the architectural decisions and implementation patterns for 
 
 **IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the patterns documented here.
 
+### Native Git Operations Using Gitoxide (gix)
+
+- Replaced shell command execution with native Rust library calls using the `gix` library
+- Implemented robust error handling with proper error propagation patterns
+- Used typed repository references instead of string handling for better type safety
+
+#### Repository Fetching Implementation
+
+- Implemented `fetch_remote` method using the native `gix` library instead of shelling out to git
+- Used `find_fetch_remote` to get a properly configured remote for fetching
+- Used a step-by-step approach to connect, prepare, and then execute the fetch operation
+- Maintained fetch from all configured remotes, continuing on individual failures
+- Structured error handling to provide meaningful context about which stage of the fetch failed
+
+```rust
+// Example pattern for fetching a remote using gix
+let remote_result = repo.find_fetch_remote(Some(&*remote_name));
+match remote_result {
+    Ok(remote) => {
+        // Connect to the remote for fetching
+        match remote.connect(gix::remote::Direction::Fetch) {
+            Ok(connection) => {
+                // Prepare the fetch operation
+                match connection.prepare_fetch(&mut progress, Default::default()) {
+                    Ok(prepare) => {
+                        // Execute the fetch operation
+                        match prepare.receive(&mut progress, &gix::interrupt::IS_INTERRUPTED) {
+                            Ok(_outcome) => {
+                                // Fetch successful
+                            },
+                            Err(e) => {
+                                // Handle fetch execution error
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        // Handle fetch preparation error
+                    }
+                }
+            },
+            Err(e) => {
+                // Handle connection error
+            }
+        }
+    },
+    Err(e) => {
+        // Handle remote initialization error
+    }
+}
+```
+
 ### Repository Reference Listing with Native Git Integration
 
 - Implemented `list_repository_refs` function using the `gix` Rust library instead of shell commands

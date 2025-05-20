@@ -383,33 +383,62 @@ impl LocalRepository {
             return Err("Repository has no configured remotes".to_string());
         }
         
-        // For each remote, try to fetch using the git command
-        // Note: We're using std::process::Command as a fallback since the native gix API
-        // for fetching is complex and may vary between versions
+        // For each remote, try to fetch using the native gix library
         let mut successful_fetches = 0;
         let mut last_error = None;
         
+        // Create a simple progress reporter that does nothing (we could implement a real one later)
+        let mut progress = gix::progress::Discard;
+        
         for remote_name in remote_names {
-            // Convert from Cow<BStr> to regular String
+            // Convert from Cow<BStr> to regular String for error messages
             let remote_name_str = remote_name.to_string();
             
-            // Use git fetch command as a reliable fallback
-            let fetch_result = std::process::Command::new("git")
-                .args(["fetch", &remote_name_str])
-                .current_dir(&self.repository_location)
-                .output();
-                
-            match fetch_result {
-                Ok(output) => {
-                    if output.status.success() {
-                        successful_fetches += 1;
-                    } else {
-                        let error_msg = String::from_utf8_lossy(&output.stderr);
-                        last_error = Some(format!("Failed to fetch from remote '{}': {}", remote_name_str, error_msg));
+            // Use find_fetch_remote to get a properly configured remote
+            let remote_result = repo.find_fetch_remote(Some(&*remote_name));
+            
+            match remote_result {
+                Ok(remote) => {
+                    // Connect to the remote for fetching
+                    match remote.connect(gix::remote::Direction::Fetch) {
+                        Ok(connection) => {
+                            // Prepare the fetch operation
+                            match connection.prepare_fetch(&mut progress, Default::default()) {
+                                Ok(prepare) => {
+                                    // Execute the fetch operation
+                                    match prepare.receive(&mut progress, &gix::interrupt::IS_INTERRUPTED) {
+                                        Ok(_outcome) => {
+                                            successful_fetches += 1;
+                                        },
+                                        Err(e) => {
+                                            last_error = Some(format!(
+                                                "Failed to fetch from remote '{}': {}", 
+                                                remote_name_str, e
+                                            ));
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    last_error = Some(format!(
+                                        "Failed to prepare fetch for remote '{}': {}", 
+                                        remote_name_str, e
+                                    ));
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            last_error = Some(format!(
+                                "Failed to connect to remote '{}': {}", 
+                                remote_name_str, e
+                            ));
+                        }
                     }
                 },
                 Err(e) => {
-                    last_error = Some(format!("Failed to execute git fetch for remote '{}': {}", remote_name_str, e));
+                    last_error = Some(format!(
+                        "Failed to initialize remote '{}' for fetching: {}", 
+                        remote_name_str, e
+                    ));
                 }
             }
         }
