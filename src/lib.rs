@@ -63,6 +63,6 @@
 //! See the README.md file for more usage examples.
 
 pub mod gitcodes;
-mod services;
+pub mod services;
 pub mod tools;
 pub mod transport;
