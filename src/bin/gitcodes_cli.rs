@@ -242,7 +242,7 @@ async fn main() -> Result<()> {
                     if !result.matches.is_empty() {
                         println!("\nMatches:");
                         for m in &result.matches {
-                            println!("{}:{}:{}", m.path.display(), m.line_number, m.content);
+                            println!("{}:{}:{}", m.file_path.display(), m.line_number, m.line_content);
                         }
                     } else {
                         println!("No matches found.");
