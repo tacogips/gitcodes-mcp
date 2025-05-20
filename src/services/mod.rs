@@ -1,5 +1,5 @@
-use crate::gitcodes::repository_manager;
 use crate::gitcodes::local_repository::CodeSearchParams;
+use crate::gitcodes::repository_manager;
 use crate::gitcodes::CodeSearchResult;
 use repository_manager::RepositoryLocation;
 use std::str::FromStr;
@@ -43,7 +43,13 @@ pub async fn perform_grep_in_repository(
     case_sensitive: bool,
     file_extensions: Option<&Vec<String>>,
     exclude_dirs: Option<&Vec<String>>,
-) -> Result<(CodeSearchResult, repository_manager::LocalRepository), String> {
+) -> Result<
+    (
+        CodeSearchResult,
+        crate::gitcodes::local_repository::LocalRepository,
+    ),
+    String,
+> {
     // Parse the repository location string
     let repository_location = RepositoryLocation::from_str(repository_location_str)
         .map_err(|e| format!("Failed to parse repository location: {}", e))?;
@@ -67,7 +73,7 @@ pub async fn perform_grep_in_repository(
 
     // Execute the grep operation
     let search_result = local_repo.search_code(params).await?;
-    
+
     // Return both the search results and the local repository instance
     Ok((search_result, local_repo))
 }
