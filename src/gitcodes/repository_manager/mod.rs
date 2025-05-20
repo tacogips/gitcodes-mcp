@@ -370,7 +370,7 @@ impl RepositoryManager {
     /// # Returns
     ///
     /// A GitHub client instance configured with the manager's authentication token
-    pub fn get_github_client(&self) -> providers::github::GithubClient {
+    fn get_github_client(&self) -> providers::github::GithubClient {
         let client = reqwest::Client::new();
         providers::github::GithubClient::new(client, self.github_token.clone())
     }
@@ -427,9 +427,7 @@ impl RepositoryManager {
             }
             local_repository @ RepositoryLocation::LocalPath(_) => {
                 // For local repositories, prepare the repository and use git commands
-                let local_repo = self
-                    .prepare_repository(local_repository, None)
-                    .await?;
+                let local_repo = self.prepare_repository(local_repository, None).await?;
 
                 // Fetch updates from remote before listing refs to ensure we have the latest changes
                 // Ignore fetch errors as we can still list existing refs even if fetch fails
