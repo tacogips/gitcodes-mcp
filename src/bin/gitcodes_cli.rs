@@ -282,32 +282,26 @@ async fn main() -> Result<()> {
         } => {
             tracing::info!("Listing references for repository: {}", repository_location);
 
-            // Parse the repository location
-            match RepositoryLocation::from_str(&repository_location) {
-                Ok(repo_location) => {
-                    // Prepare the repository (clone or reuse local)
-                    match manager.prepare_repository(&repo_location, None).await {
-                        Ok(local_repo) => {
-                            tracing::info!(
-                                "Repository prepared at: {}",
-                                local_repo.get_repository_dir().display()
-                            );
-                            // NOTE: Placeholder response since the actual implementation is temporarily disabled
-                            println!("Repository refs listing functionality is temporarily disabled during refactoring.");
-                            println!("Repository: {}", repository_location);
-                            Ok(())
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to prepare repository: {}", e);
-                            anyhow::bail!("Failed to prepare repository: {}", e)
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Invalid repository location: {}", e);
-                    anyhow::bail!("Invalid repository location: {}", e)
+            // Use the services module to list repository references
+            use gitcodes_mcp::services;
+            
+            // Get the refs from the services module
+            let (refs_json, local_repo_opt) = services::list_repository_refs(&manager, &repository_location).await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            
+            // Simply print the JSON result
+            println!("{}", refs_json);
+            
+            // Clean up if we have a local repository
+            if let Some(local_repo) = local_repo_opt {
+                if let Err(e) = local_repo.cleanup() {
+                    tracing::warn!("Failed to clean up repository: {}", e);
+                } else {
+                    tracing::debug!("Successfully cleaned up repository");
                 }
             }
+            
+            Ok(())
         }
     }
 }
