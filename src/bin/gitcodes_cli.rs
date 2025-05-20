@@ -1,10 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use std::str::FromStr;
 use tracing_subscriber::{self, EnvFilter};
 
-use gitcodes_mcp::gitcodes::{repository_manager, RepositoryLocation};
+use gitcodes_mcp::gitcodes::repository_manager;
 use gitcodes_mcp::tools::{OrderOption, SortOption};
 
 #[derive(Parser)]
@@ -75,8 +74,6 @@ enum Commands {
         /// Whether to be case-sensitive
         #[arg(long, default_value = "false")]
         case_sensitive: Option<bool>,
-
-
 
         /// File extensions to search
         #[arg(short = 'e', long = "ext", value_delimiter = ',')]
@@ -174,21 +171,40 @@ async fn main() -> Result<()> {
             query,
             sort_by,
             order,
-            per_page: _,
-            page: _,
+            per_page,
+            page,
         } => {
-            tracing::info!("Searching for repositories with query: {}", query);
-            // Call the search_repositories implementation
-            // NOTE: Placeholder response since the actual implementation is temporarily disabled
-            println!("Search functionality is temporarily disabled during refactoring.");
-            println!("Query: {}", query);
-            if let Some(sort) = sort_by {
-                println!("Sort by: {:?}", sort);
+            use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
+
+            // Default to GitHub as provider
+            let git_provider = GitProvider::Github;
+
+            // Convert from clap enum types to the types used by repository_manager
+            let sort_option = sort_by.map(|s| s.into());
+            let order_option = order.map(|o| o.into());
+
+            // Execute the search using the repository manager
+            match manager
+                .search_repositories(
+                    git_provider,
+                    query,
+                    sort_option,
+                    order_option,
+                    per_page,
+                    page,
+                )
+                .await
+            {
+                Ok(result) => {
+                    // Print the result to stdout
+                    println!("{}", result);
+                    Ok(())
+                },
+                Err(err) => {
+                    tracing::error!("Search failed: {}", err);
+                    anyhow::bail!("Search failed: {}", err)
+                },
             }
-            if let Some(order) = order {
-                println!("Order: {:?}", order);
-            }
-            Ok(())
         }
         Commands::Grep {
             repository_location,
@@ -209,7 +225,7 @@ async fn main() -> Result<()> {
 
             // Use the services module to perform the grep operation
             use gitcodes_mcp::services;
-            
+
             match services::perform_grep_in_repository(
                 manager,
                 &repository_location,
@@ -218,15 +234,18 @@ async fn main() -> Result<()> {
                 case_sensitive.unwrap_or(false),
                 file_extensions.as_ref(),
                 exclude_dirs.as_ref(),
-            ).await {
-                Ok((result, local_repo)) => {
+            )
+            .await
+            {
+                Ok((result, _local_repo)) => {
                     // Print summary of results
-                    println!("Found {} matches for pattern '{}' in repository {}", 
-                        result.matches.len(), 
+                    println!(
+                        "Found {} matches for pattern '{}' in repository {}",
+                        result.matches.len(),
                         result.pattern,
                         result.repository
                     );
-                    
+
                     // Print search options used
                     println!("Search options:");
                     println!("  Case sensitive: {}", result.case_sensitive);
@@ -236,42 +255,26 @@ async fn main() -> Result<()> {
                     if let Some(dirs) = &result.exclude_dirs {
                         println!("  Excluded directories: {}", dirs.join(", "));
                     }
-                    
+
                     // Print each match
                     if !result.matches.is_empty() {
                         println!("\nMatches:");
                         for m in &result.matches {
-                            println!("{}:{}:{}", m.file_path.display(), m.line_number, m.line_content);
+                            println!(
+                                "{}:{}:{}",
+                                m.file_path.display(),
+                                m.line_number,
+                                m.line_content
+                            );
                         }
                     } else {
                         println!("No matches found.");
                     }
-                    
-                    // Clean up the local repository
-                    if let Err(e) = local_repo.cleanup() {
-                        tracing::warn!("Failed to clean up repository: {}", e);
-                    } else {
-                        tracing::debug!("Successfully cleaned up repository at {}", local_repo.get_repository_dir().display());
-                    }
-                    
+
                     Ok(())
-                },
+                }
                 Err(e) => {
                     tracing::error!("Failed to search code: {}", e);
-                    
-                    // Even in case of failure, try to parse repo location and clean up any repository that might have been created
-                    if let Ok(repo_location) = RepositoryLocation::from_str(&repository_location) {
-                        // Attempt to get the local repository path - this won't create a new one, just check for an existing one
-                        if let Ok(existing_repo) = manager.get_local_path_for_repository(&repo_location).await {
-                            // Try to clean up the repository
-                            if let Err(cleanup_err) = existing_repo.cleanup() {
-                                tracing::warn!("Failed to clean up repository after error: {}", cleanup_err);
-                            } else {
-                                tracing::debug!("Successfully cleaned up repository after error");
-                            }
-                        }
-                    }
-                    
                     anyhow::bail!("Failed to search code: {}", e)
                 }
             }
@@ -282,21 +285,14 @@ async fn main() -> Result<()> {
             tracing::info!("Listing references for repository: {}", repository_location);
 
             // Get the refs directly from the repository manager
-            let (refs_json, local_repo_opt) = manager.list_repository_refs(&repository_location).await
+            let (refs_json, _local_repo_opt) = manager
+                .list_repository_refs(&repository_location)
+                .await
                 .map_err(|e| anyhow::anyhow!(e))?;
-            
+
             // Simply print the JSON result
             println!("{}", refs_json);
-            
-            // Clean up if we have a local repository
-            if let Some(local_repo) = local_repo_opt {
-                if let Err(e) = local_repo.cleanup() {
-                    tracing::warn!("Failed to clean up repository: {}", e);
-                } else {
-                    tracing::debug!("Successfully cleaned up repository");
-                }
-            }
-            
+
             Ok(())
         }
     }
