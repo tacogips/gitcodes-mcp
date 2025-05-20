@@ -198,7 +198,7 @@ impl LocalRepository {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// // Using regex pattern directly
     /// let params = CodeSearchParams {
     ///     repository_location: "https://github.com/user/repo".parse()?,
@@ -220,9 +220,9 @@ impl LocalRepository {
     ///     exclude_dirs: None,
     /// };
     ///
-    /// let results = search_code(params).await?;
+    /// let results = grep_in_repository(params).await?;
     /// ```
-    pub async fn search_code(&self, params: CodeSearchParams) -> Result<CodeSearchResult, String> {
+    pub async fn grep_in_repository(&self, params: CodeSearchParams) -> Result<CodeSearchResult, String> {
         // Validate the repository before searching
         if let Err(e) = self.validate() {
             return Err(format!("Repository validation failed: {}", e));
@@ -239,8 +239,8 @@ impl LocalRepository {
         // if they want to perform a literal text search
         let pattern = &params.pattern;
 
-        // Perform the actual code search using lumin
-        self.perform_code_search(
+        // Perform the actual grep operation using lumin
+        self.execute_grep(
             pattern,
             params.case_sensitive,
             params.file_extensions,
@@ -249,10 +249,10 @@ impl LocalRepository {
         .await
     }
 
-    /// Performs a code search on a prepared repository
+    /// Executes a grep operation on a prepared repository
     ///
-    /// This function executes the search using the lumin search library
-    /// and processes the results.
+    /// This function performs the actual grep search using the lumin search library
+    /// and processes the results into a structured format.
     ///
     /// # Parameters
     ///
@@ -264,7 +264,7 @@ impl LocalRepository {
     /// # Returns
     ///
     /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
-    pub async fn perform_code_search(
+    pub async fn execute_grep(
         &self,
         pattern: &str,
         case_sensitive: bool,

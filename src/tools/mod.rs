@@ -4,13 +4,13 @@ use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-/// Performs a code search in a repository by preparing the repository and executing the search
+/// Performs a grep-like code search within a repository, first preparing the repository if needed
 ///
-/// This pure function handles the entire repository search process:
+/// This pure function handles the entire grep process:
 /// 1. Parses a repository location string into a RepositoryLocation
 /// 2. Prepares (clones if needed) the repository using the provided manager
 /// 3. Creates search parameters with the provided options
-/// 4. Executes the search against the local repository
+/// 4. Executes the code search against the local repository
 ///
 /// The function is designed to have no side effects and does not access global state,
 /// which makes it ideal for unit testing. All dependencies are explicitly passed as parameters.
@@ -35,7 +35,7 @@ use std::str::FromStr;
 /// - The repository location string cannot be parsed
 /// - The repository cannot be prepared (cloned or validated)
 /// - The code search operation fails
-async fn perform_repository_search(
+async fn perform_grep_in_repository(
     repository_manager: &repository_manager::RepositoryManager,
     repository_location_str: &str,
     pattern: String,
@@ -65,8 +65,8 @@ async fn perform_repository_search(
         exclude_dirs: exclude_dirs.cloned(),
     };
 
-    // Execute the search
-    local_repo.search_code(params).await
+    // Execute the grep operation
+    local_repo.grep_in_repository(params).await
 }
 
 // Sorting options
@@ -395,8 +395,8 @@ impl GitHubCodeTools {
             Self::escape_regex_special_chars(&pattern)
         };
 
-        // Process repository search
-        let result = perform_repository_search(
+        // Process code search within the repository (grep)
+        let result = perform_grep_in_repository(
             &self.manager,
             &repository_location,
             search_pattern,
