@@ -238,27 +238,8 @@ async fn main() -> Result<()> {
             .await
             {
                 Ok((result, _local_repo)) => {
-                    // Print summary of results
-                    println!(
-                        "Found {} matches for pattern '{}' in repository {}",
-                        result.matches.len(),
-                        result.pattern,
-                        result.repository
-                    );
-
-                    // Print search options used
-                    println!("Search options:");
-                    println!("  Case sensitive: {}", result.case_sensitive);
-                    if let Some(exts) = &result.file_extensions {
-                        println!("  File extensions: {}", exts.join(", "));
-                    }
-                    if let Some(dirs) = &result.exclude_dirs {
-                        println!("  Excluded directories: {}", dirs.join(", "));
-                    }
-
-                    // Print each match
+                    // Just print each match in a simple format: file:line:content
                     if !result.matches.is_empty() {
-                        println!("\nMatches:");
                         for m in &result.matches {
                             println!(
                                 "{}:{}:{}",
@@ -268,7 +249,8 @@ async fn main() -> Result<()> {
                             );
                         }
                     } else {
-                        println!("No matches found.");
+                        // Let user know if no matches were found
+                        eprintln!("No matches found.");
                     }
 
                     Ok(())
