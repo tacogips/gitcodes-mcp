@@ -273,6 +273,72 @@ impl GithubClient {
         // Execute the search request
         self.execute_search_request(&params).await
     }
+
+    /// List branches and tags for a GitHub repository using the GitHub API
+    ///
+    /// This method retrieves all references (branches and tags) for a specified repository
+    /// using GitHub's Git References API endpoint.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour
+    /// - With a token, allows 5,000 requests/hour
+    ///
+    /// # API References
+    ///
+    /// - https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28
+    ///
+    /// # Returns
+    ///
+    /// A JSON string containing all references in the repository, including branches and tags.
+    /// The response includes ref names and their corresponding SHA values.
+    pub async fn list_repository_refs(&self, repo_info: &GitRemoteRepositoryInfo) -> Result<String, String> {
+        // Construct the API URL for listing refs
+        let url_str = format!(
+            "https://api.github.com/repos/{}/{}/git/refs",
+            repo_info.user,
+            repo_info.repo
+        );
+
+        // Parse the URL to ensure it's valid
+        let url = url_str.parse::<reqwest::Url>()
+            .map_err(|e| format!("Failed to parse GitHub API URL: {}", e))?;
+
+        // Set up the API request
+        let mut req_builder = self.client.get(url).header(
+            "User-Agent",
+            "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
+        );
+
+        // Add authentication token if available
+        if let Some(token) = &self.github_token.as_ref() {
+            req_builder = req_builder.header("Authorization", format!("token {}", token));
+        }
+
+        // Execute API request
+        let response = match req_builder.send().await {
+            Ok(resp) => resp,
+            Err(e) => return Err(format!("Failed to list repository refs: {}", e)),
+        };
+
+        // Check if the request was successful
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = match response.text().await {
+                Ok(text) => text,
+                Err(_) => "Unknown error".to_string(),
+            };
+
+            return Err(format!("GitHub API error {}: {}", status, error_text));
+        }
+
+        // Return the raw JSON response
+        match response.text().await {
+            Ok(text) => Ok(text),
+            Err(e) => Err(format!("Failed to read response body: {}", e)),
+        }
+    }
 }
 
 /// Parse a GitHub URL to extract the user and repository name

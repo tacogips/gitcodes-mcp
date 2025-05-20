@@ -1,8 +1,11 @@
 use crate::gitcodes::local_repository::CodeSearchParams;
 use crate::gitcodes::repository_manager;
 use crate::gitcodes::CodeSearchResult;
+use crate::gitcodes::local_repository::LocalRepository;
 use repository_manager::RepositoryLocation;
+use repository_manager::providers::GitRemoteRepository;
 use std::str::FromStr;
+
 
 /// Performs a grep-like code search within a repository, first preparing the repository if needed
 ///
@@ -76,4 +79,65 @@ pub async fn perform_grep_in_repository(
 
     // Return both the search results and the local repository instance
     Ok((search_result, local_repo))
+}
+
+/// Lists all references (branches and tags) for a given repository using the GitHub API
+///
+/// This pure function handles the entire refs listing process:
+/// 1. Parses a repository location string into a RepositoryLocation
+/// 2. For GitHub repositories, uses the GitHub API to fetch refs
+/// 3. For local repositories, uses git commands to list refs
+///
+/// # Parameters
+///
+/// * `repository_manager` - The repository manager for accessing repositories
+/// * `repository_location_str` - The repository location string to parse (e.g., "github:user/repo" or "/path/to/local/repo")
+///
+/// # Returns
+///
+/// * `Result<(String, Option<LocalRepository>), String>` - A tuple containing the JSON results string and optionally a local repository reference
+///
+/// # Errors
+///
+/// This function returns an error if:
+/// - The repository location string cannot be parsed
+/// - The repository cannot be accessed or prepared
+/// - The API request fails (for GitHub repositories)
+/// - The git command fails (for local repositories)
+pub async fn list_repository_refs(
+    repository_manager: &repository_manager::RepositoryManager, 
+    repository_location_str: &str
+) -> Result<(String, Option<LocalRepository>), String> {
+    // Parse the repository location string
+    let repository_location = RepositoryLocation::from_str(repository_location_str)
+        .map_err(|e| format!("Failed to parse repository location: {}", e))?;
+    
+    // Different handling based on repository type
+    match &repository_location {
+        RepositoryLocation::RemoteRepository(remote_repo) => {
+            // Currently only GitHub repositories are supported
+            match remote_repo {
+                GitRemoteRepository::Github(github_repo_info) => {
+                    // For GitHub repositories, use the GitHub API
+                    let github_client = repository_manager.get_github_client();
+                    let refs_json = github_client.list_repository_refs(&github_repo_info.repo_info).await?;
+                    
+                    // Return the JSON result without a local repository reference
+                    Ok((refs_json, None))
+                }
+            }
+        },
+        RepositoryLocation::LocalPath(_local_path) => {
+            // For local repositories, prepare the repository and use git commands
+            let local_repo = repository_manager
+                .prepare_repository(repository_location.clone(), None)
+                .await?;
+                
+            // Use the local repository to list refs
+            let refs_json = local_repo.list_repository_refs(repository_location.clone()).await;
+            
+            // Return both the JSON results and the local repository reference
+            Ok((refs_json, Some(local_repo)))
+        }
+    }
 }

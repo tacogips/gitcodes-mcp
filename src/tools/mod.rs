@@ -370,10 +370,19 @@ impl GitHubCodeTools {
         )]
         repository_location: String,
     ) -> Result<String, String> {
-        // TODO: Implement repository refs listing functionality
-        Ok(
-            "Repository refs listing functionality is temporarily disabled during refactoring."
-                .to_string(),
-        )
+        // Use the services module to handle repository refs listing
+        let (refs_json, local_repo) = services::list_repository_refs(&self.manager, &repository_location).await?;
+        
+        // Clean up the local repository if one was created
+        if let Some(repo) = local_repo {
+            if let Err(e) = repo.cleanup() {
+                tracing::warn!("Failed to clean up repository after successful refs listing: {}", e);
+            } else {
+                tracing::debug!("Successfully cleaned up repository after refs listing");
+            }
+        }
+        
+        // Return the JSON result
+        Ok(refs_json)
     }
 }

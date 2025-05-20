@@ -362,3 +362,19 @@ impl Default for RepositoryManager {
         Self::with_default_cache_dir()
     }
 }
+
+/// Extension methods for working with GitHub repositories
+impl RepositoryManager {
+    /// Returns a GitHub API client instance
+    ///
+    /// Creates a new GitHub client with the manager's authentication token
+    /// for interacting with the GitHub API.
+    ///
+    /// # Returns
+    ///
+    /// A GitHub client instance configured with the manager's authentication token
+    pub fn get_github_client(&self) -> providers::github::GithubClient {
+        let client = reqwest::Client::new();
+        providers::github::GithubClient::new(client, self.github_token.clone())
+    }
+}
