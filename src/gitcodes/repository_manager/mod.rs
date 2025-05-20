@@ -94,6 +94,68 @@ impl RepositoryManager {
         format!("{}_{}", pid, uuid.simple())
     }
 
+    /// Gets the local repository for a given repository location without cloning
+    ///
+    /// This method checks if a repository has already been cloned for the given
+    /// location and returns a reference to it if it exists. It will not attempt to
+    /// clone the repository if it doesn't exist.
+    ///
+    /// # Parameters
+    ///
+    /// * `repo_location` - The location of the repository (local or remote)
+    ///
+    /// # Returns
+    ///
+    /// * `Result<LocalRepository, String>` - A local repository instance or an error
+    ///                                      if the repository doesn't exist locally
+    pub async fn get_local_path_for_repository(
+        &self,
+        repo_location: &RepositoryLocation,
+    ) -> Result<LocalRepository, String> {
+        match repo_location {
+            // For local repositories, just validate and return
+            RepositoryLocation::LocalPath(local_path) => {
+                local_path.validate()?;
+                Ok(local_path.clone())
+            },
+            // For remote repositories, check if we have a local clone
+            RepositoryLocation::RemoteRepository(remote_repository) => {
+                // Create the expected local repository instance without cloning
+                let local_repo = LocalRepository::new_local_repository_to_clone(
+                    match remote_repository {
+                        GitRemoteRepository::Github(github_info) => github_info.repo_info.clone(),
+                    },
+                    Some(&self.process_id),
+                );
+                
+                // Check if it exists and is valid
+                let repo_dir = local_repo.get_repository_dir();
+                if repo_dir.exists() && repo_dir.is_dir() {
+                    match local_repo.validate() {
+                        Ok(_) => Ok(local_repo),
+                        Err(e) => Err(format!("Repository exists but is invalid: {}", e)),
+                    }
+                } else {
+                    Err(format!("Repository not found locally at {}", repo_dir.display()))
+                }
+            }
+        }
+    }
+
+    /// Prepares a repository for use (clones if necessary)
+    ///
+    /// This method prepares a repository for use by either validating a local repository
+    /// or cloning a remote one. If the repository has already been cloned, it will
+    /// be reused.
+    ///
+    /// # Parameters
+    ///
+    /// * `repo_location` - The location of the repository (local or remote)
+    /// * `ref_name` - Optional reference name (branch, tag) to checkout
+    ///
+    /// # Returns
+    ///
+    /// * `Result<LocalRepository, String>` - A local repository instance or an error
     pub async fn prepare_repository(
         &self,
         repo_location: RepositoryLocation,

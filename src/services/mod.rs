@@ -27,7 +27,7 @@ use std::str::FromStr;
 ///
 /// # Returns
 ///
-/// * `Result<CodeSearchResult, String>` - The search results or a descriptive error message
+/// * `Result<(CodeSearchResult, repository_manager::LocalRepository), String>` - A tuple containing the search results and the local repository instance
 ///
 /// # Errors
 ///
@@ -43,7 +43,7 @@ pub async fn perform_grep_in_repository(
     case_sensitive: bool,
     file_extensions: Option<&Vec<String>>,
     exclude_dirs: Option<&Vec<String>>,
-) -> Result<CodeSearchResult, String> {
+) -> Result<(CodeSearchResult, repository_manager::LocalRepository), String> {
     // Parse the repository location string
     let repository_location = RepositoryLocation::from_str(repository_location_str)
         .map_err(|e| format!("Failed to parse repository location: {}", e))?;
@@ -66,5 +66,8 @@ pub async fn perform_grep_in_repository(
     };
 
     // Execute the grep operation
-    local_repo.search_code(params).await
+    let search_result = local_repo.search_code(params).await?;
+    
+    // Return both the search results and the local repository instance
+    Ok((search_result, local_repo))
 }

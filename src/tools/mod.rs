@@ -1,4 +1,5 @@
 use crate::gitcodes::{repository_manager, *};
+use std::str::FromStr;
 use crate::services;
 use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
@@ -242,6 +243,7 @@ impl GitHubCodeTools {
     #[tool(
         description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. The pattern is interpreted as a regular expression, and it's your responsibility to escape special characters for literal searches. Examples: Simple search: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. Literal text search for 'file.txt': `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"file\\.txt\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`"
     )]
+    #[tracing::instrument(skip(self))]  // Add tracing to this method
     async fn grep_repository(
         &self,
         #[tool(param)]
@@ -286,8 +288,8 @@ impl GitHubCodeTools {
         let case_sensitive = case_sensitive.unwrap_or(false);
 
         // Process code search within the repository (grep)
-        // The pattern is used as-is - the caller is responsible for any regex escaping
-        let result = services::perform_grep_in_repository(
+        // Handle repository cleanup in both success and error cases
+        let search_result = match services::perform_grep_in_repository(
             &self.manager,
             &repository_location,
             pattern,
@@ -296,10 +298,43 @@ impl GitHubCodeTools {
             file_extensions.as_ref(),
             exclude_dirs.as_ref(),
         )
-        .await?;
-
-        // Convert the search result to a JSON string
-        result.to_json()
+        .await {
+            Ok((result, local_repo)) => {
+                // Successful search, convert result to JSON
+                let json_result = result.to_json()?;
+                
+                // Clean up the local repository after successful search
+                if let Err(e) = local_repo.cleanup() {
+                    tracing::warn!("Failed to clean up repository after successful search: {}", e);
+                } else {
+                    tracing::debug!("Successfully cleaned up repository after search");
+                }
+                
+                Ok(json_result)
+            },
+            Err(err) => {
+                // Search failed, try to clean up repository if it was created
+                tracing::error!("Code search failed: {}", err);
+                
+                // Try to parse the repository location and check for an existing local repo to clean up
+                if let Ok(repo_location) = RepositoryLocation::from_str(&repository_location) {
+                    // Attempt to get the local repository path - this won't create a new one
+                    if let Ok(existing_repo) = self.manager.get_local_path_for_repository(&repo_location).await {
+                        // Try to clean up the repository
+                        if let Err(cleanup_err) = existing_repo.cleanup() {
+                            tracing::warn!("Failed to clean up repository after error: {}", cleanup_err);
+                        } else {
+                            tracing::debug!("Successfully cleaned up repository after error");
+                        }
+                    }
+                }
+                
+                // Return the original error
+                Err(err)
+            }
+        };
+        
+        search_result
     }
 
     /// List branches and tags for a GitHub repository

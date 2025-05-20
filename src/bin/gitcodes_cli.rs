@@ -220,7 +220,7 @@ async fn main() -> Result<()> {
                 file_extensions.as_ref(),
                 exclude_dirs.as_ref(),
             ).await {
-                Ok(result) => {
+                Ok((result, local_repo)) => {
                     // Print summary of results
                     println!("Found {} matches for pattern '{}' in repository {}", 
                         result.matches.len(), 
@@ -248,10 +248,31 @@ async fn main() -> Result<()> {
                         println!("No matches found.");
                     }
                     
+                    // Clean up the local repository
+                    if let Err(e) = local_repo.cleanup() {
+                        tracing::warn!("Failed to clean up repository: {}", e);
+                    } else {
+                        tracing::debug!("Successfully cleaned up repository at {}", local_repo.get_repository_dir().display());
+                    }
+                    
                     Ok(())
                 },
                 Err(e) => {
                     tracing::error!("Failed to search code: {}", e);
+                    
+                    // Even in case of failure, try to parse repo location and clean up any repository that might have been created
+                    if let Ok(repo_location) = RepositoryLocation::from_str(&repository_location) {
+                        // Attempt to get the local repository path - this won't create a new one, just check for an existing one
+                        if let Ok(existing_repo) = manager.get_local_path_for_repository(&repo_location).await {
+                            // Try to clean up the repository
+                            if let Err(cleanup_err) = existing_repo.cleanup() {
+                                tracing::warn!("Failed to clean up repository after error: {}", cleanup_err);
+                            } else {
+                                tracing::debug!("Successfully cleaned up repository after error");
+                            }
+                        }
+                    }
+                    
                     anyhow::bail!("Failed to search code: {}", e)
                 }
             }

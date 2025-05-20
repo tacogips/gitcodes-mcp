@@ -11,6 +11,7 @@ pub use search_result::CodeSearchResult;
 pub struct LocalRepository {
     repository_location: PathBuf,
 }
+
 /// Code search parameters for searching in a repository
 ///
 /// This struct encapsulates all the parameters needed for a code search.
@@ -86,6 +87,57 @@ pub struct CodeSearchParams {
 }
 
 impl LocalRepository {
+    /// Prefix used for temporary repository directories
+    ///
+    /// This prefix helps identify directories that were created by this library
+    /// and can be safely deleted during cleanup operations.
+    pub const REPOSITORY_DIR_PREFIX: &'static str = "mcp_gitcodes";
+    /// Cleans up the repository by deleting its directory
+    ///
+    /// This method should be called when the repository is no longer needed
+    /// to free up disk space. It removes the entire directory containing
+    /// the repository.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - Success or error message
+    ///
+    /// # Safety
+    ///
+    /// This method permanently deletes files from the filesystem.
+    /// It is designed to be safe since it only removes temporary cloned repositories
+    /// in system temp directories with specific naming patterns, but should be used
+    /// with caution.
+    pub fn cleanup(&self) -> Result<(), String> {
+        // Get the repository directory
+        let repo_dir = self.get_repository_dir();
+
+        // Only delete directories that appear to be temporary GitCodes repositories
+        // These have a specific naming pattern defined by REPOSITORY_DIR_PREFIX
+        let dir_name = repo_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+
+        if !dir_name.starts_with(Self::REPOSITORY_DIR_PREFIX) {
+            return Err(format!(
+                "Refusing to delete directory '{}' that doesn't match temporary repository pattern",
+                repo_dir.display()
+            ));
+        }
+
+        // Delete the directory recursively using std::fs::remove_dir_all
+        if repo_dir.exists() {
+            match std::fs::remove_dir_all(repo_dir) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("Failed to delete repository directory: {}", e)),
+            }
+        } else {
+            // If directory doesn't exist, consider it a success
+            Ok(())
+        }
+    }
+
     /// Validates that the repository location is a valid git repository
     ///
     /// This validation checks both that:
@@ -144,8 +196,11 @@ impl LocalRepository {
 
         // Create directory name with the hash that already incorporates process_id
         let dir_name = format!(
-            "mcp_gitcodes_{}_{}_{}",
-            remote_repository_info.user, remote_repository_info.repo, hash_value
+            "{}_{}_{}_{}",
+            Self::REPOSITORY_DIR_PREFIX,
+            remote_repository_info.user,
+            remote_repository_info.repo,
+            hash_value
         );
 
         let mut repo_dir = std::env::temp_dir();
@@ -203,7 +258,7 @@ impl LocalRepository {
     /// use gitcodes_mcp::gitcodes::local_repository::CodeSearchParams;
     /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
     /// use std::str::FromStr;
-    /// 
+    ///
     /// async fn example() -> Result<(), String> {
     ///     // Using regex pattern directly
     ///     let params = CodeSearchParams {
