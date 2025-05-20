@@ -40,38 +40,38 @@ async fn test_search_repositories_parameter_conversion() {
     
     // Test cases for different parameter combinations
     // Each tuple contains:
-    // (provider, sort_option, order_option, expected_sort, expected_order)
+    // (provider, sort_option, order_option)
     let test_cases = vec![
         // Default case - no sort, no order
-        ("github", None, None, None, None),
-        
-        // Sort by stars
-        ("github", Some("stars"), None, Some("stars"), None),
-        
-        // Sort by forks
-        ("github", Some("forks"), None, Some("forks"), None),
-        
-        // Sort by updated
-        ("github", Some("updated"), None, Some("updated"), None),
-        
-        // Test relevance
-        ("github", Some("relevance"), None, None, None), // GitHub API treats "" as default
-        
-        // Test order alone
-        ("github", None, Some("ascending"), None, Some("asc")),
-        ("github", None, Some("descending"), None, Some("desc")),
-        
-        // Test case insensitivity
-        ("github", Some("StArS"), Some("AsCeNdInG"), Some("stars"), Some("asc")),
-        
-        // Full combination
-        ("github", Some("forks"), Some("descending"), Some("forks"), Some("desc")),
-    ];
+        ("github", None, None),
     
+        // Sort by stars
+        ("github", Some("stars"), None),
+    
+        // Sort by forks
+        ("github", Some("forks"), None),
+    
+        // Sort by updated
+        ("github", Some("updated"), None),
+    
+        // Test relevance
+        ("github", Some("relevance"), None), // GitHub API treats "" as default
+    
+        // Test order alone
+        ("github", None, Some("ascending")),
+        ("github", None, Some("descending")),
+    
+        // Test case insensitivity
+        ("github", Some("StArS"), Some("AsCeNdInG")),
+    
+        // Full combination
+        ("github", Some("forks"), Some("descending")),
+    ];
+
     // Use a very specific query that will return few results to avoid hitting rate limits
     let query = "gitcodes-mcp-test-repo language:rust stars:0";
-    
-    for (provider_str, sort_option, order_option, expected_sort, expected_order) in test_cases {
+
+    for (provider_str, sort_option, order_option) in test_cases {
         println!(
             "Testing with provider: {}, sort: {:?}, order: {:?}",
             provider_str, sort_option, order_option
@@ -198,12 +198,13 @@ async fn test_search_repositories_invalid_parameters() {
     }
 }
 
+/* Mock test example (requires mockall to be set up)
+
 /// Tests the search_repositories method with a mock GitHub client
 ///
 /// This test uses a mock to:
 /// 1. Verify that the correct URL is constructed based on the provided parameters
 /// 2. Verify correct parameter conversion without making actual API calls
-#[cfg(feature = "mock_tests")]
 #[tokio::test]
 async fn test_search_repositories_with_mock() {
     use gitcodes_mcp::gitcodes::repository_manager::providers::github::GithubClient;
@@ -253,6 +254,8 @@ async fn test_search_repositories_with_mock() {
         .times(1);
     
     // Test various parameter combinations
+    let manager = create_test_manager();
+    
     let _ = manager
         .search_repositories(
             GitProvider::Github,
@@ -288,3 +291,5 @@ async fn test_search_repositories_with_mock() {
     
     // If we get here without mockall panic, the test passes
 }
+
+*/
