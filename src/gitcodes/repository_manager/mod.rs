@@ -117,7 +117,7 @@ impl RepositoryManager {
             RepositoryLocation::LocalPath(local_path) => {
                 local_path.validate()?;
                 Ok(local_path.clone())
-            },
+            }
             // For remote repositories, check if we have a local clone
             RepositoryLocation::RemoteRepository(remote_repository) => {
                 // Create the expected local repository instance without cloning
@@ -127,7 +127,7 @@ impl RepositoryManager {
                     },
                     Some(&self.process_id),
                 );
-                
+
                 // Check if it exists and is valid
                 let repo_dir = local_repo.get_repository_dir();
                 if repo_dir.exists() && repo_dir.is_dir() {
@@ -136,7 +136,10 @@ impl RepositoryManager {
                         Err(e) => Err(format!("Repository exists but is invalid: {}", e)),
                     }
                 } else {
-                    Err(format!("Repository not found locally at {}", repo_dir.display()))
+                    Err(format!(
+                        "Repository not found locally at {}",
+                        repo_dir.display()
+                    ))
                 }
             }
         }
@@ -158,26 +161,29 @@ impl RepositoryManager {
     /// * `Result<LocalRepository, String>` - A local repository instance or an error
     pub async fn prepare_repository(
         &self,
-        repo_location: RepositoryLocation,
+        repo_location: &RepositoryLocation,
         ref_name: Option<String>,
     ) -> Result<LocalRepository, String> {
         match repo_location {
             RepositoryLocation::LocalPath(local_path) => {
                 local_path.validate()?;
-                Ok(local_path)
+                Ok(local_path.clone())
             }
-            RepositoryLocation::RemoteRepository(mut remote_repository) => {
-                // If a specific ref_name was provided to this function, update the repository info
-                if let Some(ref_name_str) = ref_name {
-                    // Update the remote repository with the provided ref_name
-                    match remote_repository {
-                        GitRemoteRepository::Github(ref mut github_info) => {
-                            github_info.repo_info.ref_name = Some(ref_name_str);
-                        }
+            RepositoryLocation::RemoteRepository(remote_repository) => {
+                let remote_repository_with_ref_name_if_any = match (remote_repository, ref_name) {
+                    // If we have a ref_name, create a new instance with that ref_name
+                    (GitRemoteRepository::Github(github_info), Some(ref_name_str)) => {
+                        // Create a new GitHub info with the updated ref_name
+                        let mut updated_github_info = github_info.clone();
+                        updated_github_info.repo_info.ref_name = Some(ref_name_str);
+                        GitRemoteRepository::Github(updated_github_info)
                     }
-                }
+                    // Otherwise just clone the original repository
+                    _ => remote_repository.clone(),
+                };
 
-                self.clone_repository(&remote_repository).await
+                self.clone_repository(&remote_repository_with_ref_name_if_any)
+                    .await
             }
         }
     }

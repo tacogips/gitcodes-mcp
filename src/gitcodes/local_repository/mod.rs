@@ -217,7 +217,7 @@ impl LocalRepository {
     /// List references in a repository
     ///
     /// Returns a JSON string with all the references in the repository
-    pub async fn list_repository_refs(&self, _repository_location: RepositoryLocation) -> String {
+    pub async fn list_repository_refs(&self, repository_location: &RepositoryLocation) -> String {
         // Temporary implementation
         "Repository ref listing functionality is temporarily disabled during refactoring."
             .to_string()

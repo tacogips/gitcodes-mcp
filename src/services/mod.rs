@@ -1,11 +1,10 @@
 use crate::gitcodes::local_repository::CodeSearchParams;
+use crate::gitcodes::local_repository::LocalRepository;
 use crate::gitcodes::repository_manager;
 use crate::gitcodes::CodeSearchResult;
-use crate::gitcodes::local_repository::LocalRepository;
-use repository_manager::RepositoryLocation;
 use repository_manager::providers::GitRemoteRepository;
+use repository_manager::RepositoryLocation;
 use std::str::FromStr;
-
 
 /// Performs a grep-like code search within a repository, first preparing the repository if needed
 ///
@@ -105,13 +104,13 @@ pub async fn perform_grep_in_repository(
 /// - The API request fails (for GitHub repositories)
 /// - The git command fails (for local repositories)
 pub async fn list_repository_refs(
-    repository_manager: &repository_manager::RepositoryManager, 
-    repository_location_str: &str
+    repository_manager: &repository_manager::RepositoryManager,
+    repository_location_str: &str,
 ) -> Result<(String, Option<LocalRepository>), String> {
     // Parse the repository location string
     let repository_location = RepositoryLocation::from_str(repository_location_str)
         .map_err(|e| format!("Failed to parse repository location: {}", e))?;
-    
+
     // Different handling based on repository type
     match &repository_location {
         RepositoryLocation::RemoteRepository(remote_repo) => {
@@ -120,22 +119,24 @@ pub async fn list_repository_refs(
                 GitRemoteRepository::Github(github_repo_info) => {
                     // For GitHub repositories, use the GitHub API
                     let github_client = repository_manager.get_github_client();
-                    let refs_json = github_client.list_repository_refs(&github_repo_info.repo_info).await?;
-                    
+                    let refs_json = github_client
+                        .list_repository_refs(&github_repo_info.repo_info)
+                        .await?;
+
                     // Return the JSON result without a local repository reference
                     Ok((refs_json, None))
                 }
             }
-        },
-        RepositoryLocation::LocalPath(_local_path) => {
+        }
+        local_repository @ RepositoryLocation::LocalPath(_) => {
             // For local repositories, prepare the repository and use git commands
             let local_repo = repository_manager
-                .prepare_repository(repository_location.clone(), None)
+                .prepare_repository(local_repository, None)
                 .await?;
-                
+
             // Use the local repository to list refs
-            let refs_json = local_repo.list_repository_refs(repository_location.clone()).await;
-            
+            let refs_json = local_repo.list_repository_refs(&repository_location).await;
+
             // Return both the JSON results and the local repository reference
             Ok((refs_json, Some(local_repo)))
         }
