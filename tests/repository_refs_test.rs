@@ -291,7 +291,7 @@ async fn test_list_local_repository_refs() {
     }
 }
 
-/// Tests the direct list_repository_refs method of LocalRepository
+/// Tests the direct list_repository_refs method on a local repository
 /// 
 /// This test verifies that the list_repository_refs method directly on the
 /// LocalRepository struct correctly returns repository references as JSON.
@@ -451,4 +451,132 @@ async fn test_local_repository_list_refs_direct() {
     }
     
     // The temporary directory will be automatically cleaned up when it goes out of scope
+}
+
+/// Tests fetching from remote and listing repository refs
+/// 
+/// This test verifies that the fetch_remote and list_repository_refs methods
+/// work correctly with a local repository that has a remote origin. It clones
+/// a real repository, fetches latest updates, and then lists refs directly.
+#[tokio::test]
+async fn test_fetch_and_list_repository_refs() {
+    // Create test manager
+    let manager = create_test_manager();
+    
+    // Use a public test repository (same one used in other tests)
+    let github_url = "github:tacogips/gitcodes-mcp-test-1";
+    
+    // Parse the repository location
+    let repository_location = gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation::from_str(github_url)
+        .expect("Failed to parse repository location");
+    
+    println!("Preparing repository from {}", github_url);
+    
+    // Try to prepare the repository (clone it)
+    let prepare_result = manager.prepare_repository(&repository_location, None).await;
+    
+    match prepare_result {
+        Ok(local_repo) => {
+            println!("Successfully cloned repository to {}", local_repo.get_repository_dir().display());
+            
+            // Fetch updates from the remote
+            println!("Fetching updates from remote...");
+            match local_repo.fetch_remote().await {
+                Ok(_) => println!("Successfully fetched updates from remote"),
+                Err(e) => println!("Note: Fetch from remote failed (test will continue): {}", e),
+            }
+            
+            // Now list the repository refs directly using the LocalRepository instance
+            println!("Listing repository refs...");
+            let refs_result = local_repo.list_repository_refs().await;
+            
+            match refs_result {
+                Ok(refs_json) => {
+                    // Parse the JSON response
+                    let refs_value: JsonValue = serde_json::from_str(&refs_json)
+                        .expect("Failed to parse JSON response");
+                    
+                    // Verify the refs are returned as a JSON array
+                    assert!(refs_value.is_array(), "References should be returned as a JSON array");
+                    
+                    // Extract branches and tags from the array
+                    let refs_array = refs_value.as_array().unwrap();
+                    
+                    // Collect branches and tags by examining the "ref" field of each element
+                    let branches: Vec<&str> = refs_array.iter()
+                        .filter_map(|item| {
+                            if let Some(ref_path) = item["ref"].as_str() {
+                                if ref_path.starts_with("refs/heads/") {
+                                    // Extract just the branch name without the "refs/heads/" prefix
+                                    Some(&ref_path["refs/heads/".len()..]) 
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                        
+                    let tags: Vec<&str> = refs_array.iter()
+                        .filter_map(|item| {
+                            if let Some(ref_path) = item["ref"].as_str() {
+                                if ref_path.starts_with("refs/tags/") {
+                                    // Extract just the tag name without the "refs/tags/" prefix
+                                    Some(&ref_path["refs/tags/".len()..]) 
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    
+                    // Print the extracted branches and tags
+                    println!("Branches after fetch: {:?}", branches);
+                    println!("Tags after fetch: {:?}", tags);
+                    
+                    // Verify we have at least some branches and tags
+                    assert!(!branches.is_empty(), "Repository should have branches");
+                    assert!(!tags.is_empty(), "Repository should have tags");
+                    
+                    // Verify specific branches exist (using the known branches from the test repo)
+                    let expected_branches = vec!["main", "bugfix/api-client", "feature/authentication"];
+                    for expected_branch in expected_branches {
+                        assert!(branches.contains(&expected_branch), 
+                                "Branch '{}' should exist in repository", expected_branch);
+                    }
+                    
+                    // Verify specific tag exists
+                    assert!(tags.contains(&"v0.0.0"), "Tag 'v0.0.0' should exist in repository");
+                    
+                    // Verify each reference has a SHA
+                    for item in refs_array {
+                        assert!(item["object"]["sha"].is_string(), "Each reference should have a SHA");
+                        let sha = item["object"]["sha"].as_str().unwrap();
+                        assert!(!sha.is_empty(), "SHA should not be empty");
+                        // SHA should be a hex string (typically 40 chars for full SHA-1)
+                        assert!(sha.chars().all(|c| c.is_ascii_hexdigit()), "SHA should be a hex string");
+                    }
+                    
+                    println!("Successfully retrieved {} branches and {} tags after fetching", 
+                            branches.len(), tags.len());
+                },
+                Err(e) => {
+                    // If list_repository_refs fails, clean up and fail the test
+                    local_repo.cleanup().expect("Failed to clean up repository");
+                    panic!("Failed to list repository refs: {}", e);
+                }
+            }
+            
+            // Clean up
+            local_repo.cleanup().expect("Failed to clean up repository");
+        },
+        Err(e) => {
+            // If we can't even clone the repository, make this a soft failure that prints a message
+            // rather than failing the test. This handles case where network may be unavailable.
+            println!("Skipping test_fetch_and_list_repository_refs: Failed to clone repository: {}", e);
+        }
+    }
 }

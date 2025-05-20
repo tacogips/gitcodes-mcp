@@ -328,6 +328,87 @@ impl LocalRepository {
         // TODO: Reimplement with current gix API
         Err("Repository updating is temporarily disabled during refactoring.".to_string())
     }
+    
+    /// Fetch updates from the remote repository
+    ///
+    /// This function fetches the latest changes from all remotes of the repository
+    /// without merging or rebasing them. It's useful to ensure that the local repository
+    /// has up-to-date information about remote branches and tags before listing them.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), String>` - Success or error message
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use gitcodes_mcp::gitcodes::local_repository::LocalRepository;
+    /// use std::path::PathBuf;
+    ///
+    /// async fn example() {
+    ///     let repo = LocalRepository::new(PathBuf::from("/path/to/repo"));
+    ///     
+    ///     // Fetch latest changes from remote
+    ///     if let Err(e) = repo.fetch_remote().await {
+    ///         eprintln!("Failed to fetch from remote: {}", e);
+    ///     }
+    ///     
+    ///     // Now list references (which will include remote refs)
+    ///     let refs = repo.list_repository_refs().await.unwrap();
+    /// }
+    /// ```
+    pub async fn fetch_remote(&self) -> Result<(), String> {
+        // Verify the repository exists and is valid
+        if let Err(e) = self.validate() {
+            return Err(format!("Cannot fetch: Invalid repository: {}", e));
+        }
+        
+        // Open the repository using gix
+        let repo = match gix::open(&self.repository_location) {
+            Ok(repo) => repo,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to open repository at {} for fetching: {}",
+                    self.repository_location.display(),
+                    e
+                ));
+            }
+        };
+        
+        // Get the remote configurations - this returns a BTreeSet directly, not a Result
+        let remote_names = repo.remote_names();
+        
+        // If there are no remotes, return early with a message
+        if remote_names.is_empty() {
+            return Err("Repository has no configured remotes".to_string());
+        }
+        
+        // For each remote, try to fetch
+        for remote_name in remote_names {
+            // Convert from Cow<BStr> to regular String
+            let remote_name_str = remote_name.to_string();
+            
+            // Get the remote
+            let fetch_result = std::process::Command::new("git")
+                .args(["fetch", &remote_name_str])
+                .current_dir(&self.repository_location)
+                .output();
+                
+            match fetch_result {
+                Ok(output) => {
+                    if !output.status.success() {
+                        let error_msg = String::from_utf8_lossy(&output.stderr);
+                        return Err(format!("Failed to fetch from remote '{}': {}", remote_name_str, error_msg));
+                    }
+                },
+                Err(e) => {
+                    return Err(format!("Failed to execute git fetch for remote '{}': {}", remote_name_str, e));
+                }
+            }
+        }
+        
+        Ok(())
+    }
 
     /// Search code in a repository by pattern
     ///
