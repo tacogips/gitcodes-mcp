@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tracing_subscriber::{self, EnvFilter};
 
 use gitcodes_mcp::gitcodes::repository_manager;
+use gitcodes_mcp::gitcodes::LocalRepository;
 use gitcodes_mcp::tools::{OrderOption, SortOption};
 
 #[derive(Parser)]
@@ -129,6 +130,34 @@ impl From<OrderOptionArg> for OrderOption {
     }
 }
 
+/// Helper function to clean up a repository
+/// 
+/// This function handles the cleanup of a local repository, including logging.
+/// 
+/// # Arguments
+/// 
+/// * `repo` - The LocalRepository to clean up
+fn cleanup_repository(repo: LocalRepository) {
+    if let Err(err) = repo.cleanup() {
+        tracing::warn!("Failed to clean up repository: {}", err);
+    } else {
+        tracing::debug!("Successfully cleaned up repository");
+    }
+}
+
+/// Helper function to clean up an optional repository
+///
+/// This function handles the cleanup of an optional local repository, including logging.
+///
+/// # Arguments
+///
+/// * `repo_opt` - The Option<LocalRepository> to clean up if Some
+fn cleanup_repository_opt(repo_opt: Option<LocalRepository>) {
+    if let Some(repo) = repo_opt {
+        cleanup_repository(repo);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -237,7 +266,7 @@ async fn main() -> Result<()> {
             )
             .await
             {
-                Ok((result, _local_repo)) => {
+                Ok((result, local_repo)) => {
                     // Just print each match in a simple format: file:line:content
                     if !result.matches.is_empty() {
                         for m in &result.matches {
@@ -252,6 +281,9 @@ async fn main() -> Result<()> {
                         // Let user know if no matches were found
                         eprintln!("No matches found.");
                     }
+                    
+                    // Clean up the repository when finished
+                    cleanup_repository(local_repo);
 
                     Ok(())
                 }
@@ -267,13 +299,16 @@ async fn main() -> Result<()> {
             tracing::info!("Listing references for repository: {}", repository_location);
 
             // Get the refs directly from the repository manager
-            let (refs_json, _local_repo_opt) = manager
+            let (refs_json, local_repo_opt) = manager
                 .list_repository_refs(&repository_location)
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
 
             // Simply print the JSON result
             println!("{}", refs_json);
+            
+            // Clean up the repository if it exists
+            cleanup_repository_opt(local_repo_opt);
 
             Ok(())
         }
