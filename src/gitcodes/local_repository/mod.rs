@@ -383,42 +383,47 @@ impl LocalRepository {
             return Err("Repository has no configured remotes".to_string());
         }
         
-        // For each remote, try to fetch using gix
+        // For each remote, try to fetch using the git command
+        // Note: We're using std::process::Command as a fallback since the native gix API
+        // for fetching is complex and may vary between versions
+        let mut successful_fetches = 0;
+        let mut last_error = None;
+        
         for remote_name in remote_names {
             // Convert from Cow<BStr> to regular String
             let remote_name_str = remote_name.to_string();
             
-            // Get the remote
-            match repo.remote_at(&remote_name_str) {
-                Ok(remote) => {
-                    // Create a basic fetch configuration
-                    let mut fetch_config = match remote.fetch_prepare_inner() {
-                        Ok(config) => config,
-                        Err(e) => {
-                            return Err(format!("Failed to prepare fetch configuration for remote '{}': {}", remote_name_str, e));
-                        }
-                    };
-                    
-                    // Setup a progress handle that discards output
-                    let mut progress = gix::progress::Discard;
-                    
-                    // Execute the fetch
-                    match fetch_config.fetch(&mut progress, &gix::interrupt::IS_INTERRUPTED) {
-                        Ok(_outcome) => {
-                            // Fetch completed successfully
-                        },
-                        Err(e) => {
-                            return Err(format!("Failed to fetch from remote '{}': {}", remote_name_str, e));
-                        }
+            // Use git fetch command as a reliable fallback
+            let fetch_result = std::process::Command::new("git")
+                .args(["fetch", &remote_name_str])
+                .current_dir(&self.repository_location)
+                .output();
+                
+            match fetch_result {
+                Ok(output) => {
+                    if output.status.success() {
+                        successful_fetches += 1;
+                    } else {
+                        let error_msg = String::from_utf8_lossy(&output.stderr);
+                        last_error = Some(format!("Failed to fetch from remote '{}': {}", remote_name_str, error_msg));
                     }
                 },
                 Err(e) => {
-                    return Err(format!("Failed to get remote '{}': {}", remote_name_str, e));
+                    last_error = Some(format!("Failed to execute git fetch for remote '{}': {}", remote_name_str, e));
                 }
-            };
+            }
         }
         
-        Ok(())
+        // If we successfully fetched at least one remote, consider it a success
+        if successful_fetches > 0 {
+            Ok(())
+        } else if let Some(error) = last_error {
+            // If all fetches failed, return the last error message
+            Err(error)
+        } else {
+            // This should never happen since we check for empty remote_names above
+            Err("No remotes were fetched".to_string())
+        }
     }
 
     /// Search code in a repository by pattern
