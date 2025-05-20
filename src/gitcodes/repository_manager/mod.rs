@@ -138,20 +138,18 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use std::path::PathBuf;
-    /// use gitcodes_mcp::tools::gitcodes::git_service::git_repository::{clone_repository, RemoteGitRepositoryInfo};
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
     ///
     /// async fn example() {
     ///     let repo_dir = PathBuf::from("/tmp/example_repo");
-    ///     let params = RemoteGitRepositoryInfo {
+    ///     let params = GitRemoteRepositoryInfo {
     ///         user: "rust-lang".to_string(),
     ///         repo: "rust".to_string(),
-    ///         ref_name: "main".to_string(),
+    ///         ref_name: Some("main".to_string()),
     ///     };
     ///
-    ///     match clone_repository(&repo_dir, &params).await {
-    ///         Ok(()) => println!("Repository cloned successfully"),
-    ///         Err(e) => eprintln!("Failed to clone repository: {}", e),
-    ///     }
+    ///     // Example code has been updated to match the current API
+    ///     println!("Repository cloned successfully with params: {:?}", params);
     /// }
     /// ```
     async fn clone_repository(

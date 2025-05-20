@@ -1,5 +1,5 @@
 use crate::gitcodes::repository_manager::providers::github::{
-    parse_github_repository_url, GithubClient, GithubRemoteInfo,
+    parse_github_repository_url, GithubRemoteInfo,
 };
 use anyhow::{anyhow, Result};
 

@@ -51,7 +51,7 @@ async fn test_grep_basic_pattern() {
     };
 
     // Execute the search
-    let results = local_repo.grep_in_repository(params).await.expect("Search failed");
+    let results = local_repo.search_code(params).await.expect("Search failed");
 
     // Should have at least one match
     assert!(!results.matches.is_empty(), "No search results found");
@@ -94,7 +94,7 @@ async fn test_grep_case_sensitive() {
 
     // Execute the case-sensitive search
     let results_sensitive = local_repo
-        .grep_in_repository(params_case_sensitive)
+        .search_code(params_case_sensitive)
         .await
         .expect("Search failed");
     let sensitive_count = results_sensitive.matches.len();
@@ -111,7 +111,7 @@ async fn test_grep_case_sensitive() {
 
     // Execute the case-insensitive search
     let results_insensitive = local_repo
-        .grep_in_repository(params_case_insensitive)
+        .search_code(params_case_insensitive)
         .await
         .expect("Search failed");
     let insensitive_count = results_insensitive.matches.len();
@@ -154,7 +154,7 @@ async fn test_grep_file_extension_filter() {
 
     // Execute the search with .rs filter
     let results_rs = local_repo
-        .grep_in_repository(params_rs)
+        .search_code(params_rs)
         .await
         .expect("Search failed");
     let rs_matches = &results_rs.matches;
@@ -181,7 +181,7 @@ async fn test_grep_file_extension_filter() {
 
     // Execute the search with .toml filter
     let results_toml = local_repo
-        .grep_in_repository(params_toml)
+        .search_code(params_toml)
         .await
         .expect("Search failed");
     let toml_matches = &results_toml.matches;
@@ -224,7 +224,7 @@ async fn test_grep_exclude_dirs() {
 
     // Execute the search without exclusions
     let results_no_exclusion = local_repo
-        .grep_in_repository(params_no_exclusion)
+        .search_code(params_no_exclusion)
         .await
         .expect("Search failed");
     let matches_no_exclusion = &results_no_exclusion.matches;
@@ -294,7 +294,7 @@ async fn test_grep_exclude_dirs() {
 
     // Execute the search with exclusions
     let results_with_exclusion = local_repo
-        .grep_in_repository(params_with_exclusion)
+        .search_code(params_with_exclusion)
         .await
         .expect("Search failed");
     let matches_with_exclusion = &results_with_exclusion.matches;
@@ -353,7 +353,7 @@ async fn test_grep_regex_pattern() {
     };
 
     // Execute the search with regex pattern
-    let results = local_repo.grep_in_repository(params).await.expect("Search failed");
+    let results = local_repo.search_code(params).await.expect("Search failed");
     let matches = &results.matches;
 
     // Should find some impl blocks

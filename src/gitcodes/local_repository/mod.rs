@@ -11,10 +11,6 @@ pub use search_result::CodeSearchResult;
 pub struct LocalRepository {
     repository_location: PathBuf,
 }
-/// struct CodeSearchParams の escape_regexの記述は不正確。escapeこのstructを作製する側ではなく、mcpとしてこの本toolを使用するAI agent側の責務なので、toolのdescriptionして書かれている必要がある。
-/// このstructのfieldになる値を受け取っているtoolsのmethodのmacroのdescriptionに記載して。また、CodeSearchParams のうち、toolsのdescription
-///
-///
 /// Code search parameters for searching in a repository
 ///
 /// This struct encapsulates all the parameters needed for a code search.
@@ -181,6 +177,7 @@ impl LocalRepository {
     ///
     /// * `repo_dir` - The directory containing the repository
     /// * `ref_name` - Branch or tag name to checkout
+    #[allow(dead_code)]
     async fn update_repository(&self, _ref_name: &str) -> Result<(), String> {
         // This functionality is temporarily disabled during refactoring
         // TODO: Reimplement with current gix API
@@ -203,33 +200,41 @@ impl LocalRepository {
     /// # Examples
     ///
     /// ```no_run
-    /// // Using regex pattern directly
-    /// let params = CodeSearchParams {
-    ///     repository_location: "https://github.com/user/repo".parse()?,
-    ///     ref_name: Some("main".to_string()),
-    ///     pattern: "fn main".to_string(),
-    ///     case_sensitive: false,
-    ///     file_extensions: Some(vec!["rs".to_string()]),
-    ///     exclude_dirs: Some(vec!["target".to_string()]),
-    /// };
+    /// use gitcodes_mcp::gitcodes::local_repository::CodeSearchParams;
+    /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
+    /// use std::str::FromStr;
+    /// 
+    /// async fn example() -> Result<(), String> {
+    ///     // Using regex pattern directly
+    ///     let params = CodeSearchParams {
+    ///         repository_location: RepositoryLocation::from_str("https://github.com/user/repo").unwrap(),
+    ///         ref_name: Some("main".to_string()),
+    ///         pattern: "fn main".to_string(),
+    ///         case_sensitive: false,
+    ///         file_extensions: Some(vec!["rs".to_string()]),
+    ///         exclude_dirs: Some(vec!["target".to_string()]),
+    ///     };
     ///
-    /// // Using literal text search (with escaped regex)
-    /// let literal_pattern = "file.txt".replace(".", "\\."); // Escape the period
-    /// let params = CodeSearchParams {
-    ///     repository_location: "https://github.com/user/repo".parse()?,
-    ///     ref_name: None,
-    ///     pattern: literal_pattern,
-    ///     case_sensitive: true,
-    ///     file_extensions: None,
-    ///     exclude_dirs: None,
-    /// };
+    ///     // Create a repository instance (mock for example)
+    ///     let repo = gitcodes_mcp::gitcodes::local_repository::LocalRepository::new(std::path::PathBuf::from("/tmp/example"));
     ///
-    /// let results = grep_in_repository(params).await?;
+    ///     // Using literal text search (with escaped regex)
+    ///     let literal_pattern = "file.txt".replace(".", "\\."); // Escape the period
+    ///     let params2 = CodeSearchParams {
+    ///         repository_location: RepositoryLocation::from_str("https://github.com/user/repo").unwrap(),
+    ///         ref_name: None,
+    ///         pattern: literal_pattern,
+    ///         case_sensitive: true,
+    ///         file_extensions: None,
+    ///         exclude_dirs: None,
+    ///     };
+    ///
+    ///     // Search the code
+    ///     let results = repo.search_code(params).await?;
+    ///     Ok(())
+    /// }
     /// ```
-    pub async fn grep_in_repository(
-        &self,
-        params: CodeSearchParams,
-    ) -> Result<CodeSearchResult, String> {
+    pub async fn search_code(&self, params: CodeSearchParams) -> Result<CodeSearchResult, String> {
         // Validate the repository before searching
         if let Err(e) = self.validate() {
             return Err(format!("Repository validation failed: {}", e));
@@ -246,8 +251,8 @@ impl LocalRepository {
         // if they want to perform a literal text search
         let pattern = &params.pattern;
 
-        // Perform the actual grep operation using lumin
-        self.execute_grep(
+        // Perform the actual code search using lumin
+        self.perform_code_search(
             pattern,
             params.case_sensitive,
             params.file_extensions,
@@ -256,10 +261,10 @@ impl LocalRepository {
         .await
     }
 
-    /// Executes a grep operation on a prepared repository
+    /// Performs a code search on a prepared repository
     ///
-    /// This function performs the actual grep search using the lumin search library
-    /// and processes the results into a structured format.
+    /// This function executes the search using the lumin search library
+    /// and processes the results.
     ///
     /// # Parameters
     ///
@@ -271,7 +276,7 @@ impl LocalRepository {
     /// # Returns
     ///
     /// * `Result<CodeSearchResult, String>` - Structured search results or an error message
-    pub async fn execute_grep(
+    pub async fn perform_code_search(
         &self,
         pattern: &str,
         case_sensitive: bool,

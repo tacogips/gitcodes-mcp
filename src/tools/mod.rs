@@ -66,7 +66,7 @@ async fn perform_grep_in_repository(
     };
 
     // Execute the grep operation
-    local_repo.grep_in_repository(params).await
+    local_repo.search_code(params).await
 }
 
 // Sorting options

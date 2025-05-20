@@ -175,8 +175,8 @@ async fn main() -> Result<()> {
             query,
             sort_by,
             order,
-            per_page,
-            page,
+            per_page: _,
+            page: _,
         } => {
             tracing::info!("Searching for repositories with query: {}", query);
             // Call the search_repositories implementation
@@ -195,9 +195,9 @@ async fn main() -> Result<()> {
             repository_location,
             ref_name,
             pattern,
-            case_sensitive,
-            file_extensions,
-            exclude_dirs,
+            case_sensitive: _,
+            file_extensions: _,
+            exclude_dirs: _,
         } => {
             tracing::info!(
                 "Searching for code pattern in repository: {}",

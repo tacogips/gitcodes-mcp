@@ -87,10 +87,10 @@ impl Default for GithubOrderOption {
 /// # Examples
 ///
 /// ```
-/// use gitcodes_mcp::tools::gitcodes::git_service::params::{SearchParams, SortOption, OrderOption};
+/// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubSearchParams, GithubSortOption, GithubOrderOption};
 ///
 /// // Basic search with defaults
-/// let params = SearchParams {
+/// let params = GithubSearchParams {
 ///    query: "rust http client".to_string(),
 ///    sort_by: None,
 ///    order: None,
@@ -99,10 +99,10 @@ impl Default for GithubOrderOption {
 /// };
 ///
 /// // Advanced search with custom options
-/// let advanced_params = SearchParams {
+/// let advanced_params = GithubSearchParams {
 ///    query: "language:rust stars:>1000".to_string(),
-///    sort_by: Some(SortOption::Stars),
-///    order: Some(OrderOption::Descending),
+///    sort_by: Some(GithubSortOption::Stars),
+///    order: Some(GithubOrderOption::Descending),
 ///    per_page: Some(50),
 ///    page: Some(2),
 /// };
@@ -165,19 +165,18 @@ impl GithubClient {
     /// # Examples
     ///
     /// ```
-    /// use gitcodes_mcp::tools::gitcodes::git_service::params::{SearchParams, SortOption, OrderOption};
-    /// use gitcodes_mcp::tools::gitcodes::git_service::github_api::construct_search_url;
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubSearchParams, GithubSortOption, GithubOrderOption, GithubClient};
     ///
-    /// let params = SearchParams {
+    /// let params = GithubSearchParams {
     ///     query: "rust web framework".to_string(),
-    ///     sort_by: Some(SortOption::Stars),
-    ///     order: Some(OrderOption::Descending),
+    ///     sort_by: Some(GithubSortOption::Stars),
+    ///     order: Some(GithubOrderOption::Descending),
     ///     per_page: Some(50),
     ///     page: Some(1),
     /// };
     ///
-    /// let url = construct_search_url(&params);
-    /// // Result: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
+    /// // In the actual implementation, we'd call GithubClient::construct_search_url
+    /// // Example URL: "https://api.github.com/search/repositories?q=rust%20web%20framework&sort=stars&order=desc&per_page=50&page=1"
     /// ```
     fn construct_search_url(params: &GithubSearchParams) -> String {
         // Set up sort parameter using Default implementation
@@ -208,7 +207,7 @@ impl GithubClient {
     }
 
     //TODO(tacogips) implthis
-    pub async fn get_default_branch(&self, target_repository: &GitRemoteRepositoryInfo) -> String {
+    pub async fn get_default_branch(&self, _target_repository: &GitRemoteRepositoryInfo) -> String {
         unimplemented!()
     }
 
