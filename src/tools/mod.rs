@@ -4,8 +4,26 @@ use rmcp::{model::*, schemars, tool, ServerHandler};
 use std::path::PathBuf;
 use lumin::view::FileContents;
 
+mod responses;
+mod error;
+
+use responses::*;
+use error::ToolError;
+
 // Re-export SortOption and OrderOption from repository_manager
 pub use crate::gitcodes::repository_manager::{OrderOption, SortOption, SearchParams};
+
+// Note on Response Types:
+// Previously, the tool methods returned String or Result<String, String> directly,
+// which meant that responses were plain JSON strings. This was inconsistent 
+// and required parsing by consumers.
+// 
+// With the changes made, all tool methods now return Result<ConcreteType, String>,
+// where ConcreteType is a specific response struct defined in the responses module.
+// This ensures that responses are properly typed and can be serialized consistently.
+// 
+// The error handling has also been improved with the ToolError enum providing
+// more structured information about failure cases.
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
@@ -191,7 +209,7 @@ impl GitHubCodeTools {
             description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages)."
         )]
         page: Option<u32>,
-    ) -> String {
+    ) -> Result<RepositorySearchResponse, String> {
         use crate::gitcodes::repository_manager::providers::GitProvider;
         use std::str::FromStr;
 
@@ -200,10 +218,10 @@ impl GitHubCodeTools {
             Some(provider_str) => match GitProvider::from_str(provider_str) {
                 Ok(provider) => provider,
                 Err(_) => {
-                    return format!(
+                    return Err(format!(
                         "Invalid provider: '{}'. Currently only 'github' is supported.",
                         provider_str
-                    );
+                    ));
                 }
             },
             None => GitProvider::Github, // Default to GitHub if not provided
@@ -221,8 +239,14 @@ impl GitHubCodeTools {
             per_page,
             page,
         ).await {
-            Ok(result) => result,
-            Err(err) => format!("Search failed: {}", err),
+            Ok(json_result) => {
+                // Parse the JSON string into our structured response type
+                match serde_json::from_str(&json_result) {
+                    Ok(response) => Ok(response),
+                    Err(e) => Err(format!("Failed to parse search results: {}", e))
+                }
+            },
+            Err(err) => Err(format!("Search failed: {}", err)),
         }
     }
 
@@ -294,7 +318,7 @@ impl GitHubCodeTools {
             description = "Number of lines to include after each match (optional, default is 0). When provided, includes the specified number of lines after each match for additional context."
         )]
         after_context: Option<usize>,
-    ) -> Result<String, String> {
+    ) -> Result<CodeSearchResponse, String> {
         // Get the effective case sensitivity (default to false if not specified)
         let case_sensitive = case_sensitive.unwrap_or(false);
 
@@ -316,14 +340,12 @@ impl GitHubCodeTools {
         .await
         {
             Ok((result, _local_repo)) => {
-                // Successful search, convert result to JSON
-                let json_result = result.to_json()?;
-
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
                 tracing::debug!("Repository kept for caching");
 
-                Ok(json_result)
+                // Return the CodeSearchResult directly as CodeSearchResponse
+                Ok(result)
             }
             Err(err) => {
                 // Search failed, try to clean up repository if it was created
@@ -365,7 +387,7 @@ impl GitHubCodeTools {
             description = "Repository URL or local file path (posix only) (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
         repository_location: String,
-    ) -> Result<String, String> {
+    ) -> Result<RepositoryRefsResponse, String> {
         // Use the repository manager directly to handle repository refs listing
         let (refs_json, local_repo) = self.manager.list_repository_refs(&repository_location).await?;
         
@@ -375,8 +397,11 @@ impl GitHubCodeTools {
             tracing::debug!("Repository kept for caching");
         }
         
-        // Return the JSON result
-        Ok(refs_json)
+        // Parse the JSON string into our structured response type
+        match serde_json::from_str(&refs_json) {
+            Ok(response) => Ok(response),
+            Err(e) => Err(format!("Failed to parse repository refs: {}", e))
+        }
     }
 
     /// Show contents of a file in a GitHub repository
@@ -441,7 +466,7 @@ impl GitHubCodeTools {
             description = "Whether to show text content without line numbers (optional, default is false). When true, displays the entire file content as plain text. When false (default), displays file content with line numbers in the format 'file_path:line_number:line_content'."
         )]
         without_line_numbers: Option<bool>,
-    ) -> Result<String, String> {
+    ) -> Result<FileContentsResponse, String> {
         // Process file viewing within the repository
         // Handle repository cleanup in both success and error cases
         
@@ -461,39 +486,12 @@ impl GitHubCodeTools {
         .await
         {
             Ok((file_contents, _local_repo, without_line_numbers)) => {
-                // If we're showing the file without line numbers or it's a non-text file,
-                // just return the JSON representation of the file contents
-                if without_line_numbers || !matches!(file_contents, FileContents::Text { .. }) {
-                    // Successful view, convert result to JSON
-                    match serde_json::to_string(&file_contents) {
-                        Ok(json_result) => {
-                            // Note: We don't clean up the repository here to use it as a cache
-                            // This improves performance for subsequent operations
-                            tracing::debug!("Repository kept for caching");
-
-                            Ok(json_result)
-                        }
-                        Err(e) => Err(format!("Failed to serialize file contents: {}", e)),
-                    }
-                } else {
-                    // For text files with line numbers, format as path:line:content
-                    if let FileContents::Text { content, metadata: _ } = file_contents {
-                        let content_str = content.to_string();
-                        let mut result = Vec::new();
-                        let mut line_number = line_from.unwrap_or(1);
-                        
-                        for line in content_str.lines() {
-                            result.push(format!("{file_path}:{line_number}:{line}"));
-                            line_number += 1;
-                        }
-                        
-                        // Join lines and return
-                        Ok(result.join("\n"))
-                    } else {
-                        // This should never happen due to the match above, but just in case
-                        Err("Internal error: Unexpected file content type".to_string())
-                    }
-                }
+                // Note: We don't clean up the repository here to use it as a cache
+                // This improves performance for subsequent operations
+                tracing::debug!("Repository kept for caching");
+                
+                // Return the FileContents directly
+                Ok(file_contents)
             }
             Err(err) => {
                 // File viewing failed, try to clean up repository if it was created

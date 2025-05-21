@@ -163,6 +163,50 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
 - **Benefits:** Type safety, easier to use in consuming code, better abstraction, better documentation
 - **When to apply:** When returning complex structured data that might be processed further before serialization
 
+#### MCP Tool Response Type Implementation
+
+- **Pattern Extension:** Applied structured return types to all MCP tool methods
+- **Example:** Changed all tool methods in `GitHubCodeTools` to return `Result<ConcreteType, String>` instead of `String` or `Result<String, String>`
+- **Implementation:**
+  ```rust
+  // BEFORE: Tool method returning String or Result<String, String>
+  async fn search_repositories(
+      &self,
+      query: String,
+      // Other parameters...
+  ) -> String {
+      // Process and return JSON string
+  }
+
+  // AFTER: Tool method returning Result<ConcreteType, String>
+  async fn search_repositories(
+      &self,
+      query: String,
+      // Other parameters...
+  ) -> Result<RepositorySearchResponse, String> {
+      // Process and return structured type
+  }
+  ```
+- **Module Organization:** Created a dedicated `responses.rs` module that defines all response types
+  ```rust
+  // In responses.rs
+  pub struct RepositorySearchResponse {
+      pub total_count: u64,
+      pub incomplete_results: bool,
+      pub items: Vec<RepositoryItem>,
+  }
+  
+  // Use type aliases for consistency with existing types
+  pub type CodeSearchResponse = CodeSearchResult;
+  pub type FileContentsResponse = FileContents;
+  ```
+- **Benefits:** 
+  1. Type safety: The exact structure of responses is defined at compile time
+  2. Better documentation: Response structures are self-documenting
+  3. Consistent error handling: All tools return `Result<T, String>` with the same error pattern
+  4. Cleaner serialization: The rmcp framework handles the serialization consistently
+- **When to apply:** When exposing APIs that need to maintain a consistent interface pattern
+
 ### Use Native Types Over Single-Field Wrappers
 
 - **Pattern:** Replace wrapper types with native Rust types when they don't add significant behavior
