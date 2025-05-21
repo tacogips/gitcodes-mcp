@@ -2,31 +2,61 @@
 //!
 //! These tests verify the functionality of the LocalRepository struct,
 //! particularly the code search functionality.
+//!
+//! ### Repository Cloning vs Local Dependencies
+//!
+//! These tests use dynamic repository cloning instead of referencing `.private.deps-src` because:
+//! - `.private.deps-src` is gitignored and won't exist in CI/CD or other developer environments
+//! - Dynamic cloning ensures tests work in any environment with internet access
+//! - Follows the same patterns as other integration tests in the project
 
 use std::path::PathBuf;
+use std::str::FromStr;
+use tempfile::tempdir;
 
 use gitcodes_mcp::gitcodes::{
-    repository_manager::RepositoryLocation, CodeSearchParams, LocalRepository,
+    repository_manager::{RepositoryLocation, RepositoryManager},
+    CodeSearchParams, LocalRepository,
 };
+
+/// Test repository URL for consistent testing
+const TEST_REPO_URL: &str = "https://github.com/tacogips/gitcodes-mcp-test-1.git";
+
+/// Creates a Repository Manager for testing
+fn create_test_manager() -> RepositoryManager {
+    // Create a temporary directory for repository cache
+    let temp_dir = tempdir().expect("Failed to create temporary directory");
+    let cache_dir = temp_dir.path().to_path_buf();
+
+    // Create a repository manager with our temporary directory
+    RepositoryManager::new(
+        None, // No GitHub token for public repos
+        Some(cache_dir),
+    )
+    .expect("Failed to create RepositoryManager")
+}
 
 /// Test fixture that creates a LocalRepository from the test repository
 ///
 /// Returns a LocalRepository pointing to the gitcodes-mcp-test-1 repository
-fn get_test_repository() -> LocalRepository {
-    // Path to the test repository
-    let repo_path = PathBuf::from(".private.deps-src/gitcodes-mcp-test-1");
+async fn get_test_repository() -> LocalRepository {
+    let manager = create_test_manager();
+    let repo_location =
+        RepositoryLocation::from_str(TEST_REPO_URL).expect("Failed to parse test repository URL");
 
-    // Create a LocalRepository instance for testing
-    LocalRepository::new(repo_path)
+    manager
+        .prepare_repository(&repo_location, None)
+        .await
+        .expect("Failed to prepare test repository")
 }
 
 /// Tests the validation of a valid local repository
-#[test]
-fn test_local_repository_validation() {
-    let local_repo = get_test_repository();
+#[tokio::test]
+async fn test_local_repository_validation() {
+    let repo = get_test_repository().await;
 
     // Test validation (should succeed)
-    match local_repo.validate() {
+    match repo.validate() {
         Ok(_) => println!("Successfully validated test repository"),
         Err(e) => panic!("Repository validation failed on test repository: {}", e),
     }
@@ -35,7 +65,7 @@ fn test_local_repository_validation() {
 /// Tests basic code search functionality with a simple pattern
 #[tokio::test]
 async fn test_grep_basic_pattern() {
-    let local_repo = get_test_repository();
+    let local_repo = get_test_repository().await;
 
     // Create repository location
     let repo_location = RepositoryLocation::LocalPath(local_repo.clone());
@@ -47,9 +77,13 @@ async fn test_grep_basic_pattern() {
         pattern: "fn ".to_string(), // search for function declarations
         case_sensitive: false,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the search
@@ -81,7 +115,7 @@ async fn test_grep_basic_pattern() {
 /// Tests case-sensitive search functionality
 #[tokio::test]
 async fn test_grep_case_sensitive() {
-    let local_repo = get_test_repository();
+    let local_repo = get_test_repository().await;
     let repo_location = RepositoryLocation::LocalPath(local_repo.clone());
 
     // Test with case-sensitive search
@@ -91,9 +125,13 @@ async fn test_grep_case_sensitive() {
         pattern: "Error".to_string(), // Capital E
         case_sensitive: true,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the case-sensitive search
@@ -110,9 +148,13 @@ async fn test_grep_case_sensitive() {
         pattern: "Error".to_string(), // Same term
         case_sensitive: false,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the case-insensitive search
@@ -142,7 +184,7 @@ async fn test_grep_case_sensitive() {
 /// Tests file extension filtering
 #[tokio::test]
 async fn test_grep_file_extension_filter() {
-    let local_repo = get_test_repository();
+    let local_repo = get_test_repository().await;
     let repo_location = RepositoryLocation::LocalPath(local_repo.clone());
 
     // Common pattern that would exist in multiple file types
@@ -155,9 +197,13 @@ async fn test_grep_file_extension_filter() {
         pattern: search_pattern.to_string(),
         case_sensitive: false,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the search with .rs filter
@@ -184,9 +230,13 @@ async fn test_grep_file_extension_filter() {
         pattern: search_pattern.to_string(),
         case_sensitive: false,
         file_extensions: Some(vec!["toml".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the search with .toml filter
@@ -216,7 +266,7 @@ async fn test_grep_file_extension_filter() {
 /// Tests directory exclusion functionality
 #[tokio::test]
 async fn test_grep_exclude_dirs() {
-    let local_repo = get_test_repository();
+    let local_repo = get_test_repository().await;
     let repo_location = RepositoryLocation::LocalPath(local_repo.clone());
 
     // Search pattern that would exist in multiple directories
@@ -229,9 +279,13 @@ async fn test_grep_exclude_dirs() {
         pattern: search_pattern.to_string(),
         case_sensitive: false,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the search without exclusions
@@ -301,9 +355,13 @@ async fn test_grep_exclude_dirs() {
         pattern: search_pattern.to_string(),
         case_sensitive: false,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: Some(vec![dir_to_exclude.clone()]),
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the search with exclusions
@@ -351,7 +409,7 @@ async fn test_grep_exclude_dirs() {
 /// Tests regex pattern search
 #[tokio::test]
 async fn test_grep_regex_pattern() {
-    let local_repo = get_test_repository();
+    let local_repo = get_test_repository().await;
     let repo_location = RepositoryLocation::LocalPath(local_repo.clone());
 
     // Complex regex pattern to find trait implementations
@@ -363,9 +421,13 @@ async fn test_grep_regex_pattern() {
         pattern: regex_pattern.to_string(),
         case_sensitive: false,
         file_extensions: Some(vec!["rs".to_string()]),
+        include_globs: None,
         exclude_dirs: None,
         before_context: None,
         after_context: None,
+        skip: None,
+        take: None,
+        match_content_omit_num: Some(150),
     };
 
     // Execute the search with regex pattern
@@ -387,8 +449,8 @@ async fn test_grep_regex_pattern() {
 async fn test_view_file_contents() {
     use gitcodes_mcp::gitcodes::local_repository::ViewFileParams;
 
-    let local_repo = get_test_repository();
-    
+    let local_repo = get_test_repository().await;
+
     // 1. Test viewing a text file (Cargo.toml should always exist)
     let text_file_params = ViewFileParams {
         file_path: PathBuf::from("Cargo.toml"),
@@ -396,27 +458,36 @@ async fn test_view_file_contents() {
         line_from: None,
         line_to: None,
     };
-    
+
     let text_result = local_repo.view_file_contents(text_file_params).await;
-    assert!(text_result.is_ok(), "Failed to view text file: {:?}", text_result.err());
-    
+    assert!(
+        text_result.is_ok(),
+        "Failed to view text file: {:?}",
+        text_result.err()
+    );
+
     // Verify that we got text content back
     match text_result.unwrap() {
         lumin::view::FileContents::Text { content, metadata } => {
             // Verify that the content is non-empty and contains typical Cargo.toml content
             assert!(!content.is_empty(), "Text file content is empty");
-            assert!(content.contains("[package]"), "Cargo.toml doesn't contain [package] section");
-            
+            assert!(
+                content.contains("[package]"),
+                "Cargo.toml doesn't contain [package] section"
+            );
+
             // Verify metadata
             assert!(metadata.line_count > 0, "Text file has no lines");
             assert!(metadata.char_count > 0, "Text file has no characters");
-            
-            println!("Successfully viewed text file with {} lines and {} characters", 
-                     metadata.line_count, metadata.char_count);
-        },
+
+            println!(
+                "Successfully viewed text file with {} lines and {} characters",
+                metadata.line_count, metadata.char_count
+            );
+        }
         _ => panic!("Expected Text content for Cargo.toml, got a different type"),
     }
-    
+
     // 2. Test viewing a non-existent file
     let invalid_file_params = ViewFileParams {
         file_path: PathBuf::from("file-that-does-not-exist.txt"),
@@ -424,12 +495,19 @@ async fn test_view_file_contents() {
         line_from: None,
         line_to: None,
     };
-    
+
     let error_result = local_repo.view_file_contents(invalid_file_params).await;
-    assert!(error_result.is_err(), "Expected error for non-existent file, but got success");
+    assert!(
+        error_result.is_err(),
+        "Expected error for non-existent file, but got success"
+    );
     let error_msg = error_result.err().unwrap();
-    assert!(error_msg.contains("not found"), "Unexpected error message: {}", error_msg);
-    
+    assert!(
+        error_msg.contains("not found"),
+        "Unexpected error message: {}",
+        error_msg
+    );
+
     // 3. Test with a small file size limit
     // This test creates a ViewFileParams with a very small max_size (10 bytes)
     // which should cause an error when viewing a larger file like Cargo.toml
@@ -439,17 +517,24 @@ async fn test_view_file_contents() {
         line_from: None,
         line_to: None,
     };
-    
+
     let size_limit_result = local_repo.view_file_contents(small_limit_params).await;
-    assert!(size_limit_result.is_err(), "Expected error for size limit, but got success");
+    assert!(
+        size_limit_result.is_err(),
+        "Expected error for size limit, but got success"
+    );
     let size_error_msg = size_limit_result.err().unwrap();
-    assert!(size_error_msg.contains("too large"), "Unexpected error message: {}", size_error_msg);
-    
+    assert!(
+        size_error_msg.contains("too large"),
+        "Unexpected error message: {}",
+        size_error_msg
+    );
+
     println!("All view_file_contents tests passed successfully");
 }
 
 /// Tests relative path handling in view_file_contents
-/// 
+///
 /// This test verifies that the function correctly handles relative paths with proper safeguards:
 /// - Paths relative to the repository root (with or without leading slash)
 /// - Prevention of directory traversal attacks using ".."
@@ -457,8 +542,8 @@ async fn test_view_file_contents() {
 async fn test_view_file_contents_path_handling() {
     use gitcodes_mcp::gitcodes::local_repository::ViewFileParams;
 
-    let local_repo = get_test_repository();
-    
+    let local_repo = get_test_repository().await;
+
     // 1. Test path without leading slash
     let no_leading_slash_params = ViewFileParams {
         file_path: PathBuf::from("Cargo.toml"),
@@ -466,10 +551,14 @@ async fn test_view_file_contents_path_handling() {
         line_from: None,
         line_to: None,
     };
-    
+
     let no_slash_result = local_repo.view_file_contents(no_leading_slash_params).await;
-    assert!(no_slash_result.is_ok(), "Failed to view file with path without leading slash: {:?}", no_slash_result.err());
-    
+    assert!(
+        no_slash_result.is_ok(),
+        "Failed to view file with path without leading slash: {:?}",
+        no_slash_result.err()
+    );
+
     // 2. Test path with leading slash
     let leading_slash_params = ViewFileParams {
         file_path: PathBuf::from("/Cargo.toml"), // Note the leading slash
@@ -477,10 +566,14 @@ async fn test_view_file_contents_path_handling() {
         line_from: None,
         line_to: None,
     };
-    
+
     let with_slash_result = local_repo.view_file_contents(leading_slash_params).await;
-    assert!(with_slash_result.is_ok(), "Failed to view file with path with leading slash: {:?}", with_slash_result.err());
-    
+    assert!(
+        with_slash_result.is_ok(),
+        "Failed to view file with path with leading slash: {:?}",
+        with_slash_result.err()
+    );
+
     // 3. Test subdirectory path (depends on the test repository structure)
     // For this test, find a directory that should exist in the test repository
     // If src directory exists, use it; otherwise, this test might need adjustment
@@ -490,12 +583,12 @@ async fn test_view_file_contents_path_handling() {
         line_from: None,
         line_to: None,
     };
-    
+
     // This might fail if the test repository doesn't have this structure,
     // which is fine - we're just testing that paths work in principle
     let src_result = local_repo.view_file_contents(src_path_params).await;
     println!("Note: src/lib.rs access result: {:?}", src_result.is_ok());
-    
+
     // 4. Test directory traversal attempt
     // Try to access a file outside the repository using ".." notation
     let traversal_params = ViewFileParams {
@@ -504,10 +597,13 @@ async fn test_view_file_contents_path_handling() {
         line_from: None,
         line_to: None,
     };
-    
+
     let traversal_result = local_repo.view_file_contents(traversal_params).await;
-    assert!(traversal_result.is_err(), "Expected error for directory traversal attempt, but got success");
-    
+    assert!(
+        traversal_result.is_err(),
+        "Expected error for directory traversal attempt, but got success"
+    );
+
     // 5. Test another directory traversal variant
     let traversal_params2 = ViewFileParams {
         file_path: PathBuf::from("src/../../../../etc/passwd"),
@@ -515,10 +611,13 @@ async fn test_view_file_contents_path_handling() {
         line_from: None,
         line_to: None,
     };
-    
+
     let traversal_result2 = local_repo.view_file_contents(traversal_params2).await;
-    assert!(traversal_result2.is_err(), "Expected error for directory traversal attempt, but got success");
-    
+    assert!(
+        traversal_result2.is_err(),
+        "Expected error for directory traversal attempt, but got success"
+    );
+
     // 6. Test with normalized but suspicious path (contains ".." but stays within repo)
     let normalized_params = ViewFileParams {
         file_path: PathBuf::from("src/../Cargo.toml"),
@@ -526,9 +625,12 @@ async fn test_view_file_contents_path_handling() {
         line_from: None,
         line_to: None,
     };
-    
+
     let normalized_result = local_repo.view_file_contents(normalized_params).await;
-    assert!(normalized_result.is_err(), "Expected error for path with '..', even if it normalizes within the repo boundary");
-    
+    assert!(
+        normalized_result.is_err(),
+        "Expected error for path with '..', even if it normalizes within the repo boundary"
+    );
+
     println!("All path handling tests for view_file_contents passed successfully");
 }

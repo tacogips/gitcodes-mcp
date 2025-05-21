@@ -2,9 +2,24 @@
 //!
 //! This module contains the data structures used for representing code search results.
 
-use lumin::search::SearchResult as LuminSearchResult;
+use lumin::search::SearchResultLine as LuminSearchResultLine;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// Parameters for creating a new CodeSearchResult
+#[derive(Debug, Clone)]
+pub struct CodeSearchParams {
+    pub total_match_line_number: usize,
+    pub search_result_lines: Vec<LuminSearchResultLine>,
+    pub pattern: String,
+    pub repository: PathBuf,
+    pub case_sensitive: bool,
+    pub file_extensions: Option<Vec<String>>,
+    pub include_globs: Option<Vec<String>>,
+    pub exclude_globs: Option<Vec<String>>,
+    pub before_context: Option<usize>,
+    pub after_context: Option<usize>,
+}
 
 /// Result of a code search operation
 ///
@@ -12,8 +27,14 @@ use std::path::PathBuf;
 /// This provides a complete picture of both the search configuration and results.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodeSearchResult {
+    /// Total number of lines that matched the search pattern
+    ///
+    /// This is the count of all matching lines, even if some were skipped due to pagination.
+    /// It can be used to determine the total number of matches without processing all the results.
+    pub total_match_line_number: usize,
+
     /// List of search matches found
-    pub matches: Vec<LuminSearchResult>,
+    pub matches: Vec<LuminSearchResultLine>,
 
     /// The search pattern that was used
     pub pattern: String,
@@ -27,46 +48,39 @@ pub struct CodeSearchResult {
     /// File extensions filter that was applied (if any)
     pub file_extensions: Option<Vec<String>>,
 
-    /// Directories that were excluded from the search (if any)
-    pub exclude_dirs: Option<Vec<String>>,
-    
+    /// Glob patterns used to include files in the search (if any)
+    /// These are patterns like "**/*.rs" or "src/**/*.md" that filter which files are searched
+    pub include_globs: Option<Vec<String>>,
+
+    /// Directories or glob patterns excluded from the search (if any)
+    /// These are typically directory names that are converted to glob patterns like "**/dirname/**"
+    pub exclude_globs: Option<Vec<String>>,
+
     /// Number of lines of context included before each match
     pub before_context: Option<usize>,
-    
+
     /// Number of lines of context included after each match
     pub after_context: Option<usize>,
 }
 
 impl CodeSearchResult {
-    /// Creates a new CodeSearchResult
+    /// Creates a new CodeSearchResult from parameters
     ///
     /// # Parameters
     ///
-    /// * `matches` - Vector of search matches
-    /// * `pattern` - Search pattern used
-    /// * `repository` - Path to the repository
-    /// * `case_sensitive` - Whether search was case-sensitive
-    /// * `file_extensions` - Optional file extensions filter
-    /// * `exclude_dirs` - Optional directories excluded from search
-    pub fn new(
-        matches: Vec<LuminSearchResult>,
-        pattern: &str,
-        repository: PathBuf,
-        case_sensitive: bool,
-        file_extensions: Option<Vec<String>>,
-        exclude_dirs: Option<Vec<String>>,
-        before_context: Option<usize>,
-        after_context: Option<usize>,
-    ) -> Self {
+    /// * `params` - CodeSearchParams containing all the necessary fields
+    pub fn new(params: CodeSearchParams) -> Self {
         Self {
-            matches,
-            pattern: pattern.to_string(),
-            repository: repository.display().to_string(),
-            case_sensitive,
-            file_extensions,
-            exclude_dirs,
-            before_context,
-            after_context,
+            total_match_line_number: params.total_match_line_number,
+            matches: params.search_result_lines,
+            pattern: params.pattern,
+            repository: params.repository.display().to_string(),
+            case_sensitive: params.case_sensitive,
+            file_extensions: params.file_extensions,
+            include_globs: params.include_globs,
+            exclude_globs: params.exclude_globs,
+            before_context: params.before_context,
+            after_context: params.after_context,
         }
     }
 

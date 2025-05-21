@@ -1,0 +1,15 @@
+--- tests/services_test.rs
++++ tests/services_test.rs
+@@ -134,10 +134,10 @@
+             let paginated_result = services::perform_grep_in_repository(
+                 &manager,
+                 repo_url,
+-                "."to_string(),             // Same search pattern
++                "fn ".to_string(),         // Same search pattern as full search
+                 None,                     // Default branch
+                 false,                    // Case insensitive
+-                None,                     // All file types
++                Some(&vec!["rs".to_string()]), // Same file extension filter as full search
+                 None,                     // No excluded directories
+                 None,                     // No before context
+ 

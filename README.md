@@ -221,7 +221,8 @@ Parameters:
 - `pattern` (required): Search pattern
 - `case_sensitive` (optional): Whether to be case-sensitive (default: false)
 - `use_regex` (optional): Whether to use regex (default: true)
-- `file_extensions` (optional): File extensions to search (e.g., ["rs", "toml"])
+- `file_extensions` (optional, deprecated): File extensions to search (e.g., ["rs", "toml"])
+- `include_globs` (optional): Glob patterns to include in search (e.g., ["**/*.rs", "src/**/*.md"]) - more flexible than file_extensions. See [docs/glob-patterns.md](docs/glob-patterns.md) for detailed pattern information and examples
 - `exclude_dirs` (optional): Directories to exclude (e.g., ["target", "node_modules"])
 - `before_context` (optional): Number of lines to include before each match (default: 0)
 - `after_context` (optional): Number of lines to include after each match (default: 0)
@@ -236,12 +237,15 @@ Example:
     "ref_name": "master",
     "pattern": "async fn",
     "case_sensitive": false,
-    "file_extensions": ["rs"],
+    "include_globs": ["**/*.rs", "src/**/*.md"],
+    "exclude_dirs": ["target", "node_modules"],
     "before_context": 2,
     "after_context": 3
   }
 }
 ```
+
+**Note**: Use `include_globs` instead of `file_extensions` for more flexible file matching. While `file_extensions` only filters by extension, `include_globs` supports full glob patterns for more precise file selection.
 
 ### 6. `list_repository_refs`
 

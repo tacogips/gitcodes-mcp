@@ -10,25 +10,25 @@ use std::fmt;
 pub enum ToolError {
     /// Invalid provider (only GitHub is currently supported)
     InvalidProvider(String),
-    
+
     /// Error parsing repository location
     InvalidRepositoryLocation(String),
-    
+
     /// Error cloning or accessing repository
     RepositoryError(String),
-    
+
     /// Error in code search operation
     CodeSearchError(String),
-    
+
     /// Error accessing file contents
     FileAccessError(String),
-    
+
     /// Error parsing API response
     ParseError(String),
-    
+
     /// Error serializing response
     SerializationError(String),
-    
+
     /// Generic error for other failure cases
     Other(String),
 }
@@ -36,8 +36,14 @@ pub enum ToolError {
 impl fmt::Display for ToolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ToolError::InvalidProvider(provider) => write!(f, "Invalid provider: '{}'. Currently only 'github' is supported.", provider),
-            ToolError::InvalidRepositoryLocation(details) => write!(f, "Invalid repository location: {}", details),
+            ToolError::InvalidProvider(provider) => write!(
+                f,
+                "Invalid provider: '{}'. Currently only 'github' is supported.",
+                provider
+            ),
+            ToolError::InvalidRepositoryLocation(details) => {
+                write!(f, "Invalid repository location: {}", details)
+            }
             ToolError::RepositoryError(details) => write!(f, "Repository error: {}", details),
             ToolError::CodeSearchError(details) => write!(f, "Code search error: {}", details),
             ToolError::FileAccessError(details) => write!(f, "File access error: {}", details),

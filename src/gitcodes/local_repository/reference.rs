@@ -24,7 +24,7 @@ pub struct RefObject {
 }
 
 /// A git reference in a repository, including its name and target object.
-/// 
+///
 /// This matches the GitHub API format for references.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GitRefObject {

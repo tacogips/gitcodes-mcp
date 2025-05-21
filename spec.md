@@ -315,6 +315,11 @@ pub struct License {
 
 Clones the specified GitHub repository locally and greps the code. Supports both public and private repositories.
 
+Two variants of this tool are provided:
+
+1. `grep_repository` - Returns the full search results including matching lines and context
+2. `grep_repository_match_line_number` - Returns only the total number of matching lines as a simple numeric value
+
 #### Input Parameters
 
 ```rust
@@ -340,6 +345,10 @@ pub struct GrepParams {
     pub before_context: Option<usize>,
     // Number of lines to include after each match for context (optional, default: 0)
     pub after_context: Option<usize>,
+    // Number of results to skip for pagination (optional, default: 0)
+    pub skip: Option<usize>,
+    // Maximum number of results to return (optional, default: 50)
+    pub take: Option<usize>,
 }
 ```
 
@@ -411,6 +420,8 @@ pub struct GrepParams {
 
 #### Return Value
 
+##### For grep_repository
+
 ```rust
 pub struct GrepResult {
     // List of matched files
@@ -418,7 +429,16 @@ pub struct GrepResult {
     // Search statistics
     pub stats: SearchStats,
 }
+```
 
+##### For grep_repository_match_line_number
+
+```rust
+// Returns a simple numeric value representing the total number of matching lines
+Number
+```
+
+```rust
 pub struct FileMatch {
     // File path (relative to repository root)
     pub path: String,
@@ -758,6 +778,34 @@ Repository locations are specified with strings that are parsed according to the
 
 2. **Local Repositories**: Both absolute and relative paths are supported
    - Absolute paths: `/path/to/repository`
+   - File URLs: `file:///path/to/repository` or `file:/path/to/repository`
+
+### GitHub URL Handling
+
+To ensure reliable cloning of GitHub repositories, GitCodes implements a robust URL handling strategy that addresses known issues with HTTP redirects in the gitoxide library (gix):
+
+1. **URL Conversion**
+   - When cloning GitHub repositories, HTTPS URLs are automatically converted to standard SSH format
+   - Example: `https://github.com/user/repo` → `git@github.com:user/repo.git`
+   - This conversion happens transparently to work around gitoxide HTTP redirect handling issues
+   - The original URL is preserved in repository metadata for reference
+
+2. **URL Normalization**
+   - URLs are normalized by removing `.git` suffixes, trailing slashes, and extraneous components
+   - Both URL formats (with/without trailing slash) are handled uniformly
+   - Example: `https://github.com/user/repo.git` and `https://github.com/user/repo/` are treated identically
+
+3. **Fallback Mechanism**
+   - If initial clone attempts fail, a multi-stage fallback mechanism tries different URL formats:
+     1. SSH format (`git@github.com:user/repo.git`) as the primary method
+     2. HTTPS with explicit `.git` suffix as a secondary attempt
+     3. Alternate SSH format construction as a final fallback
+   - This ensures maximum reliability when interacting with GitHub repositories
+
+4. **Error Handling**
+   - Detailed error messages provide guidance on URL formatting issues
+   - Error messages include suggestions for alternative URL formats
+   - Network, authentication, and redirect errors are distinctly handled with specific recommendations
    - Relative paths: `./repository` or `relative/path/to/repository`
    - Relative paths are automatically converted to absolute paths using the current working directory
 
@@ -897,3 +945,113 @@ The codebase now uses a global singleton pattern for the `RepositoryManager`:
   }
 ]
 ```
+
+## Directory Tree Generation
+
+The library provides comprehensive directory tree generation functionality through the `get_tree_with_params` method on `LocalRepository`. This feature allows AI assistants to explore repository structure and understand project organization.
+
+### Core Functionality
+
+The tree generation is implemented using the `lumin` library for filesystem traversal and provides fine-grained control over the output through `TreeParams`:
+
+```rust
+pub struct TreeParams {
+    pub case_sensitive: Option<bool>,
+    pub search_relative_path: Option<PathBuf>,
+    pub respect_gitignore: Option<bool>,
+    pub depth: Option<usize>,
+    pub strip_path_prefix: Option<bool>,
+}
+```
+
+### Gitignore Handling
+
+One of the most important aspects of the tree functionality is its handling of `.gitignore` files through the `respect_gitignore` parameter:
+
+#### Default Behavior (Respecting .gitignore)
+
+When `respect_gitignore` is `Some(true)` or `None` (default):
+
+- **Excludes ignored files**: Files and directories listed in `.gitignore` are excluded from the tree
+- **Performance optimized**: Skips scanning ignored directories, resulting in faster processing
+- **Clean output**: Shows only tracked and relevant files, making it easier to understand project structure
+- **Hierarchical gitignore**: Respects nested `.gitignore` files in subdirectories
+
+```rust
+let params = TreeParams {
+    respect_gitignore: Some(true), // or None for default
+    // ... other fields
+};
+// Result excludes: target/, *.log, .env, node_modules/, etc.
+```
+
+#### Complete File System View (Ignoring .gitignore)
+
+When `respect_gitignore` is `Some(false)`:
+
+- **Includes all files**: Shows complete filesystem structure regardless of `.gitignore` rules
+- **Debug-friendly**: Useful for troubleshooting or when you need to see ignored files
+- **Higher resource usage**: May result in larger trees and longer processing times
+- **Build artifacts visible**: Includes compiled binaries, logs, temporary files, etc.
+
+```rust
+let params = TreeParams {
+    respect_gitignore: Some(false),
+    // ... other fields
+};
+// Result includes: target/, build/, *.log, .git/, node_modules/, etc.
+```
+
+### Use Cases and Best Practices
+
+#### For Code Analysis (Recommended Default)
+```rust
+let params = TreeParams {
+    case_sensitive: Some(false),
+    search_relative_path: None,
+    respect_gitignore: Some(true), // Clean view of source code
+    depth: Some(3), // Limit depth for large projects
+    strip_path_prefix: Some(true),
+};
+```
+
+#### For Complete Project Investigation
+```rust
+let params = TreeParams {
+    case_sensitive: Some(false),
+    search_relative_path: None,
+    respect_gitignore: Some(false), // See everything
+    depth: None, // No depth limit
+    strip_path_prefix: Some(true),
+};
+```
+
+#### For Specific Subdirectory Analysis
+```rust
+let params = TreeParams {
+    case_sensitive: Some(false),
+    search_relative_path: Some(PathBuf::from("src")),
+    respect_gitignore: Some(true),
+    depth: Some(2),
+    strip_path_prefix: Some(true),
+};
+```
+
+### Performance Considerations
+
+- **Gitignore Respect**: Enabling `respect_gitignore` (default) significantly improves performance by avoiding ignored directories
+- **Depth Limiting**: Setting a reasonable `depth` limit prevents excessive recursion in deep directory structures
+- **Relative Paths**: Using `search_relative_path` to focus on specific subdirectories reduces processing time
+- **Memory Usage**: Large trees with `respect_gitignore: false` may consume significant memory
+
+### Integration with MCP Tools
+
+The tree functionality integrates seamlessly with other MCP tools:
+
+1. **Repository Search**: First discover repositories with GitHub search
+2. **Repository Preparation**: Clone/prepare repository with `RepositoryManager`
+3. **Tree Generation**: Explore structure with `get_tree_with_params`
+4. **Code Search**: Use tree insights to guide targeted code searches
+5. **File Viewing**: Navigate to specific files identified in the tree
+
+This workflow provides AI assistants with a comprehensive understanding of project structure before diving into specific code analysis.

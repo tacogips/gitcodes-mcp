@@ -9,14 +9,13 @@ use std::env;
 use std::str::FromStr;
 
 use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
-use gitcodes_mcp::gitcodes::repository_manager::{SortOption, OrderOption, RepositoryManager};
-use serde_json::Value;
+use gitcodes_mcp::gitcodes::repository_manager::{OrderOption, RepositoryManager, SortOption};
 
 /// Creates a Repository Manager for testing
 fn create_test_manager() -> RepositoryManager {
     // Check for GitHub token in environment
     let github_token = env::var("GITCODE_MCP_GITHUB_TOKEN").ok();
-    
+
     // Create a temporary directory for repository cache
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let cache_dir = temp_dir.path().to_path_buf();
@@ -37,83 +36,83 @@ fn create_test_manager() -> RepositoryManager {
 #[tokio::test]
 async fn test_search_repositories_parameter_conversion() {
     let manager = create_test_manager();
-    
+
     // Test cases for different parameter combinations
     // Each tuple contains:
     // (provider, sort_option, order_option)
     let test_cases = vec![
         // Default case - no sort, no order
         ("github", None::<SortOption>, None::<OrderOption>),
-    
         // Sort by stars
         ("github", Some(SortOption::Stars), None),
-    
         // Sort by forks
         ("github", Some(SortOption::Forks), None),
-    
         // Sort by updated
         ("github", Some(SortOption::Updated), None),
-    
         // Test relevance
         ("github", Some(SortOption::Relevance), None),
-    
         // Test order alone
         ("github", None, Some(OrderOption::Ascending)),
         ("github", None, Some(OrderOption::Descending)),
-    
         // Full combination
-        ("github", Some(SortOption::Forks), Some(OrderOption::Descending)),
+        (
+            "github",
+            Some(SortOption::Forks),
+            Some(OrderOption::Descending),
+        ),
     ];
 
-    // Use a very specific query that will return few results to avoid hitting rate limits
-    let query = "gitcodes-mcp-test-repo language:rust stars:0";
+    // Use a query that will reliably return results
+    let query = "github language:rust stars:>100";
 
     for (provider_str, sort_option, order_option) in test_cases {
         println!(
             "Testing with provider: {}, sort: {:?}, order: {:?}",
             provider_str, sort_option, order_option
         );
-        
+
         // Convert provider string to GitProvider enum
         let provider = GitProvider::from_str(provider_str).expect("Failed to parse provider");
-        
+
         // Execute the search
         let result = manager
             .search_repositories(
                 provider,
                 query.to_string(),
-                sort_option.clone(), // Clone to avoid move
+                sort_option.clone(),  // Clone to avoid move
                 order_option.clone(), // Clone to avoid move
-                Some(5),  // Limit results to 5 per page
-                Some(1),  // First page
+                Some(5),              // Limit results to 5 per page
+                Some(1),              // First page
             )
             .await;
-        
+
         // Verify the result
         match result {
-            Ok(json_result) => {
-                // Parse the JSON result
-                let parsed: Value = serde_json::from_str(&json_result)
-                    .expect("Failed to parse search results JSON");
-                
-                // Verify the result structure
-                assert!(parsed.is_object(), "Search result should be an object");
-                assert!(parsed.get("items").is_some(), "Result should have 'items' field");
-                assert!(parsed["items"].is_array(), "Items should be an array");
-                
+            Ok(search_results) => {
+                // Verify the result structure directly from the structured data
+                assert!(
+                    !search_results.items.is_empty(),
+                    "Search results should have items"
+                );
+
+                // We can access the structured data directly
+
                 // GitHub API doesn't return the search parameters in the response,
                 // so we can't directly verify the converted parameters were used.
                 // But we can verify the request succeeded with different parameter combinations.
-                
-                println!("Search succeeded with parameters: {:?}, {:?}", sort_option, order_option);
-            },
+
+                println!(
+                    "Search succeeded with parameters: {:?}, {:?}",
+                    sort_option, order_option
+                );
+            }
             Err(e) => {
                 // Skip rate limit errors, which are expected when running tests frequently
                 if e.contains("rate limit") {
                     println!("Skipping due to rate limit: {}", e);
                     continue;
                 }
-                
+
                 // Other errors should fail the test
                 panic!("Search failed: {}", e);
             }
@@ -128,45 +127,42 @@ async fn test_search_repositories_parameter_conversion() {
 #[tokio::test]
 async fn test_search_repositories_basic() {
     let manager = create_test_manager();
-    
-    // Use a very specific query that will return few results
-    let query = "gitcodes-mcp-test-repo language:rust stars:0";
-    
+
+    // Use a query that will reliably return results
+    let query = "github language:rust stars:>100";
+
     // Execute the search with minimal parameters
     println!("Testing with minimal parameters");
-    
+
     let result = manager
         .search_repositories(
             GitProvider::Github,
             query.to_string(),
-            None,  // No sort option
-            None,  // No order option
-            Some(5),  // Limit results to 5 per page
-            Some(1),  // First page
+            None,    // No sort option
+            None,    // No order option
+            Some(5), // Limit results to 5 per page
+            Some(1), // First page
         )
         .await;
-        
+
     // Check if the search was successful
     match result {
         Ok(json_result) => {
-            // Parse the JSON result
-            let parsed: Value = serde_json::from_str(&json_result)
-                .expect("Failed to parse search results JSON");
-            
-            // Verify the result structure
-            assert!(parsed.is_object(), "Search result should be an object");
-            assert!(parsed.get("items").is_some(), "Result should have 'items' field");
-            assert!(parsed["items"].is_array(), "Items should be an array");
-            
+            // Verify the result structure directly
+            assert!(
+                !json_result.items.is_empty(),
+                "Search results should have items"
+            );
+
             println!("Search succeeded with minimal parameters");
-        },
+        }
         Err(e) => {
             // Skip rate limit errors, which are expected when running tests frequently
             if e.contains("rate limit") {
                 println!("Skipping due to rate limit: {}", e);
                 return;
             }
-            
+
             // Other errors should fail the test
             panic!("Basic search failed: {}", e);
         }
@@ -184,10 +180,10 @@ async fn test_search_repositories_basic() {
 async fn test_search_repositories_with_mock() {
     use gitcodes_mcp::gitcodes::repository_manager::providers::github::GithubClient;
     use mockall::predicate::*;
-    
+
     // Create a mock GitHub client
     let mut mock_client = GithubClient::new_mock();
-    
+
     // Set up expectations for various parameter combinations
     mock_client
         .expect_execute_search_repository_request()
@@ -201,7 +197,7 @@ async fn test_search_repositories_with_mock() {
         })
         .returning(|_| Ok("{\"items\": []}".to_string()))
         .times(1);
-    
+
     mock_client
         .expect_execute_search_repository_request()
         .withf(|params| {
@@ -214,7 +210,7 @@ async fn test_search_repositories_with_mock() {
         })
         .returning(|_| Ok("{\"items\": []}".to_string()))
         .times(1);
-    
+
     mock_client
         .expect_execute_search_repository_request()
         .withf(|params| {
@@ -227,10 +223,10 @@ async fn test_search_repositories_with_mock() {
         })
         .returning(|_| Ok("{\"items\": []}".to_string()))
         .times(1);
-    
+
     // Test various parameter combinations
     let manager = create_test_manager();
-    
+
     let _ = manager
         .search_repositories(
             GitProvider::Github,
@@ -241,7 +237,7 @@ async fn test_search_repositories_with_mock() {
             Some(1),
         )
         .await;
-    
+
     let _ = manager
         .search_repositories(
             GitProvider::Github,
@@ -252,7 +248,7 @@ async fn test_search_repositories_with_mock() {
             Some(1),
         )
         .await;
-    
+
     let _ = manager
         .search_repositories(
             GitProvider::Github,
@@ -263,7 +259,7 @@ async fn test_search_repositories_with_mock() {
             Some(1),
         )
         .await;
-    
+
     // If we get here without mockall panic, the test passes
 }
 

@@ -1,33 +1,33 @@
 use crate::gitcodes::{repository_manager, *};
 use crate::services;
-use rmcp::{model::*, schemars, tool, ServerHandler, Error as McpError};
+use rmcp::{model::*, schemars, tool, Error as McpError, ServerHandler};
 use std::path::PathBuf;
 
-mod responses;
+use crate::gitcodes::repository_manager::providers::models::GitProvider;
+use std::str::FromStr;
 mod error;
-
-use responses::*;
+mod responses;
 
 // Re-export SortOption and OrderOption from repository_manager
-pub use crate::gitcodes::repository_manager::{OrderOption, SortOption, SearchParams};
+pub use crate::gitcodes::repository_manager::{OrderOption, SearchParams, SortOption};
 
 // Note on Response Types:
 // Previously, the tool methods returned String or Result<String, String> directly,
-// which meant that responses were plain JSON strings. This was inconsistent 
+// which meant that responses were plain JSON strings. This was inconsistent
 // and required parsing by consumers.
-// 
+//
 // With the changes made in our architecture, we now maintain strongly-typed response
 // structures in the responses module. These are used for internal validation and processing.
-// 
+//
 // MCP tool methods must return Result<CallToolResult, McpError> to be compatible
 // with the framework. So we create structured response types for internal use,
 // serialize them to JSON, and then wrap them in CallToolResult for the MCP framework.
-// 
+//
 // This approach gives us the best of both worlds:
 // 1. Strongly-typed internal processing with proper validation
 // 2. Consistent interface with the MCP framework
 // 3. Helper methods (success_result and error_result) to ensure consistency
-// 
+//
 // The helper methods in this module ensure that all responses and errors are
 // formatted consistently according to the MCP protocol requirements.
 
@@ -68,101 +68,6 @@ impl GitHubCodeTools {
         Self {
             manager: manager.clone(),
         }
-    }
-    
-    /// Helper method to create a CallToolResult for successful responses
-    fn success_result(json: String) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(json)]))
-    }
-    
-    /// Helper method to create a CallToolResult for error responses
-    fn error_result(message: impl Into<String>) -> Result<CallToolResult, McpError> {
-        let error_message = message.into();
-        Ok(CallToolResult::error(vec![Content::text(error_message)]))
-    }
-    
-    /// Transform repository refs JSON format to match RepositoryRefsResponse
-    ///
-    /// This method can handle two input formats:
-    /// 1. A raw JSON array of GitRefObject instances (from LocalRepository)
-    /// 2. A JSON object with branches and tags arrays (already properly formatted from GithubClient)
-    ///
-    /// It transforms both into a structured JSON with separated branches and tags,
-    /// matching the expected RepositoryRefsResponse format.
-    fn transform_refs_json(refs_json: &str) -> Result<String, String> {
-        use serde_json::Value;
-        
-        // Parse the raw JSON string
-        let refs_value: Value = serde_json::from_str(refs_json)
-            .map_err(|e| format!("Failed to parse repository refs: {}", e))?;
-        
-        // If we already have a properly structured response (with branches and tags),
-        // just validate the format and return it directly
-        if let Value::Object(obj) = &refs_value {
-            if obj.contains_key("branches") && obj.contains_key("tags") {
-                // Attempt to deserialize into our response struct to validate it
-                if let Ok(_) = serde_json::from_value::<responses::RepositoryRefsResponse>(refs_value.clone()) {
-                    // If valid, return the original JSON string
-                    return Ok(refs_json.to_string());
-                }
-            }
-        }
-        
-        // If we don't have a properly structured response, proceed with transformation
-        // Ensure we have a JSON array (this is the format from LocalRepository.list_repository_refs)
-        let refs_array = match refs_value {
-            Value::Array(arr) => arr,
-            _ => return Err("Repository refs JSON is not an array or a properly structured response".to_string()),
-        };
-        
-        // Prepare the output structure - separate branches and tags
-        let mut branches = Vec::new();
-        let mut tags = Vec::new();
-        
-        for ref_obj in refs_array {
-            if let Value::Object(ref_map) = ref_obj {
-                // Get the ref name from the object
-                let ref_name = match ref_map.get("ref") {
-                    Some(Value::String(name)) => name.clone(),
-                    _ => continue, // Skip invalid entries
-                };
-                
-                // Get the commit SHA from the object.object.sha
-                let commit_id = match ref_map.get("object") {
-                    Some(Value::Object(obj)) => match obj.get("sha") {
-                        Some(Value::String(sha)) => sha.clone(),
-                        _ => continue, // Skip invalid entries
-                    },
-                    _ => continue, // Skip invalid entries
-                };
-                
-                // Create a ReferenceInfo object
-                let ref_info = responses::ReferenceInfo {
-                    // Extract short name from full ref path
-                    name: ref_name.split('/').last().unwrap_or(&ref_name).to_string(),
-                    full_ref: ref_name.clone(),
-                    commit_id,
-                };
-                
-                // Sort into branches and tags based on path
-                if ref_name.starts_with("refs/heads/") {
-                    branches.push(ref_info);
-                } else if ref_name.starts_with("refs/tags/") {
-                    tags.push(ref_info);
-                }
-                // Ignore other ref types like refs/remotes
-            }
-        }
-        
-        // Create the final response object
-        let response = responses::RepositoryRefsResponse {
-            branches,
-            tags,
-        };
-        
-        // Serialize to JSON string
-        serde_json::to_string(&response)
-            .map_err(|e| format!("Failed to serialize transformed refs: {}", e))
     }
 
     /// Creates a new GitHubCodeTools instance with default repository cache directory
@@ -217,6 +122,11 @@ impl ServerHandler for GitHubCodeTools {
 - `search_repositories`: Search for GitHub repositories
 - `grep_repository`: Search code within a GitHub repository
 - `list_repository_refs`: List branches and tags for a repository
+- `show_file_contents`: View the contents of a file in a repository
+- `get_repository_tree`: Get the directory tree structure of a repository
+
+## New File Filtering Feature
+The `grep_repository` tool now supports powerful glob pattern filtering with the include_globs parameter. This allows you to precisely specify which files to search by pattern.
 
 ## Authentication
 You can authenticate in three ways:
@@ -271,87 +181,56 @@ impl GitHubCodeTools {
     /// - Unauthenticated: 60 requests/hour
     /// - Authenticated: 5,000 requests/hour
     #[tool(
-        description = "Search for repositories on Git providers (currently only GitHub is supported). Searches GitHub's API for repositories matching your query. Supports sorting by stars, forks, or update date, and pagination for viewing more results.  Example usage: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"rust http client\"}}`. With provider: `{\"name\": \"search_repositories\", \"arguments\": {\"provider\": \"github\", \"query\": \"rust web framework\"}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"game engine\", \"sort_by\": \"Stars\", \"order\": \"Descending\"}}`. With pagination: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"machine learning\", \"per_page\": 50, \"page\": 2}}`"
+        description = "Search GitHub repositories by query. Supports sorting and pagination. Example: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"rust http client\"}}`. With sorting: `{\"name\": \"search_repositories\", \"arguments\": {\"query\": \"game engine\", \"sort_by\": \"Stars\"}}`"
     )]
     async fn search_repositories(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Git provider to search (optional, default is 'github'). Currently, only 'github' is supported as a valid provider."
+            description = "Git provider (optional, default 'github'). Currently only 'github' is supported. When omitted, defaults to GitHub. Example: 'github'."
         )]
         provider: Option<String>,
 
         #[tool(param)]
         #[schemars(
-            description = "Search query (required) - keywords to search for repositories. Can include advanced search qualifiers like 'language:rust' or 'stars:>1000'. Maximum length is 256 characters."
+            description = "Search query for repositories (required). Supports GitHub search qualifiers like 'language:rust' or 'stars:>1000'. Max 256 characters. This parameter is required and must be provided for the search to execute."
         )]
         query: String,
 
         #[tool(param)]
         #[schemars(
-            description = "How to sort results (optional, default is 'relevance'). Options: Stars (most starred), Forks (most forked), Updated (most recently updated). When unspecified, results are sorted by best match to the query."
+            description = "Sort results by (optional, default 'relevance'). Valid options: 'Stars' (sort by star count), 'Forks' (sort by fork count), 'Updated' (sort by last update time). When omitted, sorts by relevance score."
         )]
         sort_by: Option<SortOption>,
 
         #[tool(param)]
         #[schemars(
-            description = "Sort order (optional, default is 'descending'). Options: Ascending (lowest to highest), Descending (highest to lowest). For date-based sorting like 'Updated', Descending means newest first."
+            description = "Sort order (optional, default 'descending'). Valid options: 'Ascending' (lowest to highest), 'Descending' (highest to lowest). When omitted, uses descending order."
         )]
         order: Option<OrderOption>,
 
         #[tool(param)]
         #[schemars(
-            description = "Results per page (optional, default is 30, max 100). Controls how many repositories are returned in a single response. Higher values provide more comprehensive results but may include less relevant items."
+            description = "Results per page (optional, default 30, max 100). Must be between 1 and 100. Controls pagination size for search results."
         )]
         per_page: Option<u8>,
 
         #[tool(param)]
         #[schemars(
-            description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages)."
+            description = "Page number for pagination (optional, default 1). Must be positive integer. GitHub limits total results to 1000 items, so max effective page depends on per_page value."
         )]
         page: Option<u32>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::gitcodes::repository_manager::providers::GitProvider;
-        use std::str::FromStr;
-
-        // Parse the provider string or use default (GitHub)
-        let git_provider = match provider.as_deref() {
-            Some(provider_str) => match GitProvider::from_str(provider_str) {
-                Ok(provider) => provider,
-                Err(_) => {
-                    return Self::error_result(format!(
-                        "Invalid provider: '{}'. Currently only 'github' is supported.",
-                        provider_str
-                    ));
-                }
-            },
-            None => GitProvider::Github, // Default to GitHub if not provided
-        };
-
-        // Now we can pass the SortOption and OrderOption directly to search_repositories
-        // since it accepts these types directly
-
-        // Execute the search against the specified provider using the repository manager
-        match self.manager.search_repositories(
-            git_provider,
+        inner_search_repositories(
+            &self.manager,
+            provider,
             query,
-            sort_by, // Pass directly since repository_manager uses the same enum types
-            order,  // Pass directly since repository_manager uses the same enum types
+            sort_by,
+            order,
             per_page,
             page,
-        ).await {
-            Ok(json_result) => {
-                // Parse the JSON string into our structured response type for validation
-                match serde_json::from_str::<RepositorySearchResponse>(&json_result) {
-                    Ok(_response) => {
-                        // Valid JSON - return the original JSON result to maintain compatibility
-                        Self::success_result(json_result)
-                    },
-                    Err(e) => Self::error_result(format!("Failed to parse search results: {}", e))
-                }
-            },
-            Err(err) => Self::error_result(format!("Search failed: {}", err)),
-        }
+        )
+        .await
     }
 
     /// Search code in a GitHub repository
@@ -371,78 +250,101 @@ impl GitHubCodeTools {
     /// 2. Code search is performed on the local files
     /// 3. Results are formatted and returned
     #[tool(
-        description = "Search code in a GitHub repository or local directory. For GitHub repos, clones the repository locally and searches for pattern matches. For local paths, searches directly in the specified directory. Supports public and private repositories, branch/tag selection, and regex search. The pattern is interpreted as a regular expression, and it's your responsibility to escape special characters for literal searches. For GitHub repositories, SSH URL format is most reliable, but HTTPS URLs will automatically fall back to SSH format if needed. Examples: SSH format (recommended): `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\", \"pattern\": \"fn main\"}}`. With branch: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"pattern\": \"async fn\"}}`. HTTPS format (with fallback): `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"https://github.com/user/repo\", \"pattern\": \"file\\.txt\"}}`. With search options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"pattern\": \"Deserialize\", \"case_sensitive\": true, \"file_extensions\": [\"rs\"]}}`. With context lines: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"fn main\", \"before_context\": 2, \"after_context\": 3}}`"
+        description = "Search code in GitHub repositories or local directories using regex patterns. Clones repos locally for searching. Supports private repos, branch selection, and context lines. Example: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\", \"pattern\": \"fn main\"}}`. With options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"async fn\", \"case_sensitive\": true}}`"
     )]
+    #[allow(clippy::too_many_arguments)]
     async fn grep_repository(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local file path (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
 
         #[tool(param)]
         #[schemars(
-            description = "Branch, Commit or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to search in. If the specified branch doesn't exist, falls back to 'main' or 'master'."
+            description = "Branch, commit, or tag (optional, default 'main'/'master'). Can be branch name (e.g. 'develop'), commit hash (full or short), or tag name (e.g. 'v1.0.0'). Falls back to repository's default branch if specified ref doesn't exist."
         )]
         ref_name: Option<String>,
 
         #[tool(param)]
         #[schemars(
-            description = "Search pattern (required) - the text pattern to search for in the code. Interpreted as a regular expression. You can use regex syntax such as: simple literals like 'function'; wildcards like 'log.txt' (matches 'log1txt' too because '.' matches any character); character classes '[0-9]+'; word boundaries '\\bword\\b'; line anchors '^function'; alternatives 'error|warning'; repetitions '.*'. For literal text search, YOU MUST escape special characters yourself. For example, to search for the literal string 'file.txt', use 'file\\.txt'; to search for 'array[0]', use 'array\\[0\\]'; to search for '2+2=4', use '2\\+2=4'. Escape the following characters when searching for them literally: '.', '*', '+', '?', '^', '$', '[', ']', '(', ')', '{', '}', '|', '\\'. You can use this logic to escape a pattern for literal search: for each character c in the pattern, if c is one of '.^$*+?()[]{}\\|', prepend it with '\\'."
+            description = "Regular expression pattern to search for (required). Escape special regex characters for literal searches: '.^$*+?()[]{}\\|' should be prefixed with backslash for literal matching. This parameter is required and must be provided."
         )]
         pattern: String,
 
         #[tool(param)]
         #[schemars(
-            description = "Whether to be case-sensitive (optional, default is false). When true, matching is exact with respect to letter case. When false, matches any letter case."
+            description = "Case-sensitive matching (optional, default false). When true, pattern matching distinguishes between uppercase and lowercase characters. When false or omitted, performs case-insensitive search."
         )]
         case_sensitive: Option<bool>,
 
         #[tool(param)]
         #[schemars(
-            description = "File extensions to search (optional, e.g., [\"rs\", \"toml\"]). Limits search to files with specified extensions. Omit to search all text files."
+            description = "[DEPRECATED] File extensions to search. Use include_globs instead."
         )]
         file_extensions: Option<Vec<String>>,
 
         #[tool(param)]
         #[schemars(
-            description = "Directories to exclude from search (optional, e.g., [\"target\", \"node_modules\"]). Skips specified directories during search. Common build directories are excluded by default."
+            description = "Glob patterns to include (optional). Filters files to search using glob syntax. Examples: [\"**/*.rs\"] (all Rust files), [\"src/**/*.md\"] (Markdown files in src), [\"*.json\", \"*.yaml\"] (config files). When omitted, searches all text files."
+        )]
+        include_globs: Option<Vec<String>>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Directories to exclude (optional). List of directory names to skip during search. Common examples: [\"target\", \"node_modules\"] (build artifacts), [\".git\", \".svn\"] (version control), [\"dist\", \"build\"] (output directories). When omitted, respects .gitignore patterns."
         )]
         exclude_dirs: Option<Vec<String>>,
-        
+
         #[tool(param)]
         #[schemars(
-            description = "Number of lines to include before each match (optional, default is 0). When provided, includes the specified number of lines before each match for additional context."
+            description = "Lines of context before each match (optional, default 0). Number of lines to show before matching line for context. Must be non-negative integer. Useful for understanding match context."
         )]
         before_context: Option<usize>,
-        
+
         #[tool(param)]
         #[schemars(
-            description = "Number of lines to include after each match (optional, default is 0). When provided, includes the specified number of lines after each match for additional context."
+            description = "Lines of context after each match (optional, default 0). Number of lines to show after matching line for context. Must be non-negative integer. Useful for understanding match context."
         )]
         after_context: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Number of results to skip for pagination (optional). Must be non-negative integer. Use with 'take' parameter to implement pagination. Example: skip=20, take=10 gets results 21-30."
+        )]
+        skip: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Maximum number of results to return (optional). Must be positive integer. Controls result set size to prevent overwhelming responses. Use with 'skip' parameter for pagination."
+        )]
+        take: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Maximum number of characters to show from matched content (optional, default 150). When matches contain very long lines, this parameter truncates the content to the specified number of characters to keep responses manageable. Set to None to show full content without truncation."
+        )]
+        match_content_omit_num: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
-        // Get the effective case sensitivity (default to false if not specified)
-        let case_sensitive = case_sensitive.unwrap_or(false);
-
-        // Process code search within the repository (grep)
-        // Handle repository cleanup in both success and error cases
-        
-
-        match services::perform_grep_in_repository(
-            &self.manager,
-            &repository_location,
+        let grep_params = services::GrepParams {
+            repository_location_str: repository_location.clone(),
             pattern,
-            ref_name.as_deref(),
-            case_sensitive,
-            file_extensions.as_ref(),
-            exclude_dirs.as_ref(),
+            ref_name: ref_name.clone(),
+            case_sensitive: case_sensitive.unwrap_or(false),
+            file_extensions: file_extensions.clone(),
+            include_globs: include_globs.clone(),
+            exclude_dirs: exclude_dirs.clone(),
             before_context,
             after_context,
-        )
-        .await
-        {
+            skip,
+            take,
+            match_content_omit_num,
+        };
+
+        let result = inner_grep_repositories(&self.manager, grep_params).await;
+
+        match result {
             Ok((result, _local_repo)) => {
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
@@ -450,8 +352,8 @@ impl GitHubCodeTools {
 
                 // Serialize the result to JSON and return it
                 match serde_json::to_string(&result) {
-                    Ok(json) => Self::success_result(json),
-                    Err(e) => Self::error_result(format!("Failed to serialize search results: {}", e))
+                    Ok(json) => success_result(json),
+                    Err(e) => error_result(format!("Failed to serialize search results: {}", e)),
                 }
             }
             Err(err) => {
@@ -463,7 +365,148 @@ impl GitHubCodeTools {
                 tracing::debug!("Repository kept for caching even after error");
 
                 // Return the original error as an error result
-                Self::error_result(format!("Code search failed: {}", err))
+                error_result(format!("Code search failed: {}", err))
+            }
+        }
+    }
+
+    /// Returns only the total number of matching lines for a code search
+    ///
+    /// This method is a lightweight alternative to `grep_repository` when you only need
+    /// the count of matching lines rather than the full match details. It performs the
+    /// same search operation but returns just a number indicating the total matches found.
+    ///
+    /// This is useful for estimating the size of a potential result set before doing a more
+    /// detailed search, or for scenarios where only the count matters (e.g., checking if a
+    /// pattern exists at all in a repository).
+    ///
+    /// # Authentication
+    ///
+    /// - For public repositories: No authentication needed
+    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    ///
+    /// # Implementation Note
+    ///
+    /// This method uses the same internal search mechanism as `grep_repository` but only
+    /// returns the total count of matches rather than the full result details.
+    #[tool(
+        description = "Count matching lines in repository code search. Works like grep_repository but returns only the total count. Example: `{\"name\": \"grep_repository_match_line_number\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"pattern\": \"fn main\"}}`"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn grep_repository_match_line_number(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+        )]
+        repository_location: String,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Branch, commit, or tag (optional, default 'main'/'master'). Can be branch name (e.g. 'develop'), commit hash (full or short), or tag name (e.g. 'v1.0.0'). Falls back to repository's default branch if specified ref doesn't exist."
+        )]
+        ref_name: Option<String>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Regular expression pattern to search for (required). Escape special regex characters for literal searches: '.^$*+?()[]{}\\|' should be prefixed with backslash for literal matching. This parameter is required and must be provided."
+        )]
+        pattern: String,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Case-sensitive matching (optional, default false). When true, pattern matching distinguishes between uppercase and lowercase characters. When false or omitted, performs case-insensitive search."
+        )]
+        case_sensitive: Option<bool>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "[DEPRECATED] File extensions to search. Use include_globs instead."
+        )]
+        file_extensions: Option<Vec<String>>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Glob patterns to include (optional). Filters files to search using glob syntax. Examples: [\"**/*.rs\"] (all Rust files), [\"src/**/*.md\"] (Markdown files in src), [\"*.json\", \"*.yaml\"] (config files). When omitted, searches all text files."
+        )]
+        include_globs: Option<Vec<String>>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Directories to exclude (optional). List of directory names to skip during search. Common examples: [\"target\", \"node_modules\"] (build artifacts), [\".git\", \".svn\"] (version control), [\"dist\", \"build\"] (output directories). When omitted, respects .gitignore patterns."
+        )]
+        exclude_dirs: Option<Vec<String>>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Lines of context before each match (optional, default 0). Number of lines to show before matching line for context. Must be non-negative integer. Useful for understanding match context."
+        )]
+        before_context: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Lines of context after each match (optional, default 0). Number of lines to show after matching line for context. Must be non-negative integer. Useful for understanding match context."
+        )]
+        after_context: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Number of results to skip for pagination (optional). Must be non-negative integer. Use with 'take' parameter to implement pagination. Example: skip=20, take=10 gets results 21-30."
+        )]
+        skip: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Maximum number of results to return (optional). Must be positive integer. Controls result set size to prevent overwhelming responses. Use with 'skip' parameter for pagination."
+        )]
+        take: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Maximum number of characters to show from matched content (optional, default 150). When matches contain very long lines, this parameter truncates the content to the specified number of characters to keep responses manageable. Set to None to show full content without truncation."
+        )]
+        match_content_omit_num: Option<usize>,
+    ) -> Result<CallToolResult, McpError> {
+        let grep_params = services::GrepParams {
+            repository_location_str: repository_location.clone(),
+            pattern,
+            ref_name: ref_name.clone(),
+            case_sensitive: case_sensitive.unwrap_or(false),
+            file_extensions: file_extensions.clone(),
+            include_globs: include_globs.clone(),
+            exclude_dirs: exclude_dirs.clone(),
+            before_context,
+            after_context,
+            skip,
+            take,
+            match_content_omit_num,
+        };
+
+        let result = inner_grep_repositories(&self.manager, grep_params).await;
+
+        match result {
+            Ok((result, _local_repo)) => {
+                // Note: We don't clean up the repository here to use it as a cache
+                // This improves performance for subsequent operations
+                tracing::debug!("Repository kept for caching");
+
+                // Serialize the result to JSON and return it
+                // Just return the total number of matches as a simple number
+                match serde_json::to_string(&result.total_match_line_number) {
+                    Ok(json) => success_result(json),
+                    Err(e) => error_result(format!("Failed to serialize match count: {}", e)),
+                }
+            }
+            Err(err) => {
+                // Search failed, try to clean up repository if it was created
+                tracing::error!("Code search failed: {}", err);
+
+                // Note: We don't clean up the repository here even on error
+                // to preserve it for potential future operations
+                tracing::debug!("Repository kept for caching even after error");
+
+                // Return the original error as an error result
+                error_result(format!("Code search failed: {}", err))
             }
         }
     }
@@ -485,42 +528,58 @@ impl GitHubCodeTools {
     /// 2. Fetches all branches and tags
     /// 3. Formats the results into a readable format
     #[tool(
-        description = "List branches and tags for a GitHub repository. Clones the repository locally and retrieves all branches and tags. Returns a formatted list of available references. For GitHub repositories, SSH URL format is most reliable, but HTTPS URLs will automatically fall back to SSH format if needed. Example with SSH format (recommended): `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\"}}`. With HTTPS format: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository_location\": \"https://github.com/rust-lang/rust\"}}`. With github prefix: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\"}}`"
+        description = "List all branches and tags for a repository. Clones locally to retrieve references. Example: `{\"name\": \"list_repository_refs\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\"}}`"
     )]
     async fn list_repository_refs(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local file path (posix only) (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
     ) -> Result<CallToolResult, McpError> {
         // Use the repository manager directly to handle repository refs listing
-        match self.manager.list_repository_refs(&repository_location).await {
-            Ok((refs_json, local_repo)) => {
+        match self
+            .manager
+            .list_repository_refs(&repository_location)
+            .await
+        {
+            Ok((repo_refs, local_repo)) => {
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
                 if local_repo.is_some() {
                     tracing::debug!("Repository kept for caching");
                 }
-                
-                // Parse the raw JSON array of GitRefObject into a properly structured RepositoryRefsResponse
-                // by separating branches and tags
-                let transformed_json = match Self::transform_refs_json(&refs_json) {
-                    Ok(json) => json,
-                    Err(e) => return Self::error_result(format!("Failed to transform repository refs: {}", e)),
+
+                // Convert the structured repository refs to our response format
+                let response = responses::RepositoryRefsResponse {
+                    branches: repo_refs
+                        .branches
+                        .into_iter()
+                        .map(|ref_info| responses::ReferenceInfo {
+                            name: ref_info.name,
+                            full_ref: ref_info.full_ref,
+                            commit_id: ref_info.commit_id,
+                        })
+                        .collect(),
+                    tags: repo_refs
+                        .tags
+                        .into_iter()
+                        .map(|ref_info| responses::ReferenceInfo {
+                            name: ref_info.name,
+                            full_ref: ref_info.full_ref,
+                            commit_id: ref_info.commit_id,
+                        })
+                        .collect(),
                 };
-                
-                // Validate the transformed JSON against our response type
-                match serde_json::from_str::<responses::RepositoryRefsResponse>(&transformed_json) {
-                    Ok(_) => {
-                        // Valid JSON - return the transformed JSON result
-                        Self::success_result(transformed_json)
-                    },
-                    Err(e) => Self::error_result(format!("Failed to validate repository refs: {}", e))
+
+                // Serialize the response to JSON
+                match serde_json::to_string(&response) {
+                    Ok(json) => success_result(json),
+                    Err(e) => error_result(format!("Failed to serialize repository refs: {}", e)),
                 }
-            },
-            Err(err) => Self::error_result(format!("Failed to list repository refs: {}", err)),
+            }
+            Err(err) => error_result(format!("Failed to list repository refs: {}", err)),
         }
     }
 
@@ -541,79 +600,78 @@ impl GitHubCodeTools {
     /// 2. File contents are retrieved and processed
     /// 3. Results are formatted and returned based on file type (text, binary, or image)
     #[tool(
-        description = "View the contents of a file in a GitHub repository or local directory. For GitHub repos, clones the repository locally and retrieves the file contents. For local paths, reads directly from the specified directory. Supports public and private repositories, branch/tag selection, and viewing specific line ranges. Examples: SSH format (recommended): `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\", \"file_path\": \"README.md\"}}`. With branch: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"github:tokio-rs/tokio\", \"ref_name\": \"master\", \"file_path\": \"Cargo.toml\"}}`. HTTPS format (with fallback): `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"https://github.com/user/repo\", \"file_path\": \"src/main.rs\"}}`. With line range: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"/path/to/local/repo\", \"file_path\": \"src/lib.rs\", \"line_from\": 10, \"line_to\": 20}}`"
+        description = "View file contents from repositories or local directories. Supports line ranges and branch selection. Example: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"file_path\": \"README.md\"}}`. With range: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"file_path\": \"src/lib.rs\", \"line_from\": 10, \"line_to\": 20}}`"
     )]
+    #[allow(clippy::too_many_arguments)]
     async fn show_file_contents(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local file path (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
 
         #[tool(param)]
         #[schemars(
-            description = "Branch, Commit or tag (optional, default is 'main' or 'master'). Specifies which branch or tag to view from. If the specified branch doesn't exist, falls back to 'main' or 'master'."
+            description = "Branch, commit, or tag (optional, default 'main'/'master'). Can be branch name (e.g. 'develop'), commit hash (full or short), or tag name (e.g. 'v1.0.0'). Falls back to repository's default branch if specified ref doesn't exist."
         )]
         ref_name: Option<String>,
 
         #[tool(param)]
         #[schemars(
-            description = "File path within the repository (required) - the path to the file relative to the repository root, e.g., 'README.md', 'src/main.rs'. Can start with or without a slash. Paths containing '..' (parent directory references) are rejected for security reasons."
+            description = "File path relative to repository root (required). Paths with '..' are rejected for security. This parameter is required and must be provided to specify which file to view."
         )]
         file_path: String,
 
         #[tool(param)]
         #[schemars(
-            description = "Maximum file size in bytes to read (optional). Files larger than this will be rejected to prevent excessive memory usage. If not specified, a reasonable default is used."
+            description = "Maximum file size in bytes (optional). Must be positive integer. Prevents loading extremely large files that could cause memory issues. Example: 1048576 for 1MB limit. When omitted, uses reasonable default limit."
         )]
         max_size: Option<usize>,
 
         #[tool(param)]
         #[schemars(
-            description = "Start line number (optional, 1-indexed). If provided, only shows file content starting from this line number. Useful for viewing specific sections of large files."
+            description = "Start line number (optional, 1-indexed). Must be positive integer. Use with line_to to view specific file sections. Example: line_from=10 starts from line 10. When omitted, starts from beginning of file."
         )]
         line_from: Option<usize>,
 
         #[tool(param)]
         #[schemars(
-            description = "End line number (optional, 1-indexed, inclusive). If provided, only shows file content up to and including this line number. Useful for viewing specific sections of large files."
+            description = "End line number (optional, 1-indexed, inclusive). Must be positive integer and >= line_from. Use with line_from to view specific file sections. Example: line_to=20 ends at line 20. When omitted, reads to end of file."
         )]
         line_to: Option<usize>,
-        
+
         #[tool(param)]
         #[schemars(
-            description = "Whether to show text content without line numbers (optional, default is false). When true, displays the entire file content as plain text. When false (default), displays file content with line numbers in the format 'file_path:line_number:line_content'."
+            description = "Show content without line numbers (optional, default false). When true, returns plain file content. When false or omitted, includes line numbers for easier reference. Useful for copying code snippets."
         )]
         without_line_numbers: Option<bool>,
     ) -> Result<CallToolResult, McpError> {
         // Process file viewing within the repository
         // Handle repository cleanup in both success and error cases
-        
-        // Clone file_path to retain ownership of the original for later use
-        let file_path_clone = file_path.clone();
-        
-        match services::show_file_contents(
-            &self.manager,
-            &repository_location,
-            file_path_clone,
-            ref_name.as_deref(),
+
+        let show_params = services::ShowFileParams {
+            repository_location_str: repository_location.clone(),
+            file_path: file_path.clone(),
+            ref_name: ref_name.clone(),
             max_size,
             line_from,
             line_to,
             without_line_numbers,
-        )
-        .await
+        };
+
+        match services::show_file_contents(&self.manager, show_params)
+            .await
         {
             Ok((file_contents, _local_repo, _without_line_numbers)) => {
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
                 tracing::debug!("Repository kept for caching");
-                
+
                 // Serialize the FileContents to JSON and return it
                 match serde_json::to_string(&file_contents) {
-                    Ok(json) => Self::success_result(json),
-                    Err(e) => Self::error_result(format!("Failed to serialize file contents: {}", e))
+                    Ok(json) => success_result(json),
+                    Err(e) => error_result(format!("Failed to serialize file contents: {}", e)),
                 }
             }
             Err(err) => {
@@ -625,8 +683,189 @@ impl GitHubCodeTools {
                 tracing::debug!("Repository kept for caching even after error");
 
                 // Return the original error as an error result
-                Self::error_result(format!("File viewing failed: {}", err))
+                error_result(format!("File viewing failed: {}", err))
             }
         }
     }
+
+    /// Get the directory tree structure of a repository
+    ///
+    /// This method returns a hierarchical representation of all files and directories
+    /// in the repository, showing the repository's structure in tree format.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour for GitHub repositories
+    /// - With a token, allows 5,000 requests/hour for GitHub repositories
+    /// - Local repositories don't require authentication
+    ///
+    /// # Rate Limiting
+    ///
+    /// GitHub API has rate limits that vary based on authentication:
+    /// - Unauthenticated: 60 requests/hour
+    /// - Authenticated: 5,000 requests/hour
+    #[tool(
+        description = "Get repository directory tree in hierarchical format. Supports depth limits, .gitignore filtering, and relative paths. Example: `{\"name\": \"get_repository_tree\", \"arguments\": {\"repository_location\": \"github:user/repo\"}}`. With options: `{\"name\": \"get_repository_tree\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"depth\": 2, \"search_relative_path\": \"src\"}}`"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn get_repository_tree(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+        )]
+        repository_location: String,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Branch, commit, or tag (optional, default 'main'/'master'). Can be branch name (e.g. 'develop'), commit hash (full or short), or tag name (e.g. 'v1.0.0'). Falls back to repository's default branch if specified ref doesn't exist."
+        )]
+        ref_name: Option<String>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Case-sensitive path matching (optional, default false). When true, file and directory name matching distinguishes between uppercase and lowercase. When false or omitted, uses case-insensitive path matching."
+        )]
+        case_sensitive: Option<bool>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Respect .gitignore files (optional, default true). When true or omitted, excludes files and directories listed in .gitignore. When false, includes all files regardless of .gitignore rules. Useful for seeing complete repository structure."
+        )]
+        respect_gitignore: Option<bool>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Maximum traversal depth (optional, default unlimited). Must be positive integer. Depth 1 shows only top-level items, depth 2 includes one level of subdirectories, etc. When omitted, traverses entire directory tree. Useful for limiting large directory structures."
+        )]
+        depth: Option<usize>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Strip repository path prefix (optional, default true). When true or omitted, shows relative paths from repository root. When false, shows full absolute filesystem paths. Relative paths are usually more readable and portable."
+        )]
+        strip_path_prefix: Option<bool>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Relative path to start tree generation from (optional). Path relative to repository root where tree traversal begins. Examples: 'src' (start from src directory), 'docs/api' (start from docs/api subdirectory). When omitted, starts from repository root. Useful for focusing on specific parts of large repositories."
+        )]
+        search_relative_path: Option<String>,
+    ) -> Result<CallToolResult, McpError> {
+        // Process tree retrieval within the repository
+        // Handle repository cleanup in both success and error cases
+
+        let tree_params = services::TreeServiceParams {
+            repository_location_str: repository_location.clone(),
+            ref_name: ref_name.clone(),
+            case_sensitive,
+            respect_gitignore,
+            depth,
+            strip_path_prefix,
+            search_relative_path: search_relative_path.map(std::path::PathBuf::from),
+        };
+
+        match services::get_repository_tree(&self.manager, tree_params)
+            .await
+        {
+            Ok((tree, _local_repo)) => {
+                // Note: We don't clean up the repository here to use it as a cache
+                // This improves performance for subsequent operations
+                tracing::debug!("Repository kept for caching");
+
+                // Serialize the tree to JSON and return it
+                match serde_json::to_string(&tree) {
+                    Ok(json) => success_result(json),
+                    Err(e) => error_result(format!("Failed to serialize repository tree: {}", e)),
+                }
+            }
+            Err(err) => {
+                // Tree retrieval failed, try to clean up repository if it was created
+                tracing::error!("Tree retrieval failed: {}", err);
+
+                // Note: We don't clean up the repository here even on error
+                // to preserve it for potential future operations
+                tracing::debug!("Repository kept for caching even after error");
+
+                // Return the original error as an error result
+                error_result(format!("Tree retrieval failed: {}", err))
+            }
+        }
+    }
+}
+
+async fn inner_search_repositories(
+    repository_manager: &RepositoryManager,
+    provider: Option<String>,
+    query: String,
+    sort_by: Option<SortOption>,
+    order: Option<OrderOption>,
+    per_page: Option<u8>,
+    page: Option<u32>,
+) -> Result<CallToolResult, McpError> {
+    // Parse the provider string or use default (GitHub)
+    let git_provider = match provider.as_deref() {
+        Some(provider_str) => match GitProvider::from_str(provider_str) {
+            Ok(provider) => provider,
+            Err(_) => {
+                return error_result(format!(
+                    "Invalid provider: '{}'. Currently only 'github' is supported.",
+                    provider_str
+                ));
+            }
+        },
+        None => GitProvider::Github, // Default to GitHub if not provided
+    };
+
+    // Now we can pass the SortOption and OrderOption directly to search_repositories
+    // since it accepts these types directly
+
+    // Execute the search against the specified provider using the repository manager
+
+    match repository_manager
+        .search_repositories(
+            git_provider,
+            query,
+            sort_by, // Pass directly since repository_manager uses the same enum types
+            order,   // Pass directly since repository_manager uses the same enum types
+            per_page,
+            page,
+        )
+        .await
+    {
+        Ok(search_results) => {
+            // Serialize the structured result to JSON
+            match serde_json::to_string(&search_results) {
+                Ok(json_result) => success_result(json_result),
+                Err(e) => error_result(format!("Failed to serialize search results: {}", e)),
+            }
+        }
+        Err(err) => error_result(format!("Search failed: {}", err)),
+    }
+}
+
+async fn inner_grep_repositories(
+    repository_manager: &RepositoryManager,
+    grep_params: services::GrepParams,
+) -> Result<
+    (
+        CodeSearchResult,
+        crate::gitcodes::local_repository::LocalRepository,
+    ),
+    String,
+> {
+    services::perform_grep_in_repository(repository_manager, grep_params)
+        .await
+}
+
+/// Helper method to create a CallToolResult for successful responses
+fn success_result(json: String) -> Result<CallToolResult, McpError> {
+    Ok(CallToolResult::success(vec![Content::text(json)]))
+}
+
+/// Helper method to create a CallToolResult for error responses
+fn error_result(message: impl Into<String>) -> Result<CallToolResult, McpError> {
+    let error_message = message.into();
+    Ok(CallToolResult::error(vec![Content::text(error_message)]))
 }

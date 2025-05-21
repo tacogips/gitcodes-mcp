@@ -1,8 +1,157 @@
 # Development Log
 
+### Lumin 0.1.13 Upgrade: Improved Glob Pattern Support
+
+Upgraded Lumin from 0.1.12 to 0.1.13, which includes improvements to glob pattern support.
+
+#### Glob Pattern Best Practices
+
+- Use `"**/*.ext"` to match files with specific extensions (e.g., `"**/*.rs"` for Rust files)
+- Use `"**/dirname/**"` to match files in directories at any level (not just `"dirname/**"`)
+- Always prefix with `"**/"` for nested directory matching to work correctly
+
+We've improved documentation in the `perform_code_search` method to provide clear guidance on glob pattern usage. The improved glob support in Lumin 0.1.13 allows for better file filtering during code searches.
+
+#### API Evolution for File Filtering
+
+With improved glob support in Lumin 0.1.13, we've deprecated the `file_extensions` parameter in favor of the more flexible `include_glob` parameter. The `include_glob` approach offers several advantages:
+
+- More precise pattern matching with full glob syntax
+- Support for path-based filters, not just extensions
+- Direct mapping to Lumin's internal filtering mechanisms
+
+For backward compatibility, we continue to support `file_extensions` by automatically converting it to appropriate glob patterns. However, new code should use `include_glob` directly.
+
 This file documents the architectural decisions and implementation patterns for the GitCodes MCP project. It's organized by pattern categories rather than chronological history to better guide future code generation.
 
 **IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the patterns documented here.
+
+### Tool Description Optimization Pattern
+
+Optimized MCP tool descriptions for better readability and maintainability by reducing verbosity while preserving essential information.
+
+#### Description Slimming Strategy
+
+Applied consistent patterns to slim down tool descriptions:
+- Reduced multiple examples to 1-2 most representative ones
+- Removed redundant explanatory text 
+- Condensed parameter descriptions to core functionality
+- Eliminated repetitive format explanations
+
+Example transformation for repository location parameters:
+```rust
+// Before (verbose)
+description = "Repository URL or local file path (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations..."
+
+// After (concise)  
+description = "Repository URL or local path. Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable."
+```
+
+#### Consistent Parameter Description Patterns
+
+Established standard formats for common parameter types:
+- Boolean options: "Description (optional, default value)"
+- Numeric limits: "Description (optional, default X, max Y)" 
+- File patterns: "Description (optional). Example: [\"pattern1\", \"pattern2\"]"
+- Context parameters: "Lines of context before/after each match (optional, default 0)"
+
+This optimization improves tool usability while maintaining all necessary functionality information.
+
+### Directory Tree Generation and Gitignore Handling
+
+Implemented comprehensive directory tree functionality with sophisticated gitignore handling through the `get_tree_with_params` method on `LocalRepository`.
+
+#### TreeParams Pattern for Flexible Configuration
+
+The tree generation uses a parameter object pattern for clean, extensible configuration:
+
+```rust
+pub struct TreeParams {
+    pub case_sensitive: Option<bool>,
+    pub search_relative_path: Option<PathBuf>,
+    pub respect_gitignore: Option<bool>,
+    pub depth: Option<usize>,
+    pub strip_path_prefix: Option<bool>,
+}
+```
+
+All fields are `Option<T>` to allow for defaults, following the "null object" pattern where `None` represents sensible defaults.
+
+#### Gitignore Behavior Design
+
+The `respect_gitignore` parameter implements a critical design decision:
+
+- **Default (`None` or `Some(true)`)**: Respects `.gitignore` files for clean, performance-optimized trees
+- **Debug mode (`Some(false)`)**: Includes all files for complete filesystem visibility
+
+This dual-mode approach balances common use cases (clean source code view) with debugging needs (complete file visibility).
+
+#### Path Manipulation Pattern
+
+The implementation demonstrates proper `PathBuf` usage:
+
+```rust
+// WRONG: String concatenation
+let tree_root_path = self.repository_location + relative_path;
+
+// CORRECT: PathBuf join method
+let tree_root_path = self.repository_location.join(relative_path);
+```
+
+The pattern extracts `search_relative_path` before converting `TreeParams` to `lumin::TreeOptions` because the underlying library doesn't support this field directly.
+
+#### Test Environment Independence
+
+Tree tests demonstrate environment-independent testing by using dynamic repository cloning instead of local file references:
+
+```rust
+// PROBLEMATIC: Direct local dependency
+fn get_test_repository() -> LocalRepository {
+    let repo_path = PathBuf::from(".private.deps-src/gitcodes-mcp-test-1");
+    LocalRepository::new(repo_path)
+}
+
+// SOLUTION: Dynamic cloning with RepositoryManager
+async fn get_test_repository() -> LocalRepository {
+    let manager = create_test_manager();
+    let repo_location = RepositoryLocation::from_str(TEST_REPO_URL)?;
+    manager.prepare_repository(&repo_location, None).await?
+}
+```
+
+This pattern ensures tests work in CI/CD environments and other developer machines where local dependencies aren't available.
+
+#### Performance Optimization Patterns
+
+Tree generation implements several performance optimizations:
+
+- **Gitignore respect**: Default behavior skips ignored directories for faster processing
+- **Depth limiting**: Optional `depth` parameter prevents excessive recursion
+- **Path focusing**: `search_relative_path` allows targeted subdirectory analysis
+
+These patterns reduce memory usage and processing time for large repositories.
+
+### Robust URL Handling for GitHub Repositories
+
+- Enhanced URL normalization for GitHub repositories to handle HTTPS URL inconsistencies
+- Implemented fallback strategy for repository cloning (HTTPS → SSH)
+- Addressed gitoxide HTTP transport issues with GitHub URL redirects
+- Added comprehensive error messages with specific remediation actions for different error types
+- Fixed HTTPS URL handling by enabling HTTP redirect following in gix transport
+
+#### Repository URL Preprocessing Pattern
+
+- Normalized GitHub URLs by consistently removing `.git` suffix which causes redirect issues
+- Added support for different URL formats (with/without trailing slash)
+- Ensured proper path normalization by removing any extra leading slashes
+- Properly handled authentication tokens in URLs with secure logging (redaction of sensitive information)
+- Configured redirect following in the gix transport layer to solve GitHub redirect issues (see https://github.com/GitoxideLabs/gitoxide/issues/974)
+
+#### HTTP Transport Configuration Pattern
+
+- Used `with_in_memory_config_overrides(["http.followRedirects=true"])` to enable redirect following
+- Applied configuration before attempting to fetch, enabling proper handling of GitHub redirects
+- Reference implementation in `gix-transport/src/client/blocking_io/http/reqwest/remote.rs`
 
 ### Native Git Operations Using Gitoxide (gix)
 
@@ -18,6 +167,16 @@ This file documents the architectural decisions and implementation patterns for 
 - Maintained fetch from all configured remotes, continuing on individual failures
 - Structured error handling to provide meaningful context about which stage of the fetch failed
 - Integrated fetch operation into `services::list_repository_refs` function to ensure local repositories are updated before listing references
+
+#### Repository Cloning Error Handling Improvements
+
+- Improved HTTPS URL normalization to properly handle GitHub URLs with and without .git suffix
+- Implemented explicit URL preprocessing for HTTPS GitHub URLs to avoid transport errors
+- Enhanced HTTPS to SSH URL conversion as a reliable fallback mechanism
+- Improved error logging by capturing and logging detailed error information from gitoxide
+- Added more specific error detection and handling for "IO error occurred when talking to the server" errors
+- Updated CLI error messages to provide more targeted guidance based on error signatures
+- Documentation now recommends using 'https://github.com/user/repo' format without .git suffix for HTTPS URLs
 - Implemented robust tests that verify fetch operation in both direct usage and service integration scenarios
 
 ```rust
@@ -121,6 +280,25 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
 ```
 
 ## Type System Patterns
+
+### Pagination Defaults at Service Layer
+
+- **Pattern:** Apply sensible default values for pagination parameters at the service layer rather than at the API boundary
+- **Rationale:** Ensures consistent behavior across different tool interfaces while maintaining flexibility for explicit control
+- **Implementation:**
+  ```rust
+  // In service layer functions, apply defaults using Option::or()
+  let search_params = CodeSearchParams {
+      // ... other fields
+      skip: params.skip, // Allow explicit None for no skipping
+      take: params.take.or(Some(50)), // Default to 50 if not specified
+  };
+  ```
+- **Benefits:**
+  - Prevents unbounded result sets that could overwhelm system resources
+  - Provides predictable behavior for MCP tools
+  - Allows explicit override when needed (pass Some(value) or None)
+  - Documents expected usage patterns through reasonable defaults
 
 ### Structured Return Types over JSON Strings
 
@@ -716,9 +894,88 @@ pub async fn show_file_contents(
 
 This enhancement makes it possible to get clean file contents without line numbers, which can be useful for copying code snippets or when line numbers would interfere with further processing of the content.
 
+### CLI Tracing Configuration Improvements
+
+Enhanced the logging configuration for the CLI tool to provide a better user experience:
+
+1. **Verbose-Only Logging**
+   - Tracing logs are now only shown when the `--verbose` flag is used
+   - Without the flag, only the actual command output is displayed
+   - This makes the default output much cleaner for regular use
+
+2. **Debug Log Level**
+   - Added proper separation between `--verbose` (INFO level) and `--debug` (DEBUG level) 
+   - Debug-specific details are only shown when explicitly requested
+
+3. **Clean Log Format**
+   - Removed thread IDs from log output
+   - Removed file names and line numbers
+   - Replaced ISO timestamps with simple elapsed time
+   - Makes logs more compact and easier to read
+
 ### HTTPS to SSH URL Fallback for Git Clone Operations
 
-Added a fallback mechanism to automatically convert HTTPS GitHub URLs to SSH format when clone operations fail. This addresses network connectivity issues when using HTTPS URLs for git operations.
+To solve the gitoxide HTTP redirect handling issues with GitHub repositories, we implemented a URL conversion pattern that automatically transforms HTTPS URLs to SSH format (`git@github.com:user/repo.git`) for better reliability with the gitoxide library. The implementation includes:
+
+1. **Adding Converter Methods to Repository Types**:
+   ```rust
+   impl GithubRemoteInfo {
+       /// Converts the repository URL to SSH format to avoid HTTPS URL handling issues with gitoxide
+       pub fn to_ssh_url(&self) -> String {
+           format!("git@github.com:{}/{}.git", self.repo_info.user, self.repo_info.repo)
+       }
+   }
+   
+   impl GitRemoteRepository {
+       /// Converts the repository URL to SSH format
+       pub fn to_ssh_url(&self) -> String {
+           match self {
+               GitRemoteRepository::Github(github_info) => github_info.to_ssh_url(),
+           }
+       }
+   }
+   ```
+
+2. **Proactively Using SSH URLs for GitHub HTTPS Repositories**:
+   ```rust
+   // For GitHub repositories with HTTPS URLs, use SSH format to avoid HTTP redirect issues with gitoxide
+   let clone_url = if remote_repository.clone_url().starts_with("https://github.com") {
+       // Use SSH URL format for GitHub HTTPS URLs to avoid redirect issues
+       let original_url = remote_repository.clone_url();
+       let ssh_url = remote_repository.to_ssh_url();
+       tracing::info!("Converting GitHub HTTPS URL '{}' to SSH format '{}'", original_url, ssh_url);
+       ssh_url
+   } else {
+       // For non-GitHub or already SSH URLs, use the original URL
+       remote_repository.clone_url()
+   };
+   ```
+
+3. **Multi-Stage Fallback Mechanism**:
+   If the primary clone attempt fails, we've implemented a cascading fallback pattern that tries multiple URL formats:
+   - First attempt: SSH URL format (using the to_ssh_url method)
+   - Second attempt: HTTPS URL with explicit .git suffix
+   - Third attempt: Another SSH URL format (direct construction)
+   
+   This ensures maximum reliability when working with GitHub repositories while still preserving the user's original URL format in the repository information.
+   
+4. **Comprehensive URL Normalization**:
+   ```rust
+   let user_repo = if url.starts_with("https://github.com") {
+       // Handle both with and without trailing slash
+       if url.starts_with("https://github.com/") {
+           url.trim_start_matches("https://github.com/")
+       } else {
+           url.trim_start_matches("https://github.com")
+       }
+       .trim_start_matches('/')
+       .trim_end_matches('/')
+       .trim_end_matches(".git")
+       .to_string()
+   }
+   ```
+
+This approach solves the gitoxide HTTPS URL handling issue described in https://github.com/GitoxideLabs/gitoxide/issues/974 without requiring changes to the underlying gitoxide library.
 
 ```rust
 // If HTTPS URL fails, try converting to SSH URL format as a fallback
@@ -728,6 +985,118 @@ if fetch_result.is_err() && clone_url.starts_with("https://github.com") {
     );
     
     // Convert https://github.com/user/repo to git@github.com:user/repo.git
+```
+
+### Specialized Repository Search Tools
+
+Added a specialized variant of the `grep_repository` tool called `grep_repository_match_line_number` that returns only the total count of matching lines. This tool uses the same search mechanism but provides a more lightweight response when only the count is needed.
+
+The implementation leverages the new `total_match_line_number` field in the `CodeSearchResult` struct, which stores the total number of matching lines found during a search operation. This field is useful for pagination and for determining the total size of a result set without processing all matches.
+
+```rust
+pub struct CodeSearchResult {
+    /// Total number of matching lines found
+    pub total_match_line_number: usize,
+    
+    /// List of search matches found
+    pub matches: Vec<LuminSearchResultLine>,
+    // ... other fields
+}
+```
+
+The tool implementation extracts this count and returns it as a simple JSON number:
+
+```rust
+// Inside grep_repository_match_line_number implementation
+match serde_json::to_string(&result.total_match_line_number) {
+    Ok(json) => success_result(json),
+    Err(e) => error_result(format!("Failed to serialize match count: {}", e)),
+}
+```
+
+This approach provides a more efficient way to get just the count of matches without transferring all the match data, useful for applications that need to know the total number of matches before deciding whether to retrieve the full results.
+
+### Enhanced GitHub URL Handling and Cloning
+
+Improved GitHub URL handling to ensure that HTTPS URLs consistently include the `.git` suffix, which significantly improves cloning reliability.
+
+```rust
+// Generate proper clone URL with .git suffix for GitHub URLs
+let clone_url = if url.starts_with("https://github.com/") {
+    if url.ends_with(".git") {
+        url.to_string() // Already has .git suffix
+    } else {
+        format!("https://github.com/{}/{}.git", user_clone, repo_clone) // Add .git suffix
+    }
+} else if url.starts_with("github:") {
+    // Convert github:user/repo to https://github.com/user/repo.git
+    format!("https://github.com/{}/{}.git", user_clone, repo_clone)
+} else {
+    url.to_string() // Keep original URL for other formats
+};
+```
+
+### Enhanced Multi-Layered Repository Cloning
+
+Built on the HTTPS to SSH fallback by implementing a full multi-layered approach to git repository cloning with three distinct layers of fallback mechanisms:
+
+1. First attempt uses the `gix` library with the provided URL (typically HTTPS)
+2. If that fails and it's a GitHub URL, attempt with SSH URL format through `gix`
+3. As a final fallback, use the system `git` command directly via process execution
+
+This approach significantly improves reliability across different network configurations and environments.
+
+```rust
+// If HTTPS URL fails, try alternative approaches
+if fetch_result.is_err() && clone_url.starts_with("https://github.com") {
+    // First attempt: Try with SSH URL format
+    tracing::info!("HTTPS clone failed, attempting fallback to SSH URL format");
+    
+    // Convert https://github.com/user/repo to git@github.com:user/repo.git
+    let github_path = clone_url.trim_start_matches("https://github.com/");
+    let ssh_url = format!("git@github.com:{}.git", github_path);
+    
+    // Try again with SSH URL through gix library
+    fetch_result = PrepareFetch::new(
+        ssh_url.as_str(),
+        repo_dir.clone(),
+        Kind::WithWorktree,
+        gix::create::Options::default(),
+        OpenOptions::default(),
+    );
+    
+    // If SSH also fails, try with system git command as a last resort
+    if fetch_result.is_err() {
+        tracing::info!("SSH URL also failed, attempting with system git command");
+        
+        // Try with system git command
+        let output = std::process::Command::new("git")
+            .arg("clone")
+            .arg(&clone_url)
+            .arg(repo_dir.as_os_str())
+            .output();
+            
+        // Handle the result of system git command
+        if let Ok(output) = output {
+            if output.status.success() {
+                tracing::info!("Successfully cloned using system git command");
+                return Ok(local_repo);
+            }
+        }
+    }
+}
+```
+
+### Diagnostic Tools for Git Operations
+
+Added a dedicated diagnostic tool `git_diagnostic.rs` to help diagnose and troubleshoot git-related issues. This tool:
+
+1. Attempts to clone repositories using both HTTPS and SSH URLs
+2. Tests repository checkout operations
+3. Validates git configuration (proxy settings, SSH keys)
+4. Provides detailed output for diagnosing connectivity issues
+
+The diagnostic tool is particularly useful for environments with network restrictions or non-standard git configurations.
     let github_path = clone_url.trim_start_matches("https://github.com/");
     let ssh_url = format!("git@github.com:{}.git", github_path);
     
@@ -1024,6 +1393,34 @@ pub fn prevent_directory_traversal(path: &PathBuf) -> Result<(), String> {
 
 This pattern promotes:
 1. Code reuse across different components
+
+### File URL Support for Repository Locations
+
+Enhanced `RepositoryLocation` to support `file://` URLs as local repository paths:
+
+```rust
+// Handle file:// URLs by converting them to local paths
+let path_str = if sanitized_location.starts_with("file:") {
+    // Strip the file: or file:// prefix to get the actual path
+    let path_part = sanitized_location.strip_prefix("file://")
+        .or_else(|| sanitized_location.strip_prefix("file:"))
+        .unwrap_or(sanitized_location);
+    path_part
+} else {
+    sanitized_location
+};
+```
+
+This implementation:
+1. Detects strings starting with `file:` prefix
+2. Properly handles both `file://` and `file:` formats
+3. Converts file URLs to local paths before checking their existence
+4. Updates all relevant documentation
+
+This pattern promotes:
+1. Flexibility in repository location specification
+2. Support for standard file URL formats
+3. Compatibility with tools that generate file:// paths
 2. Consistent security implementations
 3. Better testability of security functions
 4. Clear separation between business logic and security concerns

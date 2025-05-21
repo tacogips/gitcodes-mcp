@@ -39,22 +39,20 @@ async fn test_perform_grep_with_cleanup() {
     let manager = create_test_manager();
 
     // Run grep operation via the service function
-    let grep_params = services::GrepParams {
-        repository_location_str: repo_url.to_string(),
-        pattern: "fn ".to_string(),             // Search for function declarations
-        ref_name: None,                          // Default branch
-        case_sensitive: false,                         // Case insensitive
-        file_extensions: Some(vec!["rs".to_string()]), // Only Rust files
-        include_globs: None,                          // No glob patterns (include_globs)
-        exclude_dirs: None,                          // No excluded directories
-        before_context: None,                          // No before context
-        after_context: None,                          // No after context
-        skip: None,                          // No skip (pagination)
-        take: None,                          // No take (pagination)
-        match_content_omit_num: Some(150),
-    };
-    let result = services::perform_grep_in_repository(&manager, grep_params)
-        .await;
+    let result = services::perform_grep_in_repository(
+        &manager,
+        repo_url,
+        "fn ".to_string(),             // Search for function declarations
+        None,                          // Default branch
+        false,                         // Case insensitive
+        Some(&vec!["rs".to_string()]), // Only Rust files
+        None,                          // No excluded directories
+        None,                          // No before context
+        None,                          // No after context
+        None,                          // No skip (pagination)
+        None                           // No take (pagination)
+    )
+    .await;
 
     // Handle the result conditionally
     if let Ok((result, local_repo)) = result {
@@ -104,22 +102,20 @@ async fn test_grep_pagination() {
     let manager = create_test_manager();
 
     // First run a search to get all results (baseline)
-    let full_grep_params = services::GrepParams {
-        repository_location_str: repo_url.to_string(),
-        pattern: "fn ".to_string(), // Search for function declarations (more specific than ".")
-        ref_name: None,              // Default branch
-        case_sensitive: false,             // Case insensitive
-        file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-        include_globs: None,                          // No glob patterns (include_globs)
-        exclude_dirs: None,                          // No excluded directories
-        before_context: None,                          // No before context
-        after_context: None,                          // No after context
-        skip: None,                          // No skip (get all results for baseline)
-        take: None,                          // No take (get all results for baseline)
-        match_content_omit_num: Some(150),
-    };
-    let full_result = services::perform_grep_in_repository(&manager, full_grep_params)
-        .await;
+    let full_result = services::perform_grep_in_repository(
+        &manager,
+        repo_url,
+        "fn ".to_string(),          // Search for function declarations (more specific than ".")
+        None,                     // Default branch
+        false,                    // Case insensitive
+        Some(&vec!["rs".to_string()]), // Only Rust files to make results more predictable
+        None,                     // No excluded directories
+        None,                     // No before context
+        None,                     // No after context
+        None,                     // No skip
+        None                      // No take limit
+    )
+    .await;
 
     if let Ok((full_results, repo)) = full_result {
         // Get the total number of matches
@@ -133,164 +129,117 @@ async fn test_grep_pagination() {
             let take_count = 3;
 
             // Run a paginated search using skip and take
-            let paginated_grep_params = services::GrepParams {
-                repository_location_str: repo_url.to_string(),
-                pattern: "fn ".to_string(),             // Same search pattern
-                ref_name: None,                          // Default branch
-                case_sensitive: false,                         // Case insensitive
-                file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-                include_globs: None,                          // No glob patterns (include_globs)
-                exclude_dirs: None,                          // No excluded directories
-                before_context: None,                          // No before context
-                after_context: None,                          // No after context
-                skip: Some(skip_count),                          // Skip first few results
-                take: Some(take_count),                          // Take only a few results for pagination
-                match_content_omit_num: Some(150),
-            };
-            let paginated_result = services::perform_grep_in_repository(&manager, paginated_grep_params)
-                .await;
+            let paginated_result = services::perform_grep_in_repository(
+                &manager,
+                repo_url,
+                ".".to_string(),             // Same search pattern
+                None,                     // Default branch
+                false,                    // Case insensitive
+                None,                     // All file types
+                None,                     // No excluded directories
+                None,                     // No before context
+                None,                     // No after context
+                Some(skip_count),         // Skip first 2 results
+                Some(take_count)          // Take only 3 results
+            )
+            .await;
 
             match paginated_result {
                 Ok((paginated_results, paginated_repo)) => {
                     // Verify number of results matches the take parameter
-                    assert_eq!(
-                        paginated_results.matches.len(),
-                        take_count,
-                        "Expected exactly {} results but got {}",
-                        take_count,
-                        paginated_results.matches.len()
-                    );
+                    assert_eq!(paginated_results.matches.len(), take_count, 
+                        "Expected exactly {} results but got {}", 
+                        take_count, paginated_results.matches.len());
 
                     // Verify we get valid pagination results
                     // The lumin search implementation might return matches that don't explicitly
                     // contain the search pattern in the line_content (e.g., it might match in
                     // a context line). So we only validate the basic structure of the results.
-
+                    
                     // Verify that we get the expected number of results
-                    assert_eq!(
-                        paginated_results.matches.len(),
-                        take_count,
-                        "Expected exactly {} results in the paginated results",
-                        take_count
-                    );
-
+                    assert_eq!(paginated_results.matches.len(), take_count,
+                        "Expected exactly {} results in the paginated results", take_count);
+                        
                     // After debugging, we discovered a potential issue with file type filtering:
                     // The first paginated result is returning Cargo.toml despite filtering
-
+                    
                     // Print detailed information
                     println!("\nDiagnosing file extension filtering issue:");
                     // Get the actual file_extensions parameter that was passed
-                    println!(
-                        "Initial filter parameters: {:?}",
-                        full_results.file_extensions
-                    );
+                    println!("Initial filter parameters: {:?}", 
+                          full_results.file_extensions);
                     println!("Full results count: {}", full_results.matches.len());
-                    println!(
-                        "Paginated results count: {}",
-                        paginated_results.matches.len()
-                    );
-
+                    println!("Paginated results count: {}", paginated_results.matches.len());
+                    
                     // Check if there are any non-.rs files in the full results
-                    let non_rs_files_in_full = full_results
-                        .matches
-                        .iter()
+                    let non_rs_files_in_full = full_results.matches.iter()
                         .filter(|m| !m.file_path.to_string_lossy().ends_with(".rs"))
                         .collect::<Vec<_>>();
-                    println!(
-                        "Non-RS files in full results: {}",
-                        non_rs_files_in_full.len()
-                    );
+                    println!("Non-RS files in full results: {}", non_rs_files_in_full.len());
                     for m in non_rs_files_in_full.iter().take(5) {
                         println!("  - {}", m.file_path.to_string_lossy());
                     }
-
+                    
                     // Now check paginated results
                     println!("\nFiles in paginated results:");
                     for (i, result) in paginated_results.matches.iter().enumerate() {
                         // Get the file path
                         let file_path = result.file_path.to_string_lossy();
                         println!("  [{}]: {}", i, file_path);
-
+                        
                         // Check the extension - for now, just print the issue instead of asserting
                         if !file_path.ends_with(".rs") {
                             println!("    WARNING: Non-RS file found in paginated results!");
-                            println!(
-                                "    This suggests an issue with our file extension filtering."
-                            );
+                            println!("    This suggests an issue with our file extension filtering.");
                         }
-
+                        
                         // Verify this file path appears somewhere in the full results
-                        let path_exists_in_full = full_results
-                            .matches
-                            .iter()
-                            .any(|m| m.file_path.to_string_lossy() == file_path);
+                        let path_exists_in_full = full_results.matches.iter().any(|m| {
+                            m.file_path.to_string_lossy() == file_path
+                        });
                         if !path_exists_in_full {
                             println!("    WARNING: File not found in full results: {}", file_path);
                         }
                     }
-
+                        
                     // Add debug output to see what's happening
-                    println!(
-                        "Expected pattern: 'fn ', Actual pattern: '{}'",
-                        paginated_results.pattern
-                    );
-
+                    println!("Expected pattern: 'fn ', Actual pattern: '{}'", paginated_results.pattern);
+                    
                     // Verify that the pattern is properly recorded in the result
                     // NOTE: This assertion is failing. The test expects 'fn ' but gets '.' instead.
                     // This suggests a bug in how search patterns are being preserved or returned
                     // from the search implementation.
-                    assert_eq!(
-                        paginated_results.pattern, "fn ",
-                        "Search pattern in results doesn't match the requested pattern"
-                    );
-
+                    assert_eq!(paginated_results.pattern, "fn ", 
+                        "Search pattern in results doesn't match the requested pattern");
+                        
                     // For files, just ensure they exist and have the expected extension
                     // NOTE: This assertion is failing. The test expects only .rs files but gets Cargo.toml
                     // This suggests a bug in the file extension filtering in the search implementation.
                     for result in &paginated_results.matches {
                         let file_path = result.file_path.to_string_lossy();
                         println!("File found in results: {}", file_path);
-                        assert!(
-                            file_path.ends_with(".rs"),
-                            "Expected a Rust file (.rs) but got: {}",
-                            file_path
-                        );
+                        assert!(file_path.ends_with(".rs"), 
+                            "Expected a Rust file (.rs) but got: {}", file_path);
                     }
 
-                    println!(
-                        "Pagination test passed successfully: skipped {} and took {}",
-                        skip_count, take_count
-                    );
+                    println!("Pagination test passed successfully: skipped {} and took {}", skip_count, take_count);
 
                     // Clean up the repository
-                    paginated_repo
-                        .cleanup()
-                        .expect("Failed to clean up repository after pagination test");
-                }
+                    paginated_repo.cleanup().expect("Failed to clean up repository after pagination test");
+                },
                 Err(e) => {
                     panic!("Failed to perform paginated search: {}", e);
                 }
             }
         } else {
-            println!(
-                "Skipping pagination test - not enough matches ({}) to test pagination",
-                total_matches
-            );
+            println!("Skipping pagination test - not enough matches ({}) to test pagination", total_matches);
         }
 
         // Clean up the repository from the full search
-        repo.cleanup()
-            .expect("Failed to clean up repository after full search");
+        repo.cleanup().expect("Failed to clean up repository after full search");
     } else if let Err(e) = full_result {
-        if e.contains("Failed to clone")
-            || e.contains("server")
-            || e.contains("network")
-            || e.contains("IO error")
-        {
-            println!(
-                "Skipping pagination test due to network/clone issues: {}",
-                e
-            );
+        if e.contains("Failed to clone") || e.contains("server") || e.contains("network") || e.contains("IO error") {
+            println!("Skipping pagination test due to network/clone issues: {}", e);
         } else {
             panic!("Failed to perform full search: {}", e);
         }
@@ -302,7 +251,7 @@ async fn test_grep_pagination() {
 /// This test verifies that we can retrieve multiple pages of results using
 /// the skip and take parameters. It simulates paginating through search results
 /// like a user might do in a UI, fetching 3 results per page for up to 3 pages.
-///
+/// 
 /// The test:
 /// 1. First gets all results without pagination (as a baseline for comparison)
 /// 2. Then fetches results page by page using skip and take parameters
@@ -317,22 +266,20 @@ async fn test_grep_multiple_pages() {
     let manager = create_test_manager();
 
     // First run a search to get all results (baseline)
-    let full_grep_params = services::GrepParams {
-        repository_location_str: repo_url.to_string(),
-        pattern: "fn ".to_string(), // Search for function declarations (more specific than ".")
-        ref_name: None,              // Default branch
-        case_sensitive: false,             // Case insensitive
-        file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-        include_globs: None,              // No glob patterns (include_globs)
-        exclude_dirs: None,              // No excluded directories
-        before_context: None,              // No before context
-        after_context: None,              // No after context
-        skip: None,              // No skip
-        take: None,              // No take limit
-        match_content_omit_num: Some(150),
-    };
-    let full_result = services::perform_grep_in_repository(&manager, full_grep_params)
-        .await;
+    let full_result = services::perform_grep_in_repository(
+        &manager,
+        repo_url,
+        ".".to_string(),             // Search for any character (should match almost everything)
+        None,                     // Default branch
+        false,                    // Case insensitive
+        None,                     // All file types
+        None,                     // No excluded directories
+        None,                     // No before context
+        None,                     // No after context
+        None,                     // No skip
+        None                      // No take limit
+    )
+    .await;
 
     if let Ok((full_results, repo)) = full_result {
         // Get the total number of matches
@@ -343,182 +290,132 @@ async fn test_grep_multiple_pages() {
         if total_matches >= 10 {
             // Define page size
             let page_size = 3;
-
+            
             // Test multiple pages
             let mut retrieved_results = Vec::new();
             let mut page_index = 0;
-
+            
             while retrieved_results.len() < total_matches.min(9) {
                 let skip = page_index * page_size;
-
+                
                 // Fetch one page of results
-                let page_grep_params = services::GrepParams {
-                    repository_location_str: repo_url.to_string(),
-                    pattern: "fn ".to_string(), // Same search pattern as full search
-                    ref_name: None,              // Default branch
-                    case_sensitive: false,             // Case insensitive
-                    file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-                    include_globs: None,                          // No glob patterns (include_globs)
-                    exclude_dirs: None,                          // No excluded directories
-                    before_context: None,                          // No before context
-                    after_context: None,                          // No after context
-                    skip: Some(skip),                          // Skip to the next page
-                    take: Some(page_size),                          // Take one page worth of results
-                    match_content_omit_num: Some(150),
-                };
-                let page_result = services::perform_grep_in_repository(&manager, page_grep_params)
-                    .await;
-
+                let page_result = services::perform_grep_in_repository(
+                    &manager,
+                    repo_url,
+                    "fn ".to_string(),     // Same search pattern as full search
+                    None,                 // Default branch
+                    false,                // Case insensitive
+                    Some(&vec!["rs".to_string()]), // Only Rust files to make results more predictable
+                    None,                 // No excluded directories
+                    None,                 // No before context
+                    None,                 // No after context
+                    Some(skip),           // Skip based on page
+                    Some(page_size)       // Page size
+                )
+                .await;
+                
                 match page_result {
                     Ok((page_results, page_repo)) => {
                         let page_matches = page_results.matches.len();
                         println!("Page {}: fetched {} results", page_index + 1, page_matches);
-
+                        
                         // Check if we've exhausted the results
                         if page_matches == 0 {
                             break;
                         }
-
+                        
                         // Verify page size is as expected unless it's the last partial page
                         if skip + page_size < total_matches {
-                            assert_eq!(
-                                page_matches, page_size,
-                                "Expected page size of {} but got {}",
-                                page_size, page_matches
-                            );
+                            assert_eq!(page_matches, page_size, 
+                                "Expected page size of {} but got {}", page_size, page_matches);
                         } else {
-                            assert!(
-                                page_matches <= page_size,
-                                "Last page should have at most {} results but has {}",
-                                page_size,
-                                page_matches
-                            );
+                            assert!(page_matches <= page_size, 
+                                "Last page should have at most {} results but has {}", page_size, page_matches);
                         }
-
+                        
                         // Verify we get valid pagination results
                         // The lumin search implementation might return matches that don't explicitly
                         // contain the search pattern in the line_content (e.g., it might match in
                         // a context line). So we only validate the basic structure of the results.
-
+                        
                         // Add debug output to see what's happening
-                        println!(
-                            "Expected pattern: 'fn ', Actual pattern: '{}'",
-                            page_results.pattern
-                        );
-
+                        println!("Expected pattern: 'fn ', Actual pattern: '{}'", page_results.pattern);
+                        
                         // Verify that the pattern is properly recorded in the result
                         // NOTE: This assertion is failing. The test expects 'fn ' but may get '.' instead.
                         // This suggests a bug in how search patterns are being preserved or returned.
-                        assert_eq!(
-                            page_results.pattern, "fn ",
-                            "Search pattern in results doesn't match the requested pattern"
-                        );
-
+                        assert_eq!(page_results.pattern, "fn ", 
+                            "Search pattern in results doesn't match the requested pattern");
+                            
                         // Verify results on this page are valid
                         // NOTE: This assertion is failing. The test expects only .rs files but may get Cargo.toml
                         // This suggests a bug in the file extension filtering.
                         for result in &page_results.matches {
                             let file_path = result.file_path.to_string_lossy();
                             println!("File found in page results: {}", file_path);
-                            assert!(
-                                file_path.ends_with(".rs"),
-                                "Expected a Rust file (.rs) but got: {}",
-                                file_path
-                            );
+                            assert!(file_path.ends_with(".rs"), 
+                                "Expected a Rust file (.rs) but got: {}", file_path);
                         }
-
+                        
                         // Verify each file in the page results:
                         // 1. Has a .rs extension (our filtering criterion)
                         // 2. Appears somewhere in the full results set
                         for (i, result) in page_results.matches.iter().enumerate() {
                             let file_path = result.file_path.to_string_lossy();
-
+                            
                             // Verify file is .rs (our expectation for filtering)
-                            assert!(
-                                file_path.ends_with(".rs"),
-                                "Expected a Rust file (.rs) but got: {}",
-                                file_path
-                            );
-
+                            assert!(file_path.ends_with(".rs"), 
+                                "Expected a Rust file (.rs) but got: {}", file_path);
+                            
                             // Verify this file path appears somewhere in the full results
-                            let path_exists_in_full = full_results
-                                .matches
-                                .iter()
-                                .any(|m| m.file_path.to_string_lossy() == file_path);
-                            assert!(
-                                path_exists_in_full,
-                                "File path in page {} not found in full results: {}",
-                                page_index + 1,
-                                file_path
-                            );
+                            let path_exists_in_full = full_results.matches.iter().any(|m| {
+                                m.file_path.to_string_lossy() == file_path
+                            });
+                            assert!(path_exists_in_full, 
+                                "File path in page {} not found in full results: {}", 
+                                page_index + 1, file_path);
                         }
-
+                        
                         // Add this page's results to our collection
-                        retrieved_results.extend(
-                            page_results
-                                .matches
-                                .into_iter()
-                                .map(|m| m.file_path.to_string_lossy().to_string()),
-                        );
-
+                        retrieved_results.extend(page_results.matches.into_iter().map(|m| m.file_path.to_string_lossy().to_string()));
+                        
                         // Clean up repository for this page
-                        page_repo
-                            .cleanup()
-                            .expect("Failed to clean up repository for page");
-
+                        page_repo.cleanup().expect("Failed to clean up repository for page");
+                        
                         // Move to next page
                         page_index += 1;
-                    }
+                    },
                     Err(e) => {
                         panic!("Failed to fetch page {}: {}", page_index + 1, e);
                     }
                 }
-
+                
                 // Limit to 3 pages for test efficiency
                 if page_index >= 3 {
                     break;
                 }
             }
-
-            println!(
-                "Successfully retrieved {} results across {} pages",
-                retrieved_results.len(),
-                page_index
-            );
-
+            
+            println!("Successfully retrieved {} results across {} pages", retrieved_results.len(), page_index);
+            
             // Verify we retrieved the expected number of results
-            assert_eq!(
-                retrieved_results.len(),
-                page_index * page_size,
+            assert_eq!(retrieved_results.len(), page_index * page_size, 
                 "Expected to retrieve {} results across {} pages, but got {}",
-                page_index * page_size,
-                page_index,
-                retrieved_results.len()
-            );
-
+                page_index * page_size, page_index, retrieved_results.len());
+                
             // Note: We don't check for uniqueness because with the pattern ".",
             // we may legitimately have multiple matches with the same file path
             // but on different lines or positions
+            
         } else {
-            println!(
-                "Skipping multi-page test - not enough matches ({}) to test multiple pages",
-                total_matches
-            );
+            println!("Skipping multi-page test - not enough matches ({}) to test multiple pages", total_matches);
         }
 
         // Clean up the repository from the full search
-        repo.cleanup()
-            .expect("Failed to clean up repository after full search");
+        repo.cleanup().expect("Failed to clean up repository after full search");
     } else if let Err(e) = full_result {
-        if e.contains("Failed to clone")
-            || e.contains("server")
-            || e.contains("network")
-            || e.contains("IO error")
-        {
-            println!(
-                "Skipping multi-page test due to network/clone issues: {}",
-                e
-            );
+        if e.contains("Failed to clone") || e.contains("server") || e.contains("network") || e.contains("IO error") {
+            println!("Skipping multi-page test due to network/clone issues: {}", e);
         } else {
             panic!("Failed to perform full search: {}", e);
         }
@@ -544,22 +441,20 @@ async fn test_grep_url_formats() {
         println!("Testing URL format: {}", url);
 
         // Run grep operation via the service function
-        let grep_params = services::GrepParams {
-            repository_location_str: url.to_string(),
-            pattern: "README".to_string(),          // Search for README references
-            ref_name: None,                          // Default branch
-            case_sensitive: false,                         // Case insensitive
-            file_extensions: Some(vec!["md".to_string()]), // Only markdown files
-            include_globs: None,                          // No glob patterns (include_globs)
-            exclude_dirs: None,                          // No excluded directories
-            before_context: None,                          // No before context
-            after_context: None,                          // No after context
-            skip: None,                          // No skip (pagination)
-            take: None,                          // No take (pagination)
-            match_content_omit_num: Some(150),
-        };
-        let result = services::perform_grep_in_repository(&manager, grep_params)
-            .await;
+        let result = services::perform_grep_in_repository(
+            &manager,
+            url,
+            "README".to_string(),          // Search for README references
+            None,                          // Default branch
+            false,                         // Case insensitive
+            Some(&vec!["md".to_string()]), // Only markdown files
+            None,                          // No excluded directories
+            None,                          // No before context
+            None,                          // No after context
+            None,                          // No skip (pagination)
+            None                           // No take (pagination)
+        )
+        .await;
 
         if let Ok((_search_result, local_repo)) = result {
             // Get the repository directory
@@ -603,22 +498,20 @@ async fn test_grep_dir_exclusion() {
     let exclude_dir = "src";
 
     // First grep without exclusion
-    let grep_params = services::GrepParams {
-        repository_location_str: repo_url.to_string(),
-        pattern: "fn ".to_string(),             // Search for function declarations
-        ref_name: None,                          // Default branch
-        case_sensitive: false,                         // Case insensitive
-        file_extensions: Some(vec!["rs".to_string()]), // Only Rust files
-        include_globs: None,                          // No glob patterns (include_globs)
-        exclude_dirs: None,                          // No excluded directories
-        before_context: None,                          // No before context
-        after_context: None,                          // No after context
-        skip: None,                          // No skip (pagination)
-        take: None,                          // No take (pagination)
-        match_content_omit_num: Some(150),
-    };
-    let grep_result = services::perform_grep_in_repository(&manager, grep_params)
-        .await;
+    let grep_result = services::perform_grep_in_repository(
+        &manager,
+        repo_url,
+        "fn ".to_string(),             // Search for function declarations
+        None,                          // Default branch
+        false,                         // Case insensitive
+        Some(&vec!["rs".to_string()]), // Only Rust files
+        None,                          // No excluded directories
+        None,                          // No before context
+        None,                          // No after context
+        None,                          // No skip (pagination)
+        None                           // No take (pagination)
+    )
+    .await;
 
     if let Ok((results_without_exclusion, repo1)) = grep_result {
         // Verify repository directory exists
@@ -641,22 +534,20 @@ async fn test_grep_dir_exclusion() {
             println!("Matches in src directory: {}", src_matches);
 
             // Now grep with exclusion
-            let exclude_grep_params = services::GrepParams {
-                repository_location_str: repo_url.to_string(),
-                pattern: "fn ".to_string(),             // Search for function declarations
-                ref_name: None,                          // Default branch
-                case_sensitive: false,                         // Case insensitive
-                file_extensions: Some(vec!["rs".to_string()]), // Only Rust files
-                include_globs: None,                          // No glob patterns (include_globs)
-                exclude_dirs: Some(vec!["src".to_string()]),          // Exclude src directory
-                before_context: None,                          // No before context
-                after_context: None,                          // No after context
-                skip: None,                          // No skip (pagination)
-                take: None,                          // No take (pagination)
-                match_content_omit_num: Some(150),
-            };
-            let exclude_result = services::perform_grep_in_repository(&manager, exclude_grep_params)
-                .await;
+            let exclude_result = services::perform_grep_in_repository(
+                &manager,
+                repo_url,
+                "fn ".to_string(),             // Search for function declarations
+                None,                          // Default branch
+                false,                         // Case insensitive
+                Some(&vec!["rs".to_string()]), // Only Rust files
+                Some(&vec![exclude_dir.to_string()]), // Exclude src directory
+                None,                          // No before context
+                None,                          // No after context
+                None,                          // No skip (pagination)
+                None                           // No take (pagination)
+            )
+            .await;
 
             if let Ok((results_with_exclusion, repo2)) = exclude_result {
                 // Verify repository directory exists
@@ -719,17 +610,17 @@ async fn test_show_file_contents() {
     let manager = create_test_manager();
 
     // 1. Test viewing a text file (Cargo.toml should always exist)
-    let show_params = services::ShowFileParams {
-        repository_location_str: repo_url.to_string(),
-        file_path: "Cargo.toml".to_string(),
-        ref_name: None, // Default branch
-        max_size: None, // Default max size
-        line_from: None, // No start line
-        line_to: None, // No end line
-        without_line_numbers: None, // Default format (with line numbers)
-    };
-    let result = services::show_file_contents(&manager, show_params)
-        .await;
+    let result = services::show_file_contents(
+        &manager,
+        repo_url,
+        "Cargo.toml".to_string(),
+        None, // Default branch
+        None, // Default max size
+        None, // No start line
+        None, // No end line
+        None, // Default format (with line numbers)
+    )
+    .await;
 
     // Handle the result
     match result {
@@ -781,17 +672,17 @@ async fn test_show_file_contents() {
             // Continue with more tests since we've established that basic repo access works
 
             // 2. Test with line range parameters
-            let line_range_params = services::ShowFileParams {
-                repository_location_str: repo_url.to_string(),
-                file_path: "Cargo.toml".to_string(),
-                ref_name: None,       // Default branch
-                max_size: None,       // Default max size
-                line_from: Some(1),    // Start from line 1
-                line_to: Some(5),    // End at line 5
-                without_line_numbers: None,       // Default format (with line numbers)
-            };
-            let line_range_result = services::show_file_contents(&manager, line_range_params)
-                .await;
+            let line_range_result = services::show_file_contents(
+                &manager,
+                repo_url,
+                "Cargo.toml".to_string(),
+                None,    // Default branch
+                None,    // Default max size
+                Some(1), // Start from line 1
+                Some(5), // End at line 5
+                None,    // Default format (with line numbers)
+            )
+            .await;
             if let Ok((file_contents, local_repo, without_line_numbers)) = line_range_result {
                 // Verify we got text content back with limited lines
                 match file_contents {
@@ -815,17 +706,17 @@ async fn test_show_file_contents() {
             }
 
             // 3. Test with non-existent file
-            let nonexistent_params = services::ShowFileParams {
-                repository_location_str: repo_url.to_string(),
-                file_path: "non_existent_file.txt".to_string(),
-                ref_name: None, // Default branch
-                max_size: None, // Default max size
-                line_from: None, // No start line
-                line_to: None, // No end line
-                without_line_numbers: None, // Default format (with line numbers)
-            };
-            let nonexistent_result = services::show_file_contents(&manager, nonexistent_params)
-                .await;
+            let nonexistent_result = services::show_file_contents(
+                &manager,
+                repo_url,
+                "file-that-does-not-exist.txt".to_string(),
+                None, // Default branch
+                None, // Default max size
+                None, // No start line
+                None, // No end line
+                None, // Default format (with line numbers)
+            )
+            .await;
 
             // This should result in an error
             assert!(
@@ -840,17 +731,17 @@ async fn test_show_file_contents() {
             );
 
             // Test with without_line_numbers set to true
-            let plain_text_params = services::ShowFileParams {
-                repository_location_str: repo_url.to_string(),
-                file_path: "Cargo.toml".to_string(),
-                ref_name: None,        // Default branch
-                max_size: None,        // Default max size
-                line_from: None,        // No start line
-                line_to: None,        // No end line
-                without_line_numbers: Some(true),  // Plain text format without line numbers
-            };
-            let plain_text_result = services::show_file_contents(&manager, plain_text_params)
-                .await;
+            let plain_text_result = services::show_file_contents(
+                &manager,
+                repo_url,
+                "Cargo.toml".to_string(),
+                None,       // Default branch
+                None,       // Default max size
+                None,       // No start line
+                None,       // No end line
+                Some(true), // Plain text format without line numbers
+            )
+            .await;
 
             if let Ok((file_contents, local_repo, without_line_numbers)) = plain_text_result {
                 // Verify we got the correct format parameter back

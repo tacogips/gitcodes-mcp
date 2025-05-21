@@ -68,7 +68,7 @@ async fn stdio_client() -> Result<()> {
     let mut init_response = String::new();
     stdout.read_line(&mut init_response).await?;
     println!("Initialize response: {}", init_response);
-    
+
     // Parse the response to check for errors
     if let Ok(json_response) = serde_json::from_str::<Value>(&init_response) {
         if json_response.get("error").is_some() {
@@ -110,7 +110,7 @@ async fn stdio_client() -> Result<()> {
     let mut tools_response = String::new();
     stdout.read_line(&mut tools_response).await?;
     println!("Tool list response received.");
-    
+
     // Parse and pretty-print the tools response
     if let Ok(json_response) = serde_json::from_str::<Value>(&tools_response) {
         if let Some(error) = json_response.get("error") {
@@ -134,7 +134,9 @@ async fn stdio_client() -> Result<()> {
     });
 
     println!("\nSending request to look up tokio crate...");
-    stdin.write_all(tokio_request.to_string().as_bytes()).await?;
+    stdin
+        .write_all(tokio_request.to_string().as_bytes())
+        .await?;
     stdin.write_all(b"\n").await?;
     stdin.flush().await?;
 
@@ -191,8 +193,9 @@ async fn stdio_client() -> Result<()> {
                 if let Some(repos) = data.get("repositories") {
                     if let Some(repos_array) = repos.as_array() {
                         for (i, repo) in repos_array.iter().enumerate() {
-                            println!("{}. {} - {}", 
-                                i + 1, 
+                            println!(
+                                "{}. {} - {}",
+                                i + 1,
                                 repo["full_name"].as_str().unwrap_or("Unknown"),
                                 repo["description"].as_str().unwrap_or("No description")
                             );
@@ -225,9 +228,7 @@ async fn stdio_client() -> Result<()> {
     });
 
     println!("\nSending request to grep code in tokio repository...");
-    stdin
-        .write_all(grep_request.to_string().as_bytes())
-        .await?;
+    stdin.write_all(grep_request.to_string().as_bytes()).await?;
     stdin.write_all(b"\n").await?;
     stdin.flush().await?;
 
@@ -248,7 +249,7 @@ async fn stdio_client() -> Result<()> {
                     println!("Files with matches: {}", stats["files_with_matches"]);
                     println!("Execution time: {} ms", stats["execution_time_ms"]);
                 }
-                
+
                 // Show the first few matches as examples
                 if let Some(matches) = data.get("matches").and_then(|m| m.as_array()) {
                     println!("\nExample matches:");
@@ -256,14 +257,18 @@ async fn stdio_client() -> Result<()> {
                         println!("{}. File: {}", i + 1, file_match["path"]);
                         if let Some(line_matches) = file_match["line_matches"].as_array() {
                             for (j, line_match) in line_matches.iter().take(2).enumerate() {
-                                println!("   {}. Line {}: {}", 
+                                println!(
+                                    "   {}. Line {}: {}",
                                     j + 1,
                                     line_match["line_number"],
                                     line_match["line"].as_str().unwrap_or("<binary data>")
                                 );
                             }
                             if line_matches.len() > 2 {
-                                println!("   ... and {} more matches in this file", line_matches.len() - 2);
+                                println!(
+                                    "   ... and {} more matches in this file",
+                                    line_matches.len() - 2
+                                );
                             }
                         }
                     }
@@ -406,7 +411,7 @@ async fn http_sse_client() -> Result<()> {
         println!("Initialize request sent successfully");
         let init_result = init_response.text().await?;
         println!("Initialize response: {}", init_result);
-        
+
         // In a real client, you would validate the response and check for errors
         if let Ok(parsed) = serde_json::from_str::<Value>(&init_result) {
             if parsed.get("error").is_some() {
@@ -415,10 +420,16 @@ async fn http_sse_client() -> Result<()> {
         }
     } else {
         // Handle error response
-        println!("Error sending initialize request: {}", init_response.status());
+        println!(
+            "Error sending initialize request: {}",
+            init_response.status()
+        );
         println!("\nDIAGNOSTICS:");
         println!("- Status: {}", init_response.status());
-        println!("- Error Body: {}", init_response.text().await.unwrap_or_default());
+        println!(
+            "- Error Body: {}",
+            init_response.text().await.unwrap_or_default()
+        );
         println!("\nNOTE: The HTTP/SSE transport expects:");
         println!("1. An EventSource connection to /sse?sessionId=<id>");
         println!("2. JSON-RPC requests sent as POST requests to same endpoint");
@@ -448,12 +459,15 @@ async fn http_sse_client() -> Result<()> {
         .json(&init_notify_request)
         .send()
         .await?;
-    
+
     // Process the notification response (usually empty for notifications)
     if notify_response.status().is_success() {
         println!("Initialized notification sent successfully");
     } else {
-        println!("Error sending initialized notification: {}", notify_response.status());
+        println!(
+            "Error sending initialized notification: {}",
+            notify_response.status()
+        );
     }
 
     // Step 3: Get list of available tools
@@ -480,7 +494,10 @@ async fn http_sse_client() -> Result<()> {
             println!("Tools list response: {}", tools_body);
 
             if let Ok(json_value) = serde_json::from_str::<Value>(&tools_body) {
-                println!("Available tools: {}", serde_json::to_string_pretty(&json_value)?);
+                println!(
+                    "Available tools: {}",
+                    serde_json::to_string_pretty(&json_value)?
+                );
             }
         } else {
             println!("Empty response body (expected for SSE pattern)");
@@ -509,12 +526,16 @@ async fn http_sse_client() -> Result<()> {
     });
 
     println!("\nSending request to search for GitHub repositories...");
-    let response = client.post(&request_url).json(&search_request).send().await?;
+    let response = client
+        .post(&request_url)
+        .json(&search_request)
+        .send()
+        .await?;
 
     // Process the search response
     if response.status().is_success() {
         println!("Request sent successfully");
-        
+
         // Try to read the response body
         let response_body = response.text().await?;
         if !response_body.is_empty() {
@@ -523,11 +544,16 @@ async fn http_sse_client() -> Result<()> {
 
             // Try to parse as JSON if possible
             if let Ok(json_value) = serde_json::from_str::<Value>(&response_body) {
-                println!("Parsed JSON response: {}", serde_json::to_string_pretty(&json_value)?);
+                println!(
+                    "Parsed JSON response: {}",
+                    serde_json::to_string_pretty(&json_value)?
+                );
             }
         } else {
             println!("Empty response body (expected for SSE pattern)");
-            println!("In a full implementation, you would receive the actual response via SSE events");
+            println!(
+                "In a full implementation, you would receive the actual response via SSE events"
+            );
         }
     } else {
         println!("Error sending request: {}", response.status());
