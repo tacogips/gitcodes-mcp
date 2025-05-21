@@ -1,0 +1,40 @@
+version: '3'
+
+tasks:
+  # Basic Rust commands
+  build:
+    desc: Build the project
+    cmds:
+      - cargo build
+
+  fmt:
+    desc: Format the code
+    cmds:
+      - cargo fmt
+
+  clippy:
+    desc: Run clippy checks
+    cmds:
+      - cargo clippy
+
+  test:
+    desc: Run tests
+    cmds:
+      - cargo test
+
+  # Run servers
+  stdio:
+    desc: Run the server in stdin/stdout mode
+    cmds:
+      - cargo run stdio
+
+  http:
+    desc: Run the server with HTTP/SSE interface
+    cmds:
+      - cargo run http
+
+  # MCP inspector command
+  mcp-inspect:
+    desc: Run the MCP inspector on the stdio server
+    cmds:
+      - npx @modelcontextprotocol/inspector result/bin/gitcodes-mcp stdio
