@@ -166,7 +166,7 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
 #### MCP Tool Response Type Implementation
 
 - **Pattern Extension:** Applied structured return types to all MCP tool methods
-- **Example:** Changed all tool methods in `GitHubCodeTools` to return `Result<ConcreteType, String>` instead of `String` or `Result<String, String>`
+- **Example:** Changed all tool methods in `GitHubCodeTools` to return `Result<CallToolResult, McpError>` but with strong internal typing
 - **Implementation:**
   ```rust
   // BEFORE: Tool method returning String or Result<String, String>
@@ -178,16 +178,28 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
       // Process and return JSON string
   }
 
-  // AFTER: Tool method returning Result<ConcreteType, String>
+  // AFTER: Tool method returning Result<CallToolResult, McpError> with internal typing
   async fn search_repositories(
       &self,
       query: String,
       // Other parameters...
-  ) -> Result<RepositorySearchResponse, String> {
-      // Process and return structured type
+  ) -> Result<CallToolResult, McpError> {
+      // Internal processing with strong typing
+      match self.manager.search_repositories(...).await {
+          Ok(json_result) => {
+              // Validate with strongly-typed struct
+              match serde_json::from_str::<RepositorySearchResponse>(&json_result) {
+                  Ok(_) => Self::success_result(json_result),
+                  Err(e) => Self::error_result(format!("Failed to parse: {}", e))
+              }
+          },
+          Err(err) => Self::error_result(format!("Operation failed: {}", err))
+      }
   }
   ```
-- **Module Organization:** Created a dedicated `responses.rs` module that defines all response types
+- **Module Organization:** 
+  1. Created a dedicated `responses.rs` module that defines all structured response types
+  2. Added helper methods to ensure consistent formatting for MCP protocol
   ```rust
   // In responses.rs
   pub struct RepositorySearchResponse {
@@ -196,16 +208,26 @@ pub async fn list_repository_refs(&self, _repository_location: &RepositoryLocati
       pub items: Vec<RepositoryItem>,
   }
   
-  // Use type aliases for consistency with existing types
-  pub type CodeSearchResponse = CodeSearchResult;
-  pub type FileContentsResponse = FileContents;
+  // In tools/mod.rs
+  impl GitHubCodeTools {
+      /// Helper method to create a CallToolResult for successful responses
+      fn success_result(json: String) -> Result<CallToolResult, McpError> {
+          Ok(CallToolResult::success(vec![Content::text(json)]))
+      }
+      
+      /// Helper method to create a CallToolResult for error responses
+      fn error_result(message: impl Into<String>) -> Result<CallToolResult, McpError> {
+          let error_message = message.into();
+          Ok(CallToolResult::error(vec![Content::text(error_message)]))
+      }
+  }
   ```
 - **Benefits:** 
   1. Type safety: The exact structure of responses is defined at compile time
   2. Better documentation: Response structures are self-documenting
-  3. Consistent error handling: All tools return `Result<T, String>` with the same error pattern
-  4. Cleaner serialization: The rmcp framework handles the serialization consistently
-- **When to apply:** When exposing APIs that need to maintain a consistent interface pattern
+  3. Protocol compatibility: All tools return `Result<CallToolResult, McpError>` for MCP compatibility
+  4. Consistent formatting: Helper methods ensure all responses and errors are formatted consistently
+- **When to apply:** When integrating strongly-typed internal APIs with external frameworks that have their own protocol requirements
 
 ### Use Native Types Over Single-Field Wrappers
 

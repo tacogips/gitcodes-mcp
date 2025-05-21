@@ -1,14 +1,12 @@
 use crate::gitcodes::{repository_manager, *};
 use crate::services;
-use rmcp::{model::*, schemars, tool, ServerHandler};
+use rmcp::{model::*, schemars, tool, ServerHandler, Error as McpError};
 use std::path::PathBuf;
-use lumin::view::FileContents;
 
 mod responses;
 mod error;
 
 use responses::*;
-use error::ToolError;
 
 // Re-export SortOption and OrderOption from repository_manager
 pub use crate::gitcodes::repository_manager::{OrderOption, SortOption, SearchParams};
@@ -18,12 +16,20 @@ pub use crate::gitcodes::repository_manager::{OrderOption, SortOption, SearchPar
 // which meant that responses were plain JSON strings. This was inconsistent 
 // and required parsing by consumers.
 // 
-// With the changes made, all tool methods now return Result<ConcreteType, String>,
-// where ConcreteType is a specific response struct defined in the responses module.
-// This ensures that responses are properly typed and can be serialized consistently.
+// With the changes made in our architecture, we now maintain strongly-typed response
+// structures in the responses module. These are used for internal validation and processing.
 // 
-// The error handling has also been improved with the ToolError enum providing
-// more structured information about failure cases.
+// MCP tool methods must return Result<CallToolResult, McpError> to be compatible
+// with the framework. So we create structured response types for internal use,
+// serialize them to JSON, and then wrap them in CallToolResult for the MCP framework.
+// 
+// This approach gives us the best of both worlds:
+// 1. Strongly-typed internal processing with proper validation
+// 2. Consistent interface with the MCP framework
+// 3. Helper methods (success_result and error_result) to ensure consistency
+// 
+// The helper methods in this module ensure that all responses and errors are
+// formatted consistently according to the MCP protocol requirements.
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 ///
@@ -62,6 +68,17 @@ impl GitHubCodeTools {
         Self {
             manager: manager.clone(),
         }
+    }
+    
+    /// Helper method to create a CallToolResult for successful responses
+    fn success_result(json: String) -> Result<CallToolResult, McpError> {
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+    
+    /// Helper method to create a CallToolResult for error responses
+    fn error_result(message: impl Into<String>) -> Result<CallToolResult, McpError> {
+        let error_message = message.into();
+        Ok(CallToolResult::error(vec![Content::text(error_message)]))
     }
 
     /// Creates a new GitHubCodeTools instance with default repository cache directory
@@ -209,7 +226,7 @@ impl GitHubCodeTools {
             description = "Result page number (optional, default is 1). Used for pagination to access results beyond the first page. GitHub limits search results to 1000 items total (across all pages)."
         )]
         page: Option<u32>,
-    ) -> Result<RepositorySearchResponse, String> {
+    ) -> Result<CallToolResult, McpError> {
         use crate::gitcodes::repository_manager::providers::GitProvider;
         use std::str::FromStr;
 
@@ -218,7 +235,7 @@ impl GitHubCodeTools {
             Some(provider_str) => match GitProvider::from_str(provider_str) {
                 Ok(provider) => provider,
                 Err(_) => {
-                    return Err(format!(
+                    return Self::error_result(format!(
                         "Invalid provider: '{}'. Currently only 'github' is supported.",
                         provider_str
                     ));
@@ -240,13 +257,16 @@ impl GitHubCodeTools {
             page,
         ).await {
             Ok(json_result) => {
-                // Parse the JSON string into our structured response type
-                match serde_json::from_str(&json_result) {
-                    Ok(response) => Ok(response),
-                    Err(e) => Err(format!("Failed to parse search results: {}", e))
+                // Parse the JSON string into our structured response type for validation
+                match serde_json::from_str::<RepositorySearchResponse>(&json_result) {
+                    Ok(_response) => {
+                        // Valid JSON - return the original JSON result to maintain compatibility
+                        Self::success_result(json_result)
+                    },
+                    Err(e) => Self::error_result(format!("Failed to parse search results: {}", e))
                 }
             },
-            Err(err) => Err(format!("Search failed: {}", err)),
+            Err(err) => Self::error_result(format!("Search failed: {}", err)),
         }
     }
 
@@ -318,7 +338,7 @@ impl GitHubCodeTools {
             description = "Number of lines to include after each match (optional, default is 0). When provided, includes the specified number of lines after each match for additional context."
         )]
         after_context: Option<usize>,
-    ) -> Result<CodeSearchResponse, String> {
+    ) -> Result<CallToolResult, McpError> {
         // Get the effective case sensitivity (default to false if not specified)
         let case_sensitive = case_sensitive.unwrap_or(false);
 
@@ -344,8 +364,11 @@ impl GitHubCodeTools {
                 // This improves performance for subsequent operations
                 tracing::debug!("Repository kept for caching");
 
-                // Return the CodeSearchResult directly as CodeSearchResponse
-                Ok(result)
+                // Serialize the result to JSON and return it
+                match serde_json::to_string(&result) {
+                    Ok(json) => Self::success_result(json),
+                    Err(e) => Self::error_result(format!("Failed to serialize search results: {}", e))
+                }
             }
             Err(err) => {
                 // Search failed, try to clean up repository if it was created
@@ -355,8 +378,8 @@ impl GitHubCodeTools {
                 // to preserve it for potential future operations
                 tracing::debug!("Repository kept for caching even after error");
 
-                // Return the original error
-                Err(err)
+                // Return the original error as an error result
+                Self::error_result(format!("Code search failed: {}", err))
             }
         }
     }
@@ -387,20 +410,26 @@ impl GitHubCodeTools {
             description = "Repository URL or local file path (posix only) (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations. For private repositories, the GITCODE_MCP_GITHUB_TOKEN environment variable must be set with a token having 'repo' scope. Local paths must be absolute and currently only support Linux/macOS format (Windows paths not supported)."
         )]
         repository_location: String,
-    ) -> Result<RepositoryRefsResponse, String> {
+    ) -> Result<CallToolResult, McpError> {
         // Use the repository manager directly to handle repository refs listing
-        let (refs_json, local_repo) = self.manager.list_repository_refs(&repository_location).await?;
-        
-        // Note: We don't clean up the repository here to use it as a cache
-        // This improves performance for subsequent operations
-        if local_repo.is_some() {
-            tracing::debug!("Repository kept for caching");
-        }
-        
-        // Parse the JSON string into our structured response type
-        match serde_json::from_str(&refs_json) {
-            Ok(response) => Ok(response),
-            Err(e) => Err(format!("Failed to parse repository refs: {}", e))
+        match self.manager.list_repository_refs(&repository_location).await {
+            Ok((refs_json, local_repo)) => {
+                // Note: We don't clean up the repository here to use it as a cache
+                // This improves performance for subsequent operations
+                if local_repo.is_some() {
+                    tracing::debug!("Repository kept for caching");
+                }
+                
+                // Parse the JSON string into our structured response type for validation
+                match serde_json::from_str::<RepositoryRefsResponse>(&refs_json) {
+                    Ok(_) => {
+                        // Valid JSON - return the original JSON result to maintain compatibility
+                        Self::success_result(refs_json)
+                    },
+                    Err(e) => Self::error_result(format!("Failed to parse repository refs: {}", e))
+                }
+            },
+            Err(err) => Self::error_result(format!("Failed to list repository refs: {}", err)),
         }
     }
 
@@ -466,7 +495,7 @@ impl GitHubCodeTools {
             description = "Whether to show text content without line numbers (optional, default is false). When true, displays the entire file content as plain text. When false (default), displays file content with line numbers in the format 'file_path:line_number:line_content'."
         )]
         without_line_numbers: Option<bool>,
-    ) -> Result<FileContentsResponse, String> {
+    ) -> Result<CallToolResult, McpError> {
         // Process file viewing within the repository
         // Handle repository cleanup in both success and error cases
         
@@ -485,13 +514,16 @@ impl GitHubCodeTools {
         )
         .await
         {
-            Ok((file_contents, _local_repo, without_line_numbers)) => {
+            Ok((file_contents, _local_repo, _without_line_numbers)) => {
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
                 tracing::debug!("Repository kept for caching");
                 
-                // Return the FileContents directly
-                Ok(file_contents)
+                // Serialize the FileContents to JSON and return it
+                match serde_json::to_string(&file_contents) {
+                    Ok(json) => Self::success_result(json),
+                    Err(e) => Self::error_result(format!("Failed to serialize file contents: {}", e))
+                }
             }
             Err(err) => {
                 // File viewing failed, try to clean up repository if it was created
@@ -501,8 +533,8 @@ impl GitHubCodeTools {
                 // to preserve it for potential future operations
                 tracing::debug!("Repository kept for caching even after error");
 
-                // Return the original error
-                Err(err)
+                // Return the original error as an error result
+                Self::error_result(format!("File viewing failed: {}", err))
             }
         }
     }
