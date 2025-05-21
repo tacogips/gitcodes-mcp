@@ -294,6 +294,47 @@ impl GithubClient {
     ///
     /// A JSON string containing all references in the repository, including branches and tags.
     /// The response includes ref names and their corresponding SHA values.
+    /// GitHub reference type returned by the API
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct GitHubRefObject {
+        /// The fully qualified name of the reference (e.g., "refs/heads/main")
+        #[serde(rename = "ref")]
+        ref_name: String,
+        /// The target object that this reference points to
+        object: GitHubRefTarget,
+    }
+
+    /// GitHub reference target object
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct GitHubRefTarget {
+        /// The SHA1 hash of the target object
+        sha: String,
+        /// The type of the target object, usually "commit"
+        r#type: String,
+        /// URL of the target object
+        url: String,
+    }
+
+    /// Properly structured repository references response
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct RepositoryRefsResponse {
+        /// List of branch references
+        branches: Vec<ReferenceInfo>,
+        /// List of tag references
+        tags: Vec<ReferenceInfo>,
+    }
+
+    /// Information about a git reference (branch or tag)
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct ReferenceInfo {
+        /// Reference name (branch or tag name)
+        name: String,
+        /// Full reference path (e.g., "refs/heads/main")
+        full_ref: String,
+        /// Commit SHA this reference points to
+        commit_id: String,
+    }
+    
     pub async fn list_repository_refs(
         &self,
         repo_info: &GitRemoteRepositoryInfo,
@@ -337,10 +378,53 @@ impl GithubClient {
             return Err(format!("GitHub API error {}: {}", status, error_text));
         }
 
-        // Return the raw JSON response
-        match response.text().await {
-            Ok(text) => Ok(text),
-            Err(e) => Err(format!("Failed to read response body: {}", e)),
+        // Get the raw JSON response
+        let response_text = match response.text().await {
+            Ok(text) => text,
+            Err(e) => return Err(format!("Failed to read response body: {}", e)),
+        };
+        
+        // Parse the JSON array of GitHub references
+        let github_refs: Vec<GitHubRefObject> = match serde_json::from_str(&response_text) {
+            Ok(refs) => refs,
+            Err(e) => {
+                // If parsing fails, return the original JSON string for backward compatibility
+                return Ok(response_text);
+            }
+        };
+        
+        // Transform into our domain model structure
+        let mut branches = Vec::new();
+        let mut tags = Vec::new();
+        
+        for ref_obj in github_refs {
+            // Create a ReferenceInfo object
+            let ref_info = ReferenceInfo {
+                // Extract short name from full ref path
+                name: ref_obj.ref_name.split('/').last().unwrap_or(&ref_obj.ref_name).to_string(),
+                full_ref: ref_obj.ref_name.clone(),
+                commit_id: ref_obj.object.sha,
+            };
+            
+            // Sort into branches and tags based on path
+            if ref_obj.ref_name.starts_with("refs/heads/") {
+                branches.push(ref_info);
+            } else if ref_obj.ref_name.starts_with("refs/tags/") {
+                tags.push(ref_info);
+            }
+            // Ignore other ref types like refs/remotes
+        }
+        
+        // Create the final response object
+        let response = RepositoryRefsResponse {
+            branches,
+            tags,
+        };
+        
+        // Serialize to JSON string
+        match serde_json::to_string(&response) {
+            Ok(json) => Ok(json),
+            Err(e) => Err(format!("Failed to serialize transformed refs: {}", e)),
         }
     }
 }

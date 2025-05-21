@@ -80,6 +80,90 @@ impl GitHubCodeTools {
         let error_message = message.into();
         Ok(CallToolResult::error(vec![Content::text(error_message)]))
     }
+    
+    /// Transform repository refs JSON format to match RepositoryRefsResponse
+    ///
+    /// This method can handle two input formats:
+    /// 1. A raw JSON array of GitRefObject instances (from LocalRepository)
+    /// 2. A JSON object with branches and tags arrays (already properly formatted from GithubClient)
+    ///
+    /// It transforms both into a structured JSON with separated branches and tags,
+    /// matching the expected RepositoryRefsResponse format.
+    fn transform_refs_json(refs_json: &str) -> Result<String, String> {
+        use serde_json::Value;
+        
+        // Parse the raw JSON string
+        let refs_value: Value = serde_json::from_str(refs_json)
+            .map_err(|e| format!("Failed to parse repository refs: {}", e))?;
+        
+        // If we already have a properly structured response (with branches and tags),
+        // just validate the format and return it directly
+        if let Value::Object(obj) = &refs_value {
+            if obj.contains_key("branches") && obj.contains_key("tags") {
+                // Attempt to deserialize into our response struct to validate it
+                if let Ok(_) = serde_json::from_value::<responses::RepositoryRefsResponse>(refs_value.clone()) {
+                    // If valid, return the original JSON string
+                    return Ok(refs_json.to_string());
+                }
+            }
+        }
+        
+        // If we don't have a properly structured response, proceed with transformation
+        // Ensure we have a JSON array (this is the format from LocalRepository.list_repository_refs)
+        let refs_array = match refs_value {
+            Value::Array(arr) => arr,
+            _ => return Err("Repository refs JSON is not an array or a properly structured response".to_string()),
+        };
+        
+        // Prepare the output structure - separate branches and tags
+        let mut branches = Vec::new();
+        let mut tags = Vec::new();
+        
+        for ref_obj in refs_array {
+            if let Value::Object(ref_map) = ref_obj {
+                // Get the ref name from the object
+                let ref_name = match ref_map.get("ref") {
+                    Some(Value::String(name)) => name.clone(),
+                    _ => continue, // Skip invalid entries
+                };
+                
+                // Get the commit SHA from the object.object.sha
+                let commit_id = match ref_map.get("object") {
+                    Some(Value::Object(obj)) => match obj.get("sha") {
+                        Some(Value::String(sha)) => sha.clone(),
+                        _ => continue, // Skip invalid entries
+                    },
+                    _ => continue, // Skip invalid entries
+                };
+                
+                // Create a ReferenceInfo object
+                let ref_info = responses::ReferenceInfo {
+                    // Extract short name from full ref path
+                    name: ref_name.split('/').last().unwrap_or(&ref_name).to_string(),
+                    full_ref: ref_name.clone(),
+                    commit_id,
+                };
+                
+                // Sort into branches and tags based on path
+                if ref_name.starts_with("refs/heads/") {
+                    branches.push(ref_info);
+                } else if ref_name.starts_with("refs/tags/") {
+                    tags.push(ref_info);
+                }
+                // Ignore other ref types like refs/remotes
+            }
+        }
+        
+        // Create the final response object
+        let response = responses::RepositoryRefsResponse {
+            branches,
+            tags,
+        };
+        
+        // Serialize to JSON string
+        serde_json::to_string(&response)
+            .map_err(|e| format!("Failed to serialize transformed refs: {}", e))
+    }
 
     /// Creates a new GitHubCodeTools instance with default repository cache directory
     ///
@@ -420,13 +504,20 @@ impl GitHubCodeTools {
                     tracing::debug!("Repository kept for caching");
                 }
                 
-                // Parse the JSON string into our structured response type for validation
-                match serde_json::from_str::<RepositoryRefsResponse>(&refs_json) {
+                // Parse the raw JSON array of GitRefObject into a properly structured RepositoryRefsResponse
+                // by separating branches and tags
+                let transformed_json = match Self::transform_refs_json(&refs_json) {
+                    Ok(json) => json,
+                    Err(e) => return Self::error_result(format!("Failed to transform repository refs: {}", e)),
+                };
+                
+                // Validate the transformed JSON against our response type
+                match serde_json::from_str::<responses::RepositoryRefsResponse>(&transformed_json) {
                     Ok(_) => {
-                        // Valid JSON - return the original JSON result to maintain compatibility
-                        Self::success_result(refs_json)
+                        // Valid JSON - return the transformed JSON result
+                        Self::success_result(transformed_json)
                     },
-                    Err(e) => Self::error_result(format!("Failed to parse repository refs: {}", e))
+                    Err(e) => Self::error_result(format!("Failed to validate repository refs: {}", e))
                 }
             },
             Err(err) => Self::error_result(format!("Failed to list repository refs: {}", err)),
