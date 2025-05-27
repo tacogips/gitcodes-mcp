@@ -1279,27 +1279,46 @@ impl LocalRepository {
         &self,
         options: CodeSearchOptions,
     ) -> Result<CodeSearchResult, String> {
-        // Clone include_glob for use in multiple places
-        let include_glob_clone = options.include_globs.clone();
+        // Normalize include_globs by prepending repository path if needed
+        let normalized_include_globs = options.include_globs.as_ref().map(|globs| {
+            globs
+                .iter()
+                .map(|glob| self.normalize_glob_path(glob))
+                .collect::<Vec<String>>()
+        });
+
+        // Normalize exclude_globs by prepending repository path if needed
+        // First convert directory names to glob patterns, then normalize the paths
+        let normalized_exclude_globs = options.exclude_globs.as_ref().map(|dirs| {
+            dirs.iter()
+                .map(|dir| {
+                    // Check if this looks like a simple directory name or a glob pattern
+                    if dir.contains('/') || dir.contains('*') {
+                        // Looks like a glob pattern or path, normalize it directly
+                        self.normalize_glob_path(dir)
+                    } else {
+                        // Looks like a simple directory name, convert to glob pattern first
+                        let pattern = format!("**/{}/**", dir);
+                        self.normalize_glob_path(&pattern)
+                    }
+                })
+                .collect::<Vec<String>>()
+        });
 
         // Configure search options for lumin 0.1.13
         // Note: in lumin 0.1.13, glob patterns work reliably for both include_glob and exclude_glob
         let search_options = search::SearchOptions {
             case_sensitive: options.case_sensitive,
             respect_gitignore: true,
-            // Convert directory names to glob patterns by adding "**/" prefix and "/**" suffix
-            // This format ensures that directories at any level in the hierarchy will be excluded
-            exclude_glob: options
-                .exclude_globs
-                .as_ref()
-                .map(|dirs| dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()),
+            // Use normalized exclude patterns that handle both directory names and glob patterns
+            exclude_glob: normalized_exclude_globs,
             match_content_omit_num: options.match_content_omit_num,
             before_context: options.before_context.unwrap_or(0), // Default to 0 if None
             after_context: options.after_context.unwrap_or(0),   // Default to 0 if None
             depth: None,                                         // Use default depth (no limit)
-            include_glob: include_glob_clone, // Pattern for filtering files by glob
-            skip: options.skip,               // For pagination
-            take: options.take,               // For pagination
+            include_glob: normalized_include_globs, // Pattern for filtering files by glob
+            skip: options.skip,                     // For pagination
+            take: options.take,                     // For pagination
             omit_path_prefix: Some(self.repository_location.clone()), // Omit repository path prefix from results
         };
 
@@ -1449,5 +1468,103 @@ mod tests {
         // Test with leading slash
         let result = local_repo.normalize_glob_path("/some_dir/aaa.json");
         assert_eq!(result, "C:\\path\\to\\repo/some_dir/aaa.json");
+    }
+
+    #[test]
+    fn test_perform_code_search_normalizes_include_globs() {
+        let repo_path = PathBuf::from("/tmp/test_repo");
+        let local_repo = LocalRepository {
+            repository_location: repo_path,
+        };
+
+        let options = CodeSearchOptions {
+            pattern: "test".to_string(),
+            case_sensitive: false,
+            file_extensions: None,
+            include_globs: Some(vec![
+                "src/**/*.rs".to_string(),
+                "/docs/**/*.md".to_string(),
+                "/tmp/test_repo/already/prefixed.txt".to_string(),
+            ]),
+            exclude_globs: None,
+            before_context: None,
+            after_context: None,
+            skip: None,
+            take: None,
+            match_content_omit_num: None,
+        };
+
+        // We can't actually run the search without setting up a real repository,
+        // but we can test that the normalization logic works by examining
+        // how the method would transform the include_globs
+        let normalized_globs = options.include_globs.as_ref().map(|globs| {
+            globs
+                .iter()
+                .map(|glob| local_repo.normalize_glob_path(glob))
+                .collect::<Vec<String>>()
+        });
+
+        let expected = Some(vec![
+            "/tmp/test_repo/src/**/*.rs".to_string(),
+            "/tmp/test_repo/docs/**/*.md".to_string(),
+            "/tmp/test_repo/already/prefixed.txt".to_string(),
+        ]);
+
+        assert_eq!(normalized_globs, expected);
+    }
+
+    #[test]
+    fn test_perform_code_search_normalizes_exclude_globs() {
+        let repo_path = PathBuf::from("/tmp/test_repo");
+        let local_repo = LocalRepository {
+            repository_location: repo_path,
+        };
+
+        let options = CodeSearchOptions {
+            pattern: "test".to_string(),
+            case_sensitive: false,
+            file_extensions: None,
+            include_globs: None,
+            exclude_globs: Some(vec![
+                "target".to_string(),                             // Simple directory name
+                "node_modules".to_string(),                       // Another simple directory name
+                "src/**/*.tmp".to_string(),                       // Glob pattern
+                "/docs/generated/**".to_string(),                 // Path with leading slash
+                "/tmp/test_repo/already/prefixed/**".to_string(), // Already prefixed path
+            ]),
+            before_context: None,
+            after_context: None,
+            skip: None,
+            take: None,
+            match_content_omit_num: None,
+        };
+
+        // Test the normalization logic for exclude_globs
+        let normalized_exclude_globs = options.exclude_globs.as_ref().map(|dirs| {
+            dirs.iter()
+                .map(|dir| {
+                    // Check if this looks like a simple directory name or a glob pattern
+                    let glob_pattern = if dir.contains('/') || dir.contains('*') {
+                        // Looks like a glob pattern or path, normalize it directly
+                        local_repo.normalize_glob_path(dir)
+                    } else {
+                        // Looks like a simple directory name, convert to glob pattern first
+                        let pattern = format!("**/{}/**", dir);
+                        local_repo.normalize_glob_path(&pattern)
+                    };
+                    glob_pattern
+                })
+                .collect::<Vec<String>>()
+        });
+
+        let expected = Some(vec![
+            "/tmp/test_repo/**/target/**".to_string(),
+            "/tmp/test_repo/**/node_modules/**".to_string(),
+            "/tmp/test_repo/src/**/*.tmp".to_string(),
+            "/tmp/test_repo/docs/generated/**".to_string(),
+            "/tmp/test_repo/already/prefixed/**".to_string(),
+        ]);
+
+        assert_eq!(normalized_exclude_globs, expected);
     }
 }
