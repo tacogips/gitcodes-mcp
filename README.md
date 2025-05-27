@@ -214,7 +214,7 @@ Example:
 
 ### 5. `show_file_contents`
 
-Views file contents from repositories or local directories.
+Views file contents from repositories or local directories in compact format. Returns concatenated line contents with line numbers and enhanced metadata including file path.
 
 Parameters:
 
@@ -241,6 +241,28 @@ Example:
   }
 }
 ```
+
+**Response Format:**
+
+The tool returns a compact JSON structure:
+
+```json
+{
+  "type": "text",
+  "line_contents": "1:## User Guide\n2:\n3:This guide explains how to use...",
+  "metadata": {
+    "file_path": "README.md",
+    "line_count": 100,
+    "size": 1234
+  }
+}
+```
+
+Key features of the compact format:
+- Line contents are concatenated into a single string with line numbers (format: `line_number:content`)
+- Metadata includes full file path instead of just filename
+- Size field shows total bytes/characters
+- Significantly reduced JSON verbosity compared to individual line objects
 
 ### 6. `get_repository_tree`
 

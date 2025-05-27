@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::gitcodes::repository_manager::providers::models::GitProvider;
 use std::str::FromStr;
 mod error;
-mod responses;
+pub mod responses;
 
 // Re-export SortOption and OrderOption from repository_manager
 pub use crate::gitcodes::repository_manager::{OrderOption, SearchParams, SortOption};
@@ -122,8 +122,30 @@ impl ServerHandler for GitHubCodeTools {
 - `search_repositories`: Search for GitHub repositories
 - `grep_repository`: Search code within a GitHub repository
 - `list_repository_refs`: List branches and tags for a repository
-- `show_file_contents`: View the contents of a file in a repository
+- `show_file_contents`: View file contents in compact format with concatenated lines and enhanced metadata
 - `get_repository_tree`: Get the directory tree structure of a repository
+
+## Response Format Updates
+
+### show_file_contents Compact Format
+The `show_file_contents` tool now returns a more concise format:
+```json
+{{
+  \"type\": \"text\",
+  \"line_contents\": \"1:## User Guide\\n2:\\n3:This guide explains...\",
+  \"metadata\": {{
+    \"file_path\": \"README.md\",
+    \"line_count\": 100,
+    \"size\": 1234
+  }}
+}}
+```
+
+Key improvements:
+- Line contents are concatenated into a single string with line numbers
+- Metadata includes full file path instead of just filename
+- Size field replaces char_count for consistency
+- Significantly reduced JSON verbosity
 
 ## New File Filtering Feature
 The `grep_repository` tool now supports powerful glob pattern filtering with the include_globs parameter. This allows you to precisely specify which files to search by pattern.
@@ -583,10 +605,25 @@ impl GitHubCodeTools {
         }
     }
 
-    /// Show contents of a file in a GitHub repository
+    /// Show contents of a file in a GitHub repository in compact format
     ///
     /// This tool clones or updates the repository locally, then retrieves the contents of the specified file.
-    /// It supports both public and private repositories.
+    /// It supports both public and private repositories and returns content in a compact format.
+    ///
+    /// # Response Format
+    ///
+    /// Returns a compact JSON structure with concatenated line contents:
+    /// ```json
+    /// {
+    ///   "type": "text|binary|image",
+    ///   "line_contents": "1:line content\n2:another line",
+    ///   "metadata": {
+    ///     "file_path": "path/to/file.ext",
+    ///     "line_count": 100,
+    ///     "size": 1234
+    ///   }
+    /// }
+    /// ```
     ///
     /// # Authentication
     ///
@@ -598,9 +635,10 @@ impl GitHubCodeTools {
     /// This tool:
     /// 1. Repository is cloned or updated locally
     /// 2. File contents are retrieved and processed
-    /// 3. Results are formatted and returned based on file type (text, binary, or image)
+    /// 3. Results are converted to compact format with concatenated lines and enhanced metadata
+    /// 4. Response includes full file path and size information for better usability
     #[tool(
-        description = "View file contents from repositories or local directories. Supports line ranges and branch selection. Example: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"file_path\": \"README.md\"}}`. With range: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"file_path\": \"src/lib.rs\", \"line_from\": 10, \"line_to\": 20}}`"
+        description = "View file contents from repositories or local directories in compact format. Returns concatenated line contents with line numbers and enhanced metadata including file path. Supports line ranges and branch selection. Example: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"file_path\": \"README.md\"}}`. With range: `{\"name\": \"show_file_contents\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"file_path\": \"src/lib.rs\", \"line_from\": 10, \"line_to\": 12}}`. Returns format: `{\"type\": \"text\", \"line_contents\": \"10:content at line 10\\n11:content at line 11\\n12:content at line 12\", \"metadata\": {\"file_path\": \"src/lib.rs\", \"line_count\": 3, \"size\": 1234}}`"
     )]
     #[allow(clippy::too_many_arguments)]
     async fn show_file_contents(
@@ -666,8 +704,14 @@ impl GitHubCodeTools {
                 // This improves performance for subsequent operations
                 tracing::debug!("Repository kept for caching");
 
-                // Serialize the FileContents to JSON and return it
-                match serde_json::to_string(&file_contents) {
+                // Convert to compact format with full file path
+                let compact_response = responses::CompactFileContentsResponse::from_file_contents(
+                    file_contents, 
+                    file_path.clone()
+                );
+
+                // Serialize the compact response to JSON and return it
+                match serde_json::to_string(&compact_response) {
                     Ok(json) => success_result(json),
                     Err(e) => error_result(format!("Failed to serialize file contents: {}", e)),
                 }
