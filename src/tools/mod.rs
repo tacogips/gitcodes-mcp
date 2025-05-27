@@ -211,7 +211,7 @@ impl GitHubCodeTools {
 
         #[tool(param)]
         #[schemars(
-            description = "Results per page (optional, default 30, max 100). Must be between 1 and 100. Controls pagination size for search results."
+            description = "Results per page (optional, default 5, max 100). Must be between 1 and 100. Controls pagination size for search results."
         )]
         per_page: Option<u8>,
 

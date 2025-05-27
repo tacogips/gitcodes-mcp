@@ -123,12 +123,6 @@ pub struct RepositoryOwner {
     /// Owner's ID (as a string to support different ID formats)
     pub id: String,
 
-    /// URL to owner's avatar image
-    pub avatar_url: String,
-
-    /// URL to owner's profile
-    pub html_url: String,
-
     /// Owner type (User or Organization)
     pub type_field: String,
 }
@@ -143,12 +137,6 @@ pub struct RepositoryLicense {
 
     /// License name
     pub name: String,
-
-    /// SPDX ID for the license (if available)
-    pub spdx_id: Option<String>,
-
-    /// URL to the license
-    pub url: Option<String>,
 }
 
 /// Common domain model for repository references

@@ -145,7 +145,7 @@ pub struct GithubSearchParams {
     pub order: Option<GithubOrderOption>,
 
     /// Number of results per page (1-100)
-    /// When None, defaults to 30
+    /// When None, defaults to 5
     /// Values over 100 will be capped at 100 (GitHub API limit)
     pub per_page: Option<u8>,
 
@@ -215,8 +215,8 @@ struct GitHubRepositoryOwner {
     login: String,
     id: u64,
     // node_id: String,
-    avatar_url: String,
-    html_url: String,
+    //avatar_url: String,
+    //html_url: String,
     #[serde(rename = "type")]
     type_field: String,
     // site_admin: bool,
@@ -228,8 +228,8 @@ struct GitHubRepositoryOwner {
 struct GitHubRepositoryLicense {
     key: String,
     name: String,
-    spdx_id: Option<String>,
-    url: Option<String>,
+    //spdx_id: Option<String>,
+    //url: Option<String>,
     // node_id: String,
 }
 
@@ -276,7 +276,7 @@ impl GithubClient {
     ///
     /// - `sort_by`: Uses SortOption::Relevance if None (empty string in the URL)
     /// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
-    /// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
+    /// - `per_page`: Uses 5 if None, caps at 100 (GitHub API limit)
     /// - `page`: Uses 1 if None
     /// - `query`: URL encoded to handle special characters
     ///
@@ -306,7 +306,7 @@ impl GithubClient {
         let order = params.order.as_ref().unwrap_or(&default_order).to_str();
 
         // Set default values for pagination
-        let per_page = params.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
+        let per_page = params.per_page.unwrap_or(5).min(100); // GitHub API limit is 100
         let page = params.page.unwrap_or(1);
 
         let mut url = format!(
@@ -383,8 +383,6 @@ impl GithubClient {
                 owner: super::RepositoryOwner {
                     login: github_item.owner.login,
                     id: github_item.owner.id.to_string(),
-                    avatar_url: github_item.owner.avatar_url,
-                    html_url: github_item.owner.html_url,
                     type_field: github_item.owner.type_field,
                 },
                 html_url: github_item.html_url,
@@ -401,8 +399,6 @@ impl GithubClient {
                 license: github_item.license.map(|license| super::RepositoryLicense {
                     key: license.key,
                     name: license.name,
-                    spdx_id: license.spdx_id,
-                    url: license.url,
                 }),
                 topics: github_item.topics.unwrap_or_default(),
                 default_branch: github_item.default_branch,
