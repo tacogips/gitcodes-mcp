@@ -706,8 +706,8 @@ impl GitHubCodeTools {
 
                 // Convert to compact format with full file path
                 let compact_response = responses::CompactFileContentsResponse::from_file_contents(
-                    file_contents, 
-                    file_path.clone()
+                    file_contents,
+                    file_path.clone(),
                 );
 
                 // Serialize the compact response to JSON and return it

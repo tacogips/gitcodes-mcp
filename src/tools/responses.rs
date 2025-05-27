@@ -51,9 +51,9 @@ pub type FileContentsResponse = FileContents;
 ///
 /// This provides a more concise format where line contents are concatenated
 /// into a single string with line numbers, and includes enhanced metadata.
-/// 
+///
 /// # Format
-/// 
+///
 /// The response structure is:
 /// ```json
 /// {
@@ -66,19 +66,19 @@ pub type FileContentsResponse = FileContents;
 ///   }
 /// }
 /// ```
-/// 
+///
 /// # Line Format
-/// 
+///
 /// For text files, line contents are formatted as:
 /// - Line numbers with no padding or spaces
 /// - Format: `"{line_number}:{content}"`
 /// - Lines are joined with newline characters
-/// 
+///
 /// For binary and image files, the `line_contents` field contains
 /// a descriptive message instead of actual file content.
-/// 
+///
 /// # Response Types
-/// 
+///
 /// - `"text"`: Regular text files with line-by-line content
 /// - `"binary"`: Binary files with descriptive message
 /// - `"image"`: Image files with descriptive message
@@ -87,29 +87,29 @@ pub struct CompactFileContentsResponse {
     /// Response type identifier ("text", "binary", or "image")
     #[serde(rename = "type")]
     pub response_type: String,
-    
+
     /// Concatenated line contents with line numbers for text files,
     /// or descriptive message for binary/image files
     pub line_contents: String,
-    
+
     /// Enhanced metadata including file path and size information
     pub metadata: CompactFileMetadata,
 }
 
 /// Enhanced metadata for compact file contents response
-/// 
+///
 /// Contains essential information about the file being viewed,
 /// including path, line count, and size metrics.
-/// 
+///
 /// # Size Field
-/// 
+///
 /// The `size` field represents:
 /// - For text files: character count from the original file
 /// - For binary files: byte count (size_bytes from BinaryMetadata)
 /// - For image files: byte count (size_bytes from ImageMetadata)
-/// 
+///
 /// # Line Count
-/// 
+///
 /// The `line_count` field represents:
 /// - For text files: actual number of lines in the file
 /// - For binary/image files: always 0 (no line-based content)
@@ -117,40 +117,40 @@ pub struct CompactFileContentsResponse {
 pub struct CompactFileMetadata {
     /// Full path of the file relative to repository root
     pub file_path: String,
-    
+
     /// Total number of lines in the file (0 for binary/image files)
     pub line_count: usize,
-    
+
     /// Total size in bytes/characters depending on file type
     pub size: usize,
 }
 
 impl CompactFileContentsResponse {
     /// Convert FileContents to CompactFileContentsResponse
-    /// 
+    ///
     /// Transforms the verbose lumin::view::FileContents format into a compact
     /// representation suitable for MCP tool responses.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `file_contents` - The original FileContents from lumin crate
     /// * `file_path` - Full file path to include in metadata
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A CompactFileContentsResponse with:
     /// - Concatenated line contents for text files
     /// - Descriptive messages for binary/image files
     /// - Enhanced metadata with file path and size information
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use gitcodes_mcp::tools::responses::CompactFileContentsResponse;
     /// use lumin::view::FileContents;
-    /// 
+    ///
     /// let compact = CompactFileContentsResponse::from_file_contents(
-    ///     file_contents, 
+    ///     file_contents,
     ///     "src/main.rs".to_string()
     /// );
     /// ```
@@ -161,10 +161,12 @@ impl CompactFileContentsResponse {
                 let line_contents = content
                     .line_contents
                     .iter()
-                    .map(|line_content| format!("{}:{}", line_content.line_number, line_content.line))
+                    .map(|line_content| {
+                        format!("{}:{}", line_content.line_number, line_content.line)
+                    })
                     .collect::<Vec<String>>()
                     .join("\n");
-                
+
                 CompactFileContentsResponse {
                     response_type: "text".to_string(),
                     line_contents,
@@ -175,28 +177,24 @@ impl CompactFileContentsResponse {
                     },
                 }
             }
-            FileContents::Binary { message, metadata } => {
-                CompactFileContentsResponse {
-                    response_type: "binary".to_string(),
-                    line_contents: message,
-                    metadata: CompactFileMetadata {
-                        file_path,
-                        line_count: 0,
-                        size: metadata.size_bytes as usize,
-                    },
-                }
-            }
-            FileContents::Image { message, metadata } => {
-                CompactFileContentsResponse {
-                    response_type: "image".to_string(),
-                    line_contents: message,
-                    metadata: CompactFileMetadata {
-                        file_path,
-                        line_count: 0,
-                        size: metadata.size_bytes as usize,
-                    },
-                }
-            }
+            FileContents::Binary { message, metadata } => CompactFileContentsResponse {
+                response_type: "binary".to_string(),
+                line_contents: message,
+                metadata: CompactFileMetadata {
+                    file_path,
+                    line_count: 0,
+                    size: metadata.size_bytes as usize,
+                },
+            },
+            FileContents::Image { message, metadata } => CompactFileContentsResponse {
+                response_type: "image".to_string(),
+                line_contents: message,
+                metadata: CompactFileMetadata {
+                    file_path,
+                    line_count: 0,
+                    size: metadata.size_bytes as usize,
+                },
+            },
         }
     }
 }
