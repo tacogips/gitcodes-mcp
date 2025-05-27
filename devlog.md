@@ -84,18 +84,56 @@ When updating tool response formats:
 
 This approach ensures backward compatibility while providing improved efficiency for new implementations.
 
-### Lumin 0.1.13 Upgrade: Improved Glob Pattern Support
-</edits>
+### Lumin 0.1.15 Upgrade: Directory Exclusion Pattern Fix
 
-Upgraded Lumin from 0.1.12 to 0.1.13, which includes improvements to glob pattern support.
+Upgraded to Lumin 0.1.15 and fixed a critical issue with directory exclusion patterns in the `exclude_dirs` functionality.
 
-#### Glob Pattern Best Practices
+#### The Problem
 
-- Use `"**/*.ext"` to match files with specific extensions (e.g., `"**/*.rs"` for Rust files)
-- Use `"**/dirname/**"` to match files in directories at any level (not just `"dirname/**"`)
-- Always prefix with `"**/"` for nested directory matching to work correctly
+The `normalize_glob_path` function was incorrectly converting relative glob patterns to absolute paths for exclude patterns. Lumin expects exclude_glob patterns to be relative to the search directory, but the normalization was producing absolute paths like:
+- Input: `"core"` (directory name)
+- Incorrect output: `/tmp/repo_path/**/core/**` (absolute path)
+- Correct output: `**/core/**` (relative path)
 
-We've improved documentation in the `perform_code_search` method to provide clear guidance on glob pattern usage. The improved glob support in Lumin 0.1.13 allows for better file filtering during code searches.
+This caused directory exclusion to fail completely, as lumin couldn't match the absolute patterns against its internal relative file paths.
+
+#### The Solution
+
+Updated the `perform_code_search` method to handle include_globs and exclude_globs differently:
+
+```rust
+// For exclude_globs, lumin expects relative paths (relative to the search directory)
+// Convert directory names to glob patterns and ensure paths are relative
+let normalized_exclude_globs = options.exclude_globs.as_ref().map(|dirs| {
+    dirs.iter()
+        .map(|dir| {
+            if dir.contains('/') || dir.contains('*') {
+                // Make it relative to search dir by removing repo prefix and leading slash
+                let repo_path = self.repository_location.to_string_lossy();
+                if dir.starts_with(repo_path.as_ref()) {
+                    let relative_path = dir.strip_prefix(repo_path.as_ref()).unwrap_or(dir);
+                    relative_path.strip_prefix('/').unwrap_or(relative_path).to_string()
+                } else {
+                    dir.strip_prefix('/').unwrap_or(dir).to_string()
+                }
+            } else {
+                // Simple directory name to glob pattern
+                format!("**/{}/**", dir)
+            }
+        })
+        .collect()
+});
+```
+
+#### Key Learning Points
+
+1. **Lumin API Expectations**: Different lumin parameters have different path format requirements:
+   - `include_glob`: Can work with absolute paths when using `omit_path_prefix`
+   - `exclude_glob`: Must use relative paths relative to the search directory
+
+2. **Glob Pattern Debugging**: When glob patterns don't work, check if the library expects relative vs absolute paths by consulting the documentation carefully
+
+3. **Test-Driven Fixes**: The failing test `test_grep_exclude_dirs` was essential for identifying and verifying the fix
 
 #### API Evolution for File Filtering
 

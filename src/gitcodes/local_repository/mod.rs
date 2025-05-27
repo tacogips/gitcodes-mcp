@@ -1279,7 +1279,7 @@ impl LocalRepository {
         &self,
         options: CodeSearchOptions,
     ) -> Result<CodeSearchResult, String> {
-        // Normalize include_globs by prepending repository path if needed
+        // For include_globs, lumin 0.1.15 works with absolute paths when using omit_path_prefix
         let normalized_include_globs = options.include_globs.as_ref().map(|globs| {
             globs
                 .iter()
@@ -1287,19 +1287,27 @@ impl LocalRepository {
                 .collect::<Vec<String>>()
         });
 
-        // Normalize exclude_globs by prepending repository path if needed
-        // First convert directory names to glob patterns, then normalize the paths
+        // For exclude_globs, lumin expects relative paths (relative to the search directory)
+        // Convert directory names to glob patterns and ensure paths are relative
         let normalized_exclude_globs = options.exclude_globs.as_ref().map(|dirs| {
             dirs.iter()
                 .map(|dir| {
                     // Check if this looks like a simple directory name or a glob pattern
                     if dir.contains('/') || dir.contains('*') {
-                        // Looks like a glob pattern or path, normalize it directly
-                        self.normalize_glob_path(dir)
+                        // Looks like a glob pattern or path, make it relative to search dir
+                        let repo_path = self.repository_location.to_string_lossy();
+                        
+                        // If the pattern already starts with the repository path, remove it
+                        if dir.starts_with(repo_path.as_ref()) {
+                            let relative_path = dir.strip_prefix(repo_path.as_ref()).unwrap_or(dir);
+                            relative_path.strip_prefix('/').unwrap_or(relative_path).to_string()
+                        } else {
+                            // Remove leading slash if present to make it relative
+                            dir.strip_prefix('/').unwrap_or(dir).to_string()
+                        }
                     } else {
-                        // Looks like a simple directory name, convert to glob pattern first
-                        let pattern = format!("**/{}/**", dir);
-                        self.normalize_glob_path(&pattern)
+                        // Looks like a simple directory name, convert to glob pattern
+                        format!("**/{}/**", dir)
                     }
                 })
                 .collect::<Vec<String>>()
@@ -1540,29 +1548,37 @@ mod tests {
         };
 
         // Test the normalization logic for exclude_globs
+        // Note: exclude_globs are NOT normalized to absolute paths - lumin expects relative paths
         let normalized_exclude_globs = options.exclude_globs.as_ref().map(|dirs| {
             dirs.iter()
                 .map(|dir| {
                     // Check if this looks like a simple directory name or a glob pattern
-                    let glob_pattern = if dir.contains('/') || dir.contains('*') {
-                        // Looks like a glob pattern or path, normalize it directly
-                        local_repo.normalize_glob_path(dir)
+                    if dir.contains('/') || dir.contains('*') {
+                        // Looks like a glob pattern or path, make it relative to search dir
+                        let repo_path = local_repo.repository_location.to_string_lossy();
+                        
+                        // If the pattern already starts with the repository path, remove it
+                        if dir.starts_with(repo_path.as_ref()) {
+                            let relative_path = dir.strip_prefix(repo_path.as_ref()).unwrap_or(dir);
+                            relative_path.strip_prefix('/').unwrap_or(relative_path).to_string()
+                        } else {
+                            // Remove leading slash if present to make it relative
+                            dir.strip_prefix('/').unwrap_or(dir).to_string()
+                        }
                     } else {
-                        // Looks like a simple directory name, convert to glob pattern first
-                        let pattern = format!("**/{}/**", dir);
-                        local_repo.normalize_glob_path(&pattern)
-                    };
-                    glob_pattern
+                        // Looks like a simple directory name, convert to glob pattern
+                        format!("**/{}/**", dir)
+                    }
                 })
                 .collect::<Vec<String>>()
         });
 
         let expected = Some(vec![
-            "/tmp/test_repo/**/target/**".to_string(),
-            "/tmp/test_repo/**/node_modules/**".to_string(),
-            "/tmp/test_repo/src/**/*.tmp".to_string(),
-            "/tmp/test_repo/docs/generated/**".to_string(),
-            "/tmp/test_repo/already/prefixed/**".to_string(),
+            "**/target/**".to_string(),
+            "**/node_modules/**".to_string(),
+            "src/**/*.tmp".to_string(),
+            "docs/generated/**".to_string(),
+            "already/prefixed/**".to_string(),
         ]);
 
         assert_eq!(normalized_exclude_globs, expected);
