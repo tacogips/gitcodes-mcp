@@ -39,6 +39,51 @@ The project maintains documentation across multiple layers:
 
 When updating documentation, ensure consistency across all layers and update both code comments and markdown files simultaneously.
 
+### Compact Response Format Pattern for grep_repository Tool
+
+Implemented a new compact response format for the `grep_repository` tool that groups search results by file and concatenates line contents. This pattern provides more efficient JSON output while preserving all essential information.
+
+#### Response Structure Design Pattern
+
+The compact response uses a two-level grouping strategy:
+
+```rust
+pub struct CompactCodeSearchResponse {
+    pub total_match_line_number: usize,
+    pub matches: Vec<CompactFileMatch>,
+    pub pattern: String,
+    // ... other search metadata
+}
+
+pub struct CompactFileMatch {
+    pub file_path: String,
+    pub lines: String, // Format: "{line_number}:{content}\n{line_number}:{content}..."
+}
+```
+
+#### Conversion Pattern Implementation
+
+The conversion from verbose `CodeSearchResult` to compact format follows this pattern:
+
+1. **Group by file path**: Use `HashMap<String, Vec<String>>` to collect lines per file
+2. **Concatenate with line numbers**: Format each line as `"{line_number}:{content}"`
+3. **Join with newlines**: Combine all lines for a file into a single string
+4. **Preserve metadata**: Copy all original search parameters and statistics
+
+This pattern can be applied to other tools that return line-based results for improved JSON efficiency.
+
+#### Tool Response Evolution Pattern
+
+When updating tool response formats:
+
+1. **Create new response types** in `tools/responses.rs` with clear documentation
+2. **Implement conversion methods** using `from_*` constructors
+3. **Update tool implementation** to use new format while preserving functionality
+4. **Keep legacy types** marked as `#[allow(dead_code)]` for compatibility
+5. **Update all documentation** including tool descriptions, README, spec.md, and devlog.md
+
+This approach ensures backward compatibility while providing improved efficiency for new implementations.
+
 ### Lumin 0.1.13 Upgrade: Improved Glob Pattern Support
 </edits>
 

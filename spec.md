@@ -329,7 +329,7 @@ Clones the specified GitHub repository locally and greps the code. Supports both
 
 Two variants of this tool are provided:
 
-1. `grep_repository` - Returns the full search results including matching lines and context
+1. `grep_repository` - Returns search results in a compact format grouped by file with concatenated line contents
 2. `grep_repository_match_line_number` - Returns only the total number of matching lines as a simple numeric value
 
 #### Input Parameters
@@ -434,14 +434,68 @@ pub struct GrepParams {
 
 ##### For grep_repository
 
+Returns a `CompactCodeSearchResponse` with the following structure:
+
 ```rust
-pub struct GrepResult {
-    // List of matched files
-    pub matches: Vec<FileMatch>,
-    // Search statistics
-    pub stats: SearchStats,
+pub struct CompactCodeSearchResponse {
+    // Total number of lines that matched the search pattern
+    pub total_match_line_number: usize,
+    // List of search matches grouped by file
+    pub matches: Vec<CompactFileMatch>,
+    // The search pattern that was used
+    pub pattern: String,
+    // Whether the search was case-sensitive
+    pub case_sensitive: bool,
+    // File extensions filter that was applied (if any)
+    pub file_extensions: Option<Vec<String>>,
+    // Glob patterns used to include files in the search (if any)
+    pub include_globs: Option<Vec<String>>,
+    // Directories or glob patterns excluded from the search (if any)
+    pub exclude_globs: Option<Vec<String>>,
+    // Number of lines of context included before each match
+    pub before_context: Option<usize>,
+    // Number of lines of context included after each match
+    pub after_context: Option<usize>,
+}
+
+pub struct CompactFileMatch {
+    // Path to the file containing the matches
+    pub file_path: String,
+    // Concatenated line contents with line numbers
+    // Format: "{line_number}:{content}\n{line_number}:{content}..."
+    pub lines: String,
 }
 ```
+
+**Example JSON Response:**
+```json
+{
+  "total_match_line_number": 5,
+  "matches": [
+    {
+      "file_path": "src/main.rs",
+      "lines": "10:fn main() {\n11:    println!(\"Hello, world!\");"
+    },
+    {
+      "file_path": "src/lib.rs",
+      "lines": "25:pub fn main_function() -> Result<(), Error> {"
+    }
+  ],
+  "pattern": "main",
+  "case_sensitive": false,
+  "include_globs": ["**/*.rs"],
+  "exclude_globs": ["**/target/**"],
+  "before_context": 0,
+  "after_context": 1
+}
+```
+
+**Key Features of Compact Format:**
+- Search results are grouped by file path for better organization
+- Line contents are concatenated with format `"{line_number}:{content}"`
+- All search metadata is preserved (pattern, filters, context settings)
+- Significantly more efficient than line-by-line JSON structures
+- Both actual matches and context lines are included in the concatenated string
 
 ##### For grep_repository_match_line_number
 
@@ -450,34 +504,7 @@ pub struct GrepResult {
 Number
 ```
 
-```rust
-pub struct FileMatch {
-    // File path (relative to repository root)
-    pub path: String,
-    // Matched lines and their content
-    pub line_matches: Vec<LineMatch>,
-}
 
-pub struct LineMatch {
-    // Line number
-    pub line_number: u32,
-    // Line content
-    pub line: String,
-    // Matched ranges within the line (start position and length)
-    pub ranges: Vec<(usize, usize)>,
-}
-
-pub struct SearchStats {
-    // Total number of files searched
-    pub files_searched: u32,
-    // Total number of matches found
-    pub total_matches: u32,
-    // Number of files with at least one match
-    pub files_with_matches: u32,
-    // Time taken for search (milliseconds)
-    pub execution_time_ms: u64,
-}
-```
 
 #### Response Example
 

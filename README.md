@@ -140,7 +140,7 @@ Example:
 
 ### 2. `grep_repository`
 
-Searches for code patterns within a GitHub repository.
+Searches for code patterns within a GitHub repository. Returns results in a compact format grouped by file.
 
 Parameters:
 
@@ -175,9 +175,41 @@ Example:
 }
 ```
 
+**Response Format:**
+
+The tool returns a compact JSON format with search results grouped by file:
+
+```json
+{
+  "total_match_line_number": 5,
+  "matches": [
+    {
+      "file_path": "src/main.rs",
+      "lines": "10:fn main() {\n11:    println!(\"Hello, world!\");"
+    },
+    {
+      "file_path": "src/lib.rs", 
+      "lines": "25:pub fn main_function() -> Result<(), Error> {"
+    }
+  ],
+  "pattern": "main",
+  "case_sensitive": false,
+  "include_globs": ["**/*.rs"],
+  "exclude_globs": ["**/target/**"],
+  "before_context": 0,
+  "after_context": 1
+}
+```
+
+Key features of the compact format:
+- Results are grouped by file path for better organization
+- Line contents are concatenated with format `"{line_number}:{content}"`
+- All search metadata is preserved (pattern, filters, context settings)
+- Significantly more efficient than line-by-line JSON structures
+
 ### 3. `grep_repository_match_line_number`
 
-Counts matching lines in repository code search (like `grep_repository` but returns only the total count).
+Counts matching lines in repository code search (like `grep_repository` but returns only the total count as a number instead of detailed file matches).
 
 Parameters: Same as `grep_repository`
 

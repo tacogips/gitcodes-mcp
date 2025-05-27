@@ -120,12 +120,43 @@ impl ServerHandler for GitHubCodeTools {
 
 ## Available Tools
 - `search_repositories`: Search for GitHub repositories
-- `grep_repository`: Search code within a GitHub repository
+- `grep_repository`: Search code within a GitHub repository (returns compact grouped format)
+- `grep_repository_match_line_number`: Count matching lines only (returns number)
 - `list_repository_refs`: List branches and tags for a repository
 - `show_file_contents`: View file contents in compact format with concatenated lines and enhanced metadata
 - `get_repository_tree`: Get the directory tree structure of a repository
 
 ## Response Format Updates
+
+### grep_repository Compact Format
+The `grep_repository` tool now returns results grouped by file with concatenated line contents:
+```json
+{{
+  \"total_match_line_number\": 5,
+  \"matches\": [
+    {{
+      \"file_path\": \"src/main.rs\",
+      \"lines\": \"10:fn main() {{\\n11:    println!(\\\"Hello, world!\\\");\"
+    }},
+    {{
+      \"file_path\": \"src/lib.rs\",
+      \"lines\": \"25:pub fn main_function() -> Result<(), Error> {{\"
+    }}
+  ],
+  \"pattern\": \"main\",
+  \"case_sensitive\": false,
+  \"include_globs\": [\"**/*.rs\"],
+  \"exclude_globs\": [\"**/target/**\"],
+  \"before_context\": 0,
+  \"after_context\": 1
+}}
+```
+
+Key features:
+- Search results are grouped by file path
+- Line contents are concatenated with format \"{{line_number}}:{{content}}\"
+- All search metadata is preserved (pattern, filters, context settings)
+- Significantly more compact than previous line-by-line format
 
 ### show_file_contents Compact Format
 The `show_file_contents` tool now returns a more concise format:
@@ -259,6 +290,16 @@ impl GitHubCodeTools {
     ///
     /// This tool clones or updates the repository locally, then performs a code search
     /// using the specified pattern. It supports both public and private repositories.
+    /// Returns results in a compact JSON format with search matches grouped by file.
+    ///
+    /// # Response Format
+    ///
+    /// Returns a `CompactCodeSearchResponse` with the following structure:
+    /// - `total_match_line_number`: Total number of matching lines
+    /// - `matches`: Array of file matches, each containing:
+    ///   - `file_path`: Path to the file containing matches
+    ///   - `lines`: Concatenated line contents with format "{line_number}:{content}"
+    /// - Search metadata: pattern, case_sensitive, file filters, context settings
     ///
     /// # Authentication
     ///
@@ -270,9 +311,9 @@ impl GitHubCodeTools {
     /// This tool uses a combination of git operations and the lumin search library:
     /// 1. Repository is cloned or updated locally
     /// 2. Code search is performed on the local files
-    /// 3. Results are formatted and returned
+    /// 3. Results are grouped by file and formatted as compact JSON
     #[tool(
-        description = "Search code in GitHub repositories or local directories using regex patterns. Clones repos locally for searching. Supports private repos, branch selection, and context lines. Example: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\", \"pattern\": \"fn main\"}}`. With options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"async fn\", \"case_sensitive\": true}}`"
+        description = "Search code in GitHub repositories or local directories using regex patterns (returns compact JSON format). Clones repos locally for searching. Supports private repos, branch selection, and context lines. Results are grouped by file with concatenated line contents. Example: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\", \"pattern\": \"fn main\"}}`. With options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"async fn\", \"case_sensitive\": true}}`. With filtering: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"error\", \"include_globs\": [\"**/*.rs\"], \"exclude_dirs\": [\"target\"]}}`. With pagination: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"TODO\", \"skip\": 0, \"take\": 50}}`"
     )]
     #[allow(clippy::too_many_arguments)]
     async fn grep_repository(
@@ -372,8 +413,9 @@ impl GitHubCodeTools {
                 // This improves performance for subsequent operations
                 tracing::debug!("Repository kept for caching");
 
-                // Serialize the result to JSON and return it
-                match serde_json::to_string(&result) {
+                // Convert to compact format and serialize to JSON
+                let compact_result = responses::CompactCodeSearchResponse::from_search_result(result);
+                match serde_json::to_string(&compact_result) {
                     Ok(json) => success_result(json),
                     Err(e) => error_result(format!("Failed to serialize search results: {}", e)),
                 }
@@ -410,9 +452,11 @@ impl GitHubCodeTools {
     /// # Implementation Note
     ///
     /// This method uses the same internal search mechanism as `grep_repository` but only
-    /// returns the total count of matches rather than the full result details.
+    /// returns the total count of matches rather than the full result details. While
+    /// `grep_repository` returns grouped file matches with line contents, this tool
+    /// returns just a number for quick estimation or existence checking.
     #[tool(
-        description = "Count matching lines in repository code search. Works like grep_repository but returns only the total count. Example: `{\"name\": \"grep_repository_match_line_number\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"pattern\": \"fn main\"}}`"
+        description = "Count matching lines in repository code search. Works like grep_repository but returns only the total count (number) instead of detailed results. Use this for quick estimation or existence checks. Example: `{\"name\": \"grep_repository_match_line_number\", \"arguments\": {\"repository_location\": \"git@github.com:user/repo.git\", \"pattern\": \"fn main\"}}`. With filters: `{\"name\": \"grep_repository_match_line_number\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"TODO\", \"include_globs\": [\"**/*.rs\"]}}`"
     )]
     #[allow(clippy::too_many_arguments)]
     async fn grep_repository_match_line_number(
