@@ -14,7 +14,7 @@ This is an MCP (Model Context Protocol) server that provides tools for GitHub co
 ## Installation
 
 ```bash
-git clone https://github.com/d6e/gitcodes-mcp.git
+git clone https://github.com/tacogips/gitcodes-mcp.git
 cd gitcodes-mcp
 cargo build --release
 ```
