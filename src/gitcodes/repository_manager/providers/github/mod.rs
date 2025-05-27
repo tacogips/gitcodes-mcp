@@ -458,7 +458,7 @@ impl GithubClient {
     ///
     /// # API References
     ///
-    /// - https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28
+    /// - [GitHub API: Git References](https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28)
     ///
     /// # Returns
     ///
@@ -547,7 +547,7 @@ impl GithubClient {
 /// Parse a GitHub URL to extract the user and repository name
 ///
 /// This function handles various GitHub URL formats including:
-/// - https://github.com/user/repo
+/// - `https://github.com/user/repo`
 /// - git@github.com:user/repo
 /// - github:user/repo
 ///

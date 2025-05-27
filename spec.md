@@ -2,20 +2,32 @@
 
 ## Purpose and Overview
 
-This MCP (Model Context Protocol) provides a set of tools for AI assistants to efficiently search, analyze, and reference external source code. The protocol enables AI to:
+This MCP (Model Context Protocol) server provides a comprehensive set of tools for AI assistants to efficiently search, analyze, and reference both Rust crate documentation and external source code. The protocol enables AI to:
 
-### https://modelcontextprotocol.io/introduction
+### Protocol Reference: [Model Context Protocol](https://modelcontextprotocol.io/introduction)
 
-- Search for relevant repositories on GitHub
-- Perform detailed analysis of specific repositories using code grep
-- Browse repository branches and tags
+**Rust Crate Documentation Features:**
+- Look up comprehensive documentation for any Rust crate from docs.rs
+- Search for relevant crates on crates.io using keywords
+- Get detailed API documentation for specific items (structs, traits, functions, etc.)
+- Analyze type relationships and usage patterns
+- Access practical code examples and implementation guidance
 
-Main use cases:
+**GitHub Code Search Features:**
+- Search for relevant repositories on GitHub with advanced filtering
+- Perform detailed code analysis using pattern matching and grep
+- Browse repository structure, branches, and tags
+- View specific file contents with line-by-line access
+- Navigate repository references and version history
 
-- Searching for code examples and patterns
-- Investigating specific implementation methods
-- Understanding how to use libraries and frameworks
-- Analyzing differences between versions
+**Main Use Cases:**
+
+- Learning how to use unfamiliar Rust crates and their APIs
+- Finding code examples and implementation patterns
+- Investigating specific implementation methods across repositories
+- Understanding library design patterns and best practices
+- Analyzing differences between crate versions
+- Discovering relevant crates for specific functionality
 
 ## Basic Design and Common Features
 

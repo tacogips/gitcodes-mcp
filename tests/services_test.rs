@@ -41,20 +41,19 @@ async fn test_perform_grep_with_cleanup() {
     // Run grep operation via the service function
     let grep_params = services::GrepParams {
         repository_location_str: repo_url.to_string(),
-        pattern: "fn ".to_string(),             // Search for function declarations
-        ref_name: None,                          // Default branch
-        case_sensitive: false,                         // Case insensitive
+        pattern: "fn ".to_string(), // Search for function declarations
+        ref_name: None,             // Default branch
+        case_sensitive: false,      // Case insensitive
         file_extensions: Some(vec!["rs".to_string()]), // Only Rust files
-        include_globs: None,                          // No glob patterns (include_globs)
-        exclude_dirs: None,                          // No excluded directories
-        before_context: None,                          // No before context
-        after_context: None,                          // No after context
-        skip: None,                          // No skip (pagination)
-        take: None,                          // No take (pagination)
+        include_globs: None,        // No glob patterns (include_globs)
+        exclude_dirs: None,         // No excluded directories
+        before_context: None,       // No before context
+        after_context: None,        // No after context
+        skip: None,                 // No skip (pagination)
+        take: None,                 // No take (pagination)
         match_content_omit_num: Some(150),
     };
-    let result = services::perform_grep_in_repository(&manager, grep_params)
-        .await;
+    let result = services::perform_grep_in_repository(&manager, grep_params).await;
 
     // Handle the result conditionally
     if let Ok((result, local_repo)) = result {
@@ -107,19 +106,18 @@ async fn test_grep_pagination() {
     let full_grep_params = services::GrepParams {
         repository_location_str: repo_url.to_string(),
         pattern: "fn ".to_string(), // Search for function declarations (more specific than ".")
-        ref_name: None,              // Default branch
-        case_sensitive: false,             // Case insensitive
+        ref_name: None,             // Default branch
+        case_sensitive: false,      // Case insensitive
         file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-        include_globs: None,                          // No glob patterns (include_globs)
-        exclude_dirs: None,                          // No excluded directories
+        include_globs: None,                           // No glob patterns (include_globs)
+        exclude_dirs: None,                            // No excluded directories
         before_context: None,                          // No before context
-        after_context: None,                          // No after context
-        skip: None,                          // No skip (get all results for baseline)
-        take: None,                          // No take (get all results for baseline)
+        after_context: None,                           // No after context
+        skip: None,                                    // No skip (get all results for baseline)
+        take: None,                                    // No take (get all results for baseline)
         match_content_omit_num: Some(150),
     };
-    let full_result = services::perform_grep_in_repository(&manager, full_grep_params)
-        .await;
+    let full_result = services::perform_grep_in_repository(&manager, full_grep_params).await;
 
     if let Ok((full_results, repo)) = full_result {
         // Get the total number of matches
@@ -135,20 +133,20 @@ async fn test_grep_pagination() {
             // Run a paginated search using skip and take
             let paginated_grep_params = services::GrepParams {
                 repository_location_str: repo_url.to_string(),
-                pattern: "fn ".to_string(),             // Same search pattern
-                ref_name: None,                          // Default branch
-                case_sensitive: false,                         // Case insensitive
+                pattern: "fn ".to_string(), // Same search pattern
+                ref_name: None,             // Default branch
+                case_sensitive: false,      // Case insensitive
                 file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-                include_globs: None,                          // No glob patterns (include_globs)
-                exclude_dirs: None,                          // No excluded directories
+                include_globs: None,                           // No glob patterns (include_globs)
+                exclude_dirs: None,                            // No excluded directories
                 before_context: None,                          // No before context
-                after_context: None,                          // No after context
-                skip: Some(skip_count),                          // Skip first few results
-                take: Some(take_count),                          // Take only a few results for pagination
+                after_context: None,                           // No after context
+                skip: Some(skip_count),                        // Skip first few results
+                take: Some(take_count), // Take only a few results for pagination
                 match_content_omit_num: Some(150),
             };
-            let paginated_result = services::perform_grep_in_repository(&manager, paginated_grep_params)
-                .await;
+            let paginated_result =
+                services::perform_grep_in_repository(&manager, paginated_grep_params).await;
 
             match paginated_result {
                 Ok((paginated_results, paginated_repo)) => {
@@ -320,19 +318,18 @@ async fn test_grep_multiple_pages() {
     let full_grep_params = services::GrepParams {
         repository_location_str: repo_url.to_string(),
         pattern: "fn ".to_string(), // Search for function declarations (more specific than ".")
-        ref_name: None,              // Default branch
-        case_sensitive: false,             // Case insensitive
+        ref_name: None,             // Default branch
+        case_sensitive: false,      // Case insensitive
         file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-        include_globs: None,              // No glob patterns (include_globs)
-        exclude_dirs: None,              // No excluded directories
-        before_context: None,              // No before context
-        after_context: None,              // No after context
-        skip: None,              // No skip
-        take: None,              // No take limit
+        include_globs: None,                           // No glob patterns (include_globs)
+        exclude_dirs: None,                            // No excluded directories
+        before_context: None,                          // No before context
+        after_context: None,                           // No after context
+        skip: None,                                    // No skip
+        take: None,                                    // No take limit
         match_content_omit_num: Some(150),
     };
-    let full_result = services::perform_grep_in_repository(&manager, full_grep_params)
-        .await;
+    let full_result = services::perform_grep_in_repository(&manager, full_grep_params).await;
 
     if let Ok((full_results, repo)) = full_result {
         // Get the total number of matches
@@ -355,19 +352,19 @@ async fn test_grep_multiple_pages() {
                 let page_grep_params = services::GrepParams {
                     repository_location_str: repo_url.to_string(),
                     pattern: "fn ".to_string(), // Same search pattern as full search
-                    ref_name: None,              // Default branch
-                    case_sensitive: false,             // Case insensitive
+                    ref_name: None,             // Default branch
+                    case_sensitive: false,      // Case insensitive
                     file_extensions: Some(vec!["rs".to_string()]), // Only Rust files to make results more predictable
-                    include_globs: None,                          // No glob patterns (include_globs)
-                    exclude_dirs: None,                          // No excluded directories
-                    before_context: None,                          // No before context
-                    after_context: None,                          // No after context
-                    skip: Some(skip),                          // Skip to the next page
-                    take: Some(page_size),                          // Take one page worth of results
+                    include_globs: None,   // No glob patterns (include_globs)
+                    exclude_dirs: None,    // No excluded directories
+                    before_context: None,  // No before context
+                    after_context: None,   // No after context
+                    skip: Some(skip),      // Skip to the next page
+                    take: Some(page_size), // Take one page worth of results
                     match_content_omit_num: Some(150),
                 };
-                let page_result = services::perform_grep_in_repository(&manager, page_grep_params)
-                    .await;
+                let page_result =
+                    services::perform_grep_in_repository(&manager, page_grep_params).await;
 
                 match page_result {
                     Ok((page_results, page_repo)) => {
@@ -546,20 +543,19 @@ async fn test_grep_url_formats() {
         // Run grep operation via the service function
         let grep_params = services::GrepParams {
             repository_location_str: url.to_string(),
-            pattern: "README".to_string(),          // Search for README references
-            ref_name: None,                          // Default branch
-            case_sensitive: false,                         // Case insensitive
+            pattern: "README".to_string(), // Search for README references
+            ref_name: None,                // Default branch
+            case_sensitive: false,         // Case insensitive
             file_extensions: Some(vec!["md".to_string()]), // Only markdown files
-            include_globs: None,                          // No glob patterns (include_globs)
-            exclude_dirs: None,                          // No excluded directories
-            before_context: None,                          // No before context
-            after_context: None,                          // No after context
-            skip: None,                          // No skip (pagination)
-            take: None,                          // No take (pagination)
+            include_globs: None,           // No glob patterns (include_globs)
+            exclude_dirs: None,            // No excluded directories
+            before_context: None,          // No before context
+            after_context: None,           // No after context
+            skip: None,                    // No skip (pagination)
+            take: None,                    // No take (pagination)
             match_content_omit_num: Some(150),
         };
-        let result = services::perform_grep_in_repository(&manager, grep_params)
-            .await;
+        let result = services::perform_grep_in_repository(&manager, grep_params).await;
 
         if let Ok((_search_result, local_repo)) = result {
             // Get the repository directory
@@ -605,20 +601,19 @@ async fn test_grep_dir_exclusion() {
     // First grep without exclusion
     let grep_params = services::GrepParams {
         repository_location_str: repo_url.to_string(),
-        pattern: "fn ".to_string(),             // Search for function declarations
-        ref_name: None,                          // Default branch
-        case_sensitive: false,                         // Case insensitive
+        pattern: "fn ".to_string(), // Search for function declarations
+        ref_name: None,             // Default branch
+        case_sensitive: false,      // Case insensitive
         file_extensions: Some(vec!["rs".to_string()]), // Only Rust files
-        include_globs: None,                          // No glob patterns (include_globs)
-        exclude_dirs: None,                          // No excluded directories
-        before_context: None,                          // No before context
-        after_context: None,                          // No after context
-        skip: None,                          // No skip (pagination)
-        take: None,                          // No take (pagination)
+        include_globs: None,        // No glob patterns (include_globs)
+        exclude_dirs: None,         // No excluded directories
+        before_context: None,       // No before context
+        after_context: None,        // No after context
+        skip: None,                 // No skip (pagination)
+        take: None,                 // No take (pagination)
         match_content_omit_num: Some(150),
     };
-    let grep_result = services::perform_grep_in_repository(&manager, grep_params)
-        .await;
+    let grep_result = services::perform_grep_in_repository(&manager, grep_params).await;
 
     if let Ok((results_without_exclusion, repo1)) = grep_result {
         // Verify repository directory exists
@@ -643,20 +638,20 @@ async fn test_grep_dir_exclusion() {
             // Now grep with exclusion
             let exclude_grep_params = services::GrepParams {
                 repository_location_str: repo_url.to_string(),
-                pattern: "fn ".to_string(),             // Search for function declarations
-                ref_name: None,                          // Default branch
-                case_sensitive: false,                         // Case insensitive
+                pattern: "fn ".to_string(), // Search for function declarations
+                ref_name: None,             // Default branch
+                case_sensitive: false,      // Case insensitive
                 file_extensions: Some(vec!["rs".to_string()]), // Only Rust files
-                include_globs: None,                          // No glob patterns (include_globs)
-                exclude_dirs: Some(vec!["src".to_string()]),          // Exclude src directory
-                before_context: None,                          // No before context
-                after_context: None,                          // No after context
-                skip: None,                          // No skip (pagination)
-                take: None,                          // No take (pagination)
+                include_globs: None,        // No glob patterns (include_globs)
+                exclude_dirs: Some(vec!["src".to_string()]), // Exclude src directory
+                before_context: None,       // No before context
+                after_context: None,        // No after context
+                skip: None,                 // No skip (pagination)
+                take: None,                 // No take (pagination)
                 match_content_omit_num: Some(150),
             };
-            let exclude_result = services::perform_grep_in_repository(&manager, exclude_grep_params)
-                .await;
+            let exclude_result =
+                services::perform_grep_in_repository(&manager, exclude_grep_params).await;
 
             if let Ok((results_with_exclusion, repo2)) = exclude_result {
                 // Verify repository directory exists
@@ -722,14 +717,13 @@ async fn test_show_file_contents() {
     let show_params = services::ShowFileParams {
         repository_location_str: repo_url.to_string(),
         file_path: "Cargo.toml".to_string(),
-        ref_name: None, // Default branch
-        max_size: None, // Default max size
-        line_from: None, // No start line
-        line_to: None, // No end line
+        ref_name: None,             // Default branch
+        max_size: None,             // Default max size
+        line_from: None,            // No start line
+        line_to: None,              // No end line
         without_line_numbers: None, // Default format (with line numbers)
     };
-    let result = services::show_file_contents(&manager, show_params)
-        .await;
+    let result = services::show_file_contents(&manager, show_params).await;
 
     // Handle the result
     match result {
@@ -784,14 +778,13 @@ async fn test_show_file_contents() {
             let line_range_params = services::ShowFileParams {
                 repository_location_str: repo_url.to_string(),
                 file_path: "Cargo.toml".to_string(),
-                ref_name: None,       // Default branch
-                max_size: None,       // Default max size
-                line_from: Some(1),    // Start from line 1
-                line_to: Some(5),    // End at line 5
-                without_line_numbers: None,       // Default format (with line numbers)
+                ref_name: None,             // Default branch
+                max_size: None,             // Default max size
+                line_from: Some(1),         // Start from line 1
+                line_to: Some(5),           // End at line 5
+                without_line_numbers: None, // Default format (with line numbers)
             };
-            let line_range_result = services::show_file_contents(&manager, line_range_params)
-                .await;
+            let line_range_result = services::show_file_contents(&manager, line_range_params).await;
             if let Ok((file_contents, local_repo, without_line_numbers)) = line_range_result {
                 // Verify we got text content back with limited lines
                 match file_contents {
@@ -818,14 +811,14 @@ async fn test_show_file_contents() {
             let nonexistent_params = services::ShowFileParams {
                 repository_location_str: repo_url.to_string(),
                 file_path: "non_existent_file.txt".to_string(),
-                ref_name: None, // Default branch
-                max_size: None, // Default max size
-                line_from: None, // No start line
-                line_to: None, // No end line
+                ref_name: None,             // Default branch
+                max_size: None,             // Default max size
+                line_from: None,            // No start line
+                line_to: None,              // No end line
                 without_line_numbers: None, // Default format (with line numbers)
             };
-            let nonexistent_result = services::show_file_contents(&manager, nonexistent_params)
-                .await;
+            let nonexistent_result =
+                services::show_file_contents(&manager, nonexistent_params).await;
 
             // This should result in an error
             assert!(
@@ -843,14 +836,13 @@ async fn test_show_file_contents() {
             let plain_text_params = services::ShowFileParams {
                 repository_location_str: repo_url.to_string(),
                 file_path: "Cargo.toml".to_string(),
-                ref_name: None,        // Default branch
-                max_size: None,        // Default max size
-                line_from: None,        // No start line
-                line_to: None,        // No end line
-                without_line_numbers: Some(true),  // Plain text format without line numbers
+                ref_name: None,                   // Default branch
+                max_size: None,                   // Default max size
+                line_from: None,                  // No start line
+                line_to: None,                    // No end line
+                without_line_numbers: Some(true), // Plain text format without line numbers
             };
-            let plain_text_result = services::show_file_contents(&manager, plain_text_params)
-                .await;
+            let plain_text_result = services::show_file_contents(&manager, plain_text_params).await;
 
             if let Ok((file_contents, local_repo, without_line_numbers)) = plain_text_result {
                 // Verify we got the correct format parameter back

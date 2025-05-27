@@ -1,6 +1,46 @@
 # Development Log
 
+### Documentation Quality and Rustdoc Compliance Pattern
+
+Updated project documentation to maintain high quality standards and comply with Rustdoc best practices. This pattern ensures documentation remains current, accurate, and accessible to both AI agents and human developers.
+
+#### Rustdoc URL Formatting Pattern
+
+When including URLs in Rustdoc comments, distinguish between actual links and example URLs:
+
+```rust
+/// # API References
+/// - [GitHub API: Git References](https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28)
+/// 
+/// # Supported URL formats
+/// - Remote URLs: `github:user/repo`, `git@github.com:user/repo.git`, `https://github.com/user/repo`
+```
+
+For actual documentation links, use proper markdown link syntax. For example URLs that show format patterns, use code formatting with backticks to avoid bare URL warnings while keeping them readable.
+
+#### Documentation Type Safety Pattern
+
+Use proper code formatting for types in Rustdoc comments to avoid HTML parsing issues:
+
+```rust
+/// * `repo_opt` - The `Option<LocalRepository>` to clean up if Some
+```
+
+Instead of bare type references that may be interpreted as invalid HTML tags.
+
+#### Multi-Layer Documentation Strategy
+
+The project maintains documentation across multiple layers:
+- **Rustdoc comments**: API-level documentation accessible via `cargo doc`
+- **spec.md**: Technical specifications and implementation details
+- **devlog.md**: Design patterns and architectural decisions for AI agents
+- **README.md**: User-facing documentation and usage instructions
+- **docs/** directory: Specialized guides (e.g., glob-patterns.md)
+
+When updating documentation, ensure consistency across all layers and update both code comments and markdown files simultaneously.
+
 ### Lumin 0.1.13 Upgrade: Improved Glob Pattern Support
+</edits>
 
 Upgraded Lumin from 0.1.12 to 0.1.13, which includes improvements to glob pattern support.
 

@@ -266,7 +266,7 @@ fn cleanup_repository(repo: LocalRepository, preserve_repos: bool) {
 ///
 /// # Arguments
 ///
-/// * `repo_opt` - The Option<LocalRepository> to clean up if Some
+/// * `repo_opt` - The `Option<LocalRepository>` to clean up if Some
 /// * `preserve_repos` - If true, repositories will not be cleaned up
 fn cleanup_repository_opt(repo_opt: Option<LocalRepository>, preserve_repos: bool) {
     if let Some(repo) = repo_opt {
@@ -529,14 +529,12 @@ async fn main() -> Result<()> {
                 exclude_dirs: exclude_dirs.clone(),
                 before_context,
                 after_context,
-                skip: None, // No skip (pagination)
-                take: None, // No take (pagination)
+                skip: None,                        // No skip (pagination)
+                take: None,                        // No take (pagination)
                 match_content_omit_num: Some(150), // Default to 150 characters
             };
 
-            match services::perform_grep_in_repository(manager, grep_params)
-                .await
-            {
+            match services::perform_grep_in_repository(manager, grep_params).await {
                 Ok((result, local_repo)) => {
                     // Just print each match in a simple format: file:line:content
                     if !result.matches.is_empty() {
@@ -655,9 +653,7 @@ async fn main() -> Result<()> {
                 without_line_numbers: Some(without_line_numbers),
             };
 
-            match services::show_file_contents(manager, show_params)
-                .await
-            {
+            match services::show_file_contents(manager, show_params).await {
                 Ok((file_contents, local_repo, without_line_numbers)) => {
                     // Format and display the file contents based on type
                     match file_contents {
@@ -875,9 +871,7 @@ Total: {} references found ({} branches, {} tags)",
                 search_relative_path: search_relative_path.map(std::path::PathBuf::from),
             };
 
-            match gitcodes_mcp::services::get_repository_tree(manager, tree_params)
-                .await
-            {
+            match gitcodes_mcp::services::get_repository_tree(manager, tree_params).await {
                 Ok((tree, local_repo)) => {
                     // Display the tree structure
                     if tree.is_empty() {

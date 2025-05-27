@@ -660,9 +660,7 @@ impl GitHubCodeTools {
             without_line_numbers,
         };
 
-        match services::show_file_contents(&self.manager, show_params)
-            .await
-        {
+        match services::show_file_contents(&self.manager, show_params).await {
             Ok((file_contents, _local_repo, _without_line_numbers)) => {
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
@@ -766,9 +764,7 @@ impl GitHubCodeTools {
             search_relative_path: search_relative_path.map(std::path::PathBuf::from),
         };
 
-        match services::get_repository_tree(&self.manager, tree_params)
-            .await
-        {
+        match services::get_repository_tree(&self.manager, tree_params).await {
             Ok((tree, _local_repo)) => {
                 // Note: We don't clean up the repository here to use it as a cache
                 // This improves performance for subsequent operations
@@ -855,8 +851,7 @@ async fn inner_grep_repositories(
     ),
     String,
 > {
-    services::perform_grep_in_repository(repository_manager, grep_params)
-        .await
+    services::perform_grep_in_repository(repository_manager, grep_params).await
 }
 
 /// Helper method to create a CallToolResult for successful responses

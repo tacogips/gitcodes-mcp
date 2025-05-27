@@ -114,7 +114,7 @@ pub async fn perform_grep_in_repository(
         exclude_dirs: params.exclude_dirs.clone(),
         before_context: params.before_context,
         after_context: params.after_context,
-        skip: params.skip, // Allow pagination through service API
+        skip: params.skip,              // Allow pagination through service API
         take: params.take.or(Some(50)), // Default to 50 if not specified
         match_content_omit_num: params.match_content_omit_num.or(Some(150)), // Default to 150 if not specified
     };

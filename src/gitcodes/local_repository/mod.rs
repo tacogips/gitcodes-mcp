@@ -129,7 +129,7 @@ pub struct CodeSearchOptions {
 /// # Repository Location
 ///
 /// The `repository_location` field supports two formats:
-/// - Remote repository URLs (e.g., 'github:user/repo', 'git@github.com:user/repo.git', 'https://github.com/user/repo')
+/// - Remote repository URLs (e.g., `github:user/repo`, `git@github.com:user/repo.git`, `https://github.com/user/repo`)
 /// - Absolute local file paths (e.g., '/path/to/repo', 'C:\\repos\\my-project')
 ///
 /// Relative paths are not supported for security reasons and will be rejected.
@@ -181,7 +181,7 @@ pub struct CodeSearchParams {
     /// Repository location (either a remote repository URL or an absolute local file path)
     ///
     /// Supported formats:
-    /// - Remote URLs: 'github:user/repo', 'git@github.com:user/repo.git', 'https://github.com/user/repo'
+    /// - Remote URLs: `github:user/repo`, `git@github.com:user/repo.git`, `https://github.com/user/repo`
     /// - Local paths: absolute paths only (e.g., '/path/to/repo')
     ///
     /// Note: Relative paths are not supported and will be rejected.
@@ -976,7 +976,7 @@ impl LocalRepository {
             pattern: pattern.to_string(),
             case_sensitive: params.case_sensitive,
             file_extensions: params.file_extensions.clone(), // Keep file_extensions for backward compatibility
-            include_globs,                  // Pass file_extensions as include_glob
+            include_globs,                                   // Pass file_extensions as include_glob
             exclude_globs: params.exclude_dirs,
             before_context: params.before_context,
             after_context: params.after_context,
@@ -984,9 +984,8 @@ impl LocalRepository {
             take: params.take, // Take parameter for pagination
             match_content_omit_num: params.match_content_omit_num,
         };
-        
-        self.perform_code_search(search_options)
-        .await
+
+        self.perform_code_search(search_options).await
     }
 
     /// Get the directory tree structure of the repository
@@ -1264,16 +1263,17 @@ impl LocalRepository {
             respect_gitignore: true,
             // Convert directory names to glob patterns by adding "**/" prefix and "/**" suffix
             // This format ensures that directories at any level in the hierarchy will be excluded
-            exclude_glob: options.exclude_globs
+            exclude_glob: options
+                .exclude_globs
                 .as_ref()
                 .map(|dirs| dirs.iter().map(|dir| format!("**/{}/**", dir)).collect()),
             match_content_omit_num: options.match_content_omit_num,
             before_context: options.before_context.unwrap_or(0), // Default to 0 if None
-            after_context: options.after_context.unwrap_or(0), // Default to 0 if None
-            depth: None,                  // Use default depth (no limit)
+            after_context: options.after_context.unwrap_or(0),   // Default to 0 if None
+            depth: None,                                         // Use default depth (no limit)
             include_glob: include_glob_clone, // Pattern for filtering files by glob
-            skip: options.skip,                         // For pagination
-            take: options.take,                         // For pagination
+            skip: options.skip,               // For pagination
+            take: options.take,               // For pagination
             omit_path_prefix: Some(self.repository_location.clone()), // Omit repository path prefix from results
         };
 

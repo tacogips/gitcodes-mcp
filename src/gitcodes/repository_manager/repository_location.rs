@@ -14,7 +14,7 @@ use super::providers::GitRemoteRepository;
 /// This enum supports two types of repository locations:
 ///
 /// 1. **Remote Repository URLs**:
-///    - GitHub formats: 'github:user/repo', 'git@github.com:user/repo.git', 'https://github.com/user/repo'
+///    - GitHub formats: `github:user/repo`, `git@github.com:user/repo.git`, `https://github.com/user/repo`
 ///
 /// 2. **Local File System Paths**:
 ///    - Must be absolute paths (e.g., '/path/to/repo' on Unix or 'C:\\repos\\project' on Windows)
