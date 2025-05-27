@@ -48,7 +48,7 @@ impl GitHubCodeTools {
     ///
     /// Authentication can be provided in two ways:
     /// 1. Explicitly via the `github_token` parameter (highest priority)
-    /// 2. Environment variable `GITCODE_MCP_GITHUB_TOKEN` (used as fallback)
+    /// 2. Environment variable `GITCODES_MCP_GITHUB_TOKEN` (used as fallback)
     ///
     /// # Parameters
     ///
@@ -139,7 +139,7 @@ gitcodes-cli http --github-token=your_token
 
 ### Option 2: Environment Variable (used as fallback)
 ```
-export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+export GITCODES_MCP_GITHUB_TOKEN=your_github_token
 ```
 
 ### Option 3: Programmatic via new() method
@@ -171,7 +171,7 @@ impl GitHubCodeTools {
     ///
     /// # Authentication
     ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Uses the `GITCODES_MCP_GITHUB_TOKEN` if available for authentication
     /// - Without a token, limited to 60 requests/hour
     /// - With a token, allows 5,000 requests/hour
     ///
@@ -241,7 +241,7 @@ impl GitHubCodeTools {
     /// # Authentication
     ///
     /// - For public repositories: No authentication needed
-    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    /// - For private repositories: Requires `GITCODES_MCP_GITHUB_TOKEN` with `repo` scope
     ///
     /// # Implementation Note
     ///
@@ -257,7 +257,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODES_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
 
@@ -383,7 +383,7 @@ impl GitHubCodeTools {
     /// # Authentication
     ///
     /// - For public repositories: No authentication needed
-    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    /// - For private repositories: Requires `GITCODES_MCP_GITHUB_TOKEN` with `repo` scope
     ///
     /// # Implementation Note
     ///
@@ -397,7 +397,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODES_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
 
@@ -519,7 +519,7 @@ impl GitHubCodeTools {
     /// # Authentication
     ///
     /// - For public repositories: No authentication needed
-    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    /// - For private repositories: Requires `GITCODES_MCP_GITHUB_TOKEN` with `repo` scope
     ///
     /// # Implementation Note
     ///
@@ -534,7 +534,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODES_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
     ) -> Result<CallToolResult, McpError> {
@@ -591,7 +591,7 @@ impl GitHubCodeTools {
     /// # Authentication
     ///
     /// - For public repositories: No authentication needed
-    /// - For private repositories: Requires `GITCODE_MCP_GITHUB_TOKEN` with `repo` scope
+    /// - For private repositories: Requires `GITCODES_MCP_GITHUB_TOKEN` with `repo` scope
     ///
     /// # Implementation Note
     ///
@@ -607,7 +607,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODES_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
 
@@ -693,7 +693,7 @@ impl GitHubCodeTools {
     ///
     /// # Authentication
     ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Uses the `GITCODES_MCP_GITHUB_TOKEN` if available for authentication
     /// - Without a token, limited to 60 requests/hour for GitHub repositories
     /// - With a token, allows 5,000 requests/hour for GitHub repositories
     /// - Local repositories don't require authentication
@@ -711,7 +711,7 @@ impl GitHubCodeTools {
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
+            description = "Repository URL or local path (required). Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODES_MCP_GITHUB_TOKEN environment variable. This parameter is required and must be provided."
         )]
         repository_location: String,
 

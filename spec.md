@@ -210,7 +210,7 @@ There are two ways to provide authentication:
 
 1. **Environment Variable**:
 
-   - Personal access token provided via the `GITCODE_MCP_GITHUB_TOKEN` environment variable
+   - Personal access token provided via the `GITCODES_MCP_GITHUB_TOKEN` environment variable
    - This token is stored in memory when MCP starts and is not referenced from the environment variable thereafter
 
 2. **Programmatic API**:

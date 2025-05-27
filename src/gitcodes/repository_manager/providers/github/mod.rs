@@ -428,7 +428,7 @@ impl GithubClient {
     ///
     /// # Authentication
     ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Uses the `GITCODES_MCP_GITHUB_TOKEN` if available for authentication
     /// - Without a token, limited to 60 requests/hour
     /// - With a token, allows 5,000 requests/hour
     ///
@@ -452,7 +452,7 @@ impl GithubClient {
     ///
     /// # Authentication
     ///
-    /// - Uses the `GITCODE_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Uses the `GITCODES_MCP_GITHUB_TOKEN` if available for authentication
     /// - Without a token, limited to 60 requests/hour
     /// - With a token, allows 5,000 requests/hour
     ///

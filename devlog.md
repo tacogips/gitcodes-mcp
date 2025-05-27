@@ -84,7 +84,7 @@ Example transformation for repository location parameters:
 description = "Repository URL or local file path (required) - supports GitHub formats: 'git@github.com:user/repo.git' (SSH format, most reliable), 'https://github.com/user/repo' (HTTPS format with automatic fallback to SSH), 'github:user/repo', or local paths like '/path/to/repo'. SSH URL format is recommended for the most reliable git operations..."
 
 // After (concise)  
-description = "Repository URL or local path. Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODE_MCP_GITHUB_TOKEN environment variable."
+description = "Repository URL or local path. Supports GitHub formats: 'git@github.com:user/repo.git' (SSH, recommended), 'https://github.com/user/repo', 'github:user/repo', or absolute local paths. Private repos require GITCODES_MCP_GITHUB_TOKEN environment variable."
 ```
 
 #### Consistent Parameter Description Patterns
@@ -1384,7 +1384,7 @@ This pattern ensures the system:
 
 - GitHub API authentication supports multiple methods:
   - Command-line parameter: `--github-token <token>`
-  - Environment variable: `GITCODE_MCP_GITHUB_TOKEN`
+  - Environment variable: `GITCODES_MCP_GITHUB_TOKEN`
   - Programmatic API parameter: `GitHubService::new(Some(token))`
 - Authentication is applied at the transport level for Git operations
 - Tokens are stored in memory and not referenced from environment after startup

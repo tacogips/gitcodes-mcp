@@ -29,16 +29,16 @@ The unified command-line interface provides subcommands for all server modes:
 
 ```bash
 # Run in STDIN/STDOUT mode
-cargo run --bin gitcodes-cli stdio
+cargo run --bin gitcodes-mcp stdio
 
 # Run in HTTP/SSE mode (default address: 127.0.0.1:8080)
-cargo run --bin gitcodes-cli http
+cargo run --bin gitcodes-mcp http
 
 # Run in HTTP/SSE mode with custom address
-cargo run --bin gitcodes-cli http --address 0.0.0.0:3000
+cargo run --bin gitcodes-mcp http --address 0.0.0.0:3000
 
 # Enable debug logging
-cargo run --bin gitcodes-cli http --debug
+cargo run --bin gitcodes-mcp http --debug
 ```
 
 ### GitHub Authentication
@@ -49,17 +49,17 @@ The GitHub API tools support both authenticated and unauthenticated requests wit
 
 ```bash
 # Provide GitHub token directly via command line
-cargo run --bin gitcodes-cli http --github-token your_github_token
+cargo run --bin gitcodes-mcp http --github-token your_github_token
 ```
 
 #### Method 2: Environment Variable
 
 ```bash
 # Set GitHub personal access token via environment variable
-export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+export GITCODES_MCP_GITHUB_TOKEN=your_github_token
 
 # Run with authentication
-cargo run --bin gitcodes-cli http
+cargo run --bin gitcodes-mcp http
 ```
 
 #### Method 3: Custom Repository Cache Directory
@@ -68,7 +68,7 @@ You can also specify a custom directory for storing cloned repositories:
 
 ```bash
 # Use a custom cache directory
-cargo run --bin gitcodes-cli http --cache-dir /path/to/cache/dir
+cargo run --bin gitcodes-mcp http --cache-dir /path/to/cache/dir
 ```
 
 **Note**:

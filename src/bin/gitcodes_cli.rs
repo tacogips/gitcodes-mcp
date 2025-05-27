@@ -13,7 +13,7 @@ use gitcodes_mcp::tools::{OrderOption, SortOption};
 #[command(author, version = "0.1.0", about = "GitCodes CLI for GitHub and repository operations", long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
-    /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
+    /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
     #[arg(short = 't', long, global = true)]
     github_token: Option<String>,
 

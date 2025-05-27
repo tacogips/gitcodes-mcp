@@ -20,7 +20,7 @@ enum Commands {
         #[arg(short, long)]
         debug: bool,
 
-        /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
+        /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
         #[arg(short = 't', long)]
         github_token: Option<String>,
 
@@ -39,7 +39,7 @@ enum Commands {
         #[arg(short, long)]
         debug: bool,
 
-        /// GitHub API token for authentication (overrides GITCODE_MCP_GITHUB_TOKEN environment variable)
+        /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
         #[arg(short = 't', long)]
         github_token: Option<String>,
 

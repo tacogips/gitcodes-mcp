@@ -2,7 +2,7 @@
 //!
 //! These tests use the test repository at https://github.com/tacogips/gitcodes-mcp-test-1
 //! Note: Live integration tests are commented out to avoid external dependencies.
-//! For actual testing, uncomment the integration test and set GITCODE_MCP_GITHUB_TOKEN.
+//! For actual testing, uncomment the integration test and set GITCODES_MCP_GITHUB_TOKEN.
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -316,7 +316,7 @@ async fn test_repository_url_handling() {
 }
 
 // UNCOMMENT THIS TEST TO RUN INTEGRATION TEST AGAINST REAL REPOSITORY
-// Make sure to set the GITCODE_MCP_GITHUB_TOKEN environment variable
+// Make sure to set the GITCODES_MCP_GITHUB_TOKEN environment variable
 //
 // /// Tests that the RepositoryManager can successfully clone a new repository
 // ///
@@ -326,7 +326,7 @@ async fn test_repository_url_handling() {
 // #[tokio::test]
 // async fn test_prepare_repository_clone() {
 //     // Skip the test if running in CI without token
-//     let github_token = match env::var("GITCODE_MCP_GITHUB_TOKEN") {
+//     let github_token = match env::var("GITCODES_MCP_GITHUB_TOKEN") {
 //         Ok(token) => Some(token),
 //         Err(_) => {
 //             println!("No GitHub token found. This test may fail due to GitHub API rate limits.");

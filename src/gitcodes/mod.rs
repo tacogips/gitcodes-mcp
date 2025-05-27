@@ -14,7 +14,7 @@
 //!
 //! ```bash
 //! # Authentication is optional but recommended to avoid rate limiting
-//! export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+//! export GITCODES_MCP_GITHUB_TOKEN=your_github_token
 //! ```
 //!
 //! ### 2. Programmatic API
@@ -67,7 +67,7 @@
 //!
 //! ```bash
 //! # Authentication is optional but recommended to avoid rate limiting
-//! export GITCODE_MCP_GITHUB_TOKEN=your_github_token
+//! export GITCODES_MCP_GITHUB_TOKEN=your_github_token
 //! ```
 //!
 //! ### 2. Programmatic API
