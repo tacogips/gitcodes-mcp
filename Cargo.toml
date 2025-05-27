@@ -5,7 +5,7 @@ edition = "2021"
 description = "Rust Documentation MCP Server for LLM crate assistance"
 authors = ["Claude <noreply@anthropic.com>"]
 license = "MIT"
-repository = "https://github.com/d6e/gitcodes-mcp"
+repository = "https://github.com/tacogips/gitcodes-mcp"
 
 
 [dependencies]
