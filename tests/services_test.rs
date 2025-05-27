@@ -427,7 +427,7 @@ async fn test_grep_multiple_pages() {
                         // Verify each file in the page results:
                         // 1. Has a .rs extension (our filtering criterion)
                         // 2. Appears somewhere in the full results set
-                        for (i, result) in page_results.matches.iter().enumerate() {
+                        for (_i, result) in page_results.matches.iter().enumerate() {
                             let file_path = result.file_path.to_string_lossy();
 
                             // Verify file is .rs (our expectation for filtering)
@@ -596,7 +596,7 @@ async fn test_grep_dir_exclusion() {
     let manager = create_test_manager();
 
     // For this test, we'll exclude the "src" directory
-    let exclude_dir = "src";
+    let _exclude_dir = "src";
 
     // First grep without exclusion
     let grep_params = services::GrepParams {
@@ -727,7 +727,7 @@ async fn test_show_file_contents() {
 
     // Handle the result
     match result {
-        Ok((file_contents, local_repo, without_line_numbers)) => {
+        Ok((file_contents, local_repo, _without_line_numbers)) => {
             // Verify we got text content back
             match file_contents {
                 lumin::view::FileContents::Text { content, metadata } => {
@@ -785,7 +785,7 @@ async fn test_show_file_contents() {
                 without_line_numbers: None, // Default format (with line numbers)
             };
             let line_range_result = services::show_file_contents(&manager, line_range_params).await;
-            if let Ok((file_contents, local_repo, without_line_numbers)) = line_range_result {
+            if let Ok((file_contents, local_repo, _without_line_numbers)) = line_range_result {
                 // Verify we got text content back with limited lines
                 match file_contents {
                     lumin::view::FileContents::Text { content: _, metadata } => {
@@ -844,7 +844,7 @@ async fn test_show_file_contents() {
             };
             let plain_text_result = services::show_file_contents(&manager, plain_text_params).await;
 
-            if let Ok((file_contents, local_repo, without_line_numbers)) = plain_text_result {
+            if let Ok((_file_contents, local_repo, without_line_numbers)) = plain_text_result {
                 // Verify we got the correct format parameter back
                 assert!(
                     without_line_numbers,

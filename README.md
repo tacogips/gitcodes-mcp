@@ -149,8 +149,8 @@ Parameters:
 - `pattern` (required): Regular expression pattern to search for
 - `case_sensitive` (optional): Case-sensitive matching (default: false)
 - `file_extensions` (optional, deprecated): File extensions to search - use `include_globs` instead
-- `include_globs` (optional): Glob patterns to include in search (e.g., ["**/*.rs", "src/**/*.md"])
-- `exclude_dirs` (optional): Directories to exclude (e.g., ["target", "node_modules"])
+- `include_globs` (optional): Glob patterns to include in search - must be relative paths from repository root (e.g., ["**/*.rs", "src/**/*.md"])
+- `exclude_dirs` (optional): Directories to exclude - can be directory names (converted to patterns) or glob patterns, must be relative paths (e.g., ["target", "node_modules"] or ["**/target/**", "src/**/*.tmp"])
 - `before_context` (optional): Lines of context before each match (default: 0)
 - `after_context` (optional): Lines of context after each match (default: 0)
 - `skip` (optional): Number of results to skip for pagination

@@ -248,8 +248,20 @@ impl CompactFileContentsResponse {
     ///
     /// ```rust
     /// use gitcodes_mcp::tools::responses::CompactFileContentsResponse;
-    /// use lumin::view::FileContents;
+    /// use lumin::view::{FileContents, TextContent, TextMetadata, LineContent};
     ///
+    /// let metadata = TextMetadata {
+    ///     line_count: 3,
+    ///     char_count: 50,
+    /// };
+    /// let content = TextContent {
+    ///     line_contents: vec![
+    ///         LineContent { line_number: 1, line: "fn main() {".to_string() },
+    ///         LineContent { line_number: 2, line: "    println!(\"Hello\");".to_string() },
+    ///         LineContent { line_number: 3, line: "}".to_string() },
+    ///     ],
+    /// };
+    /// let file_contents = FileContents::Text { content, metadata };
     /// let compact = CompactFileContentsResponse::from_file_contents(
     ///     file_contents,
     ///     "src/main.rs".to_string()
@@ -322,7 +334,29 @@ impl CompactCodeSearchResponse {
     /// ```rust
     /// use gitcodes_mcp::tools::responses::CompactCodeSearchResponse;
     /// use gitcodes_mcp::gitcodes::CodeSearchResult;
+    /// use lumin::search::SearchResultLine;
+    /// use std::path::PathBuf;
     ///
+    /// let search_result = CodeSearchResult {
+    ///     total_match_line_number: 1,
+    ///     matches: vec![
+    ///         SearchResultLine {
+    ///             file_path: PathBuf::from("src/main.rs"),
+    ///             line_number: 1,
+    ///             line_content: "fn main() {".to_string(),
+    ///             content_omitted: false,
+    ///             is_context: false,
+    ///         }
+    ///     ],
+    ///     pattern: "main".to_string(),
+    ///     repository: "test_repo".to_string(),
+    ///     case_sensitive: false,
+    ///     file_extensions: None,
+    ///     include_globs: None,
+    ///     exclude_globs: None,
+    ///     before_context: None,
+    ///     after_context: None,
+    /// };
     /// let compact = CompactCodeSearchResponse::from_search_result(search_result);
     /// ```
     pub fn from_search_result(search_result: CodeSearchResult) -> Self {
@@ -330,11 +364,11 @@ impl CompactCodeSearchResponse {
 
         // Group search result lines by file path
         let mut file_groups: HashMap<String, Vec<String>> = HashMap::new();
-        
+
         for result_line in search_result.matches {
             let file_path = result_line.file_path.display().to_string();
             let line_content = format!("{}:{}", result_line.line_number, result_line.line_content);
-            
+
             file_groups
                 .entry(file_path)
                 .or_insert_with(Vec::new)

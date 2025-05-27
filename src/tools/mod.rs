@@ -178,8 +178,18 @@ Key improvements:
 - Size field replaces char_count for consistency
 - Significantly reduced JSON verbosity
 
-## New File Filtering Feature
-The `grep_repository` tool now supports powerful glob pattern filtering with the include_globs parameter. This allows you to precisely specify which files to search by pattern.
+## File Filtering with Glob Patterns
+The grep_repository tool supports powerful glob pattern filtering with both include_globs and exclude_globs parameters. Both parameters expect relative paths from the repository root and allow precise file selection.
+
+### include_globs
+- Use patterns to include specific files (e.g. all .rs files or .md files in src)
+- Relative paths only (leading slashes are automatically stripped)
+- Examples: all Rust files, TOML files in src directory
+
+### exclude_globs  
+- Directory names converted to glob patterns automatically
+- Glob patterns used directly
+- Relative paths only (leading slashes are automatically stripped)
 
 ## Authentication
 You can authenticate in three ways:
@@ -313,7 +323,7 @@ impl GitHubCodeTools {
     /// 2. Code search is performed on the local files
     /// 3. Results are grouped by file and formatted as compact JSON
     #[tool(
-        description = "Search code in GitHub repositories or local directories using regex patterns (returns compact JSON format). Clones repos locally for searching. Supports private repos, branch selection, and context lines. Results are grouped by file with concatenated line contents. Example: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"git@github.com:rust-lang/rust.git\", \"pattern\": \"fn main\"}}`. With options: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"async fn\", \"case_sensitive\": true}}`. With filtering: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"error\", \"include_globs\": [\"**/*.rs\"], \"exclude_dirs\": [\"target\"]}}`. With pagination: `{\"name\": \"grep_repository\", \"arguments\": {\"repository_location\": \"github:user/repo\", \"pattern\": \"TODO\", \"skip\": 0, \"take\": 50}}`"
+        description = "Search code in GitHub repositories or local directories using regex patterns (returns compact JSON format). Clones repos locally for searching. Supports private repos, branch selection, and context lines. Results are grouped by file with concatenated line contents. Example usage with basic search, filtering options, and pagination."
     )]
     #[allow(clippy::too_many_arguments)]
     async fn grep_repository(
@@ -350,13 +360,13 @@ impl GitHubCodeTools {
 
         #[tool(param)]
         #[schemars(
-            description = "Glob patterns to include (optional). Filters files to search using glob syntax. Examples: [\"**/*.rs\"] (all Rust files), [\"src/**/*.md\"] (Markdown files in src), [\"*.json\", \"*.yaml\"] (config files). When omitted, searches all text files."
+            description = "Glob patterns to include (optional). Filters files to search using glob syntax. Must be relative paths from repository root (leading slashes are automatically stripped). Examples: [\"**/*.rs\"] (all Rust files), [\"src/**/*.md\"] (Markdown files in src), [\"*.json\", \"*.yaml\"] (config files). When omitted, searches all text files."
         )]
         include_globs: Option<Vec<String>>,
 
         #[tool(param)]
         #[schemars(
-            description = "Directories to exclude (optional). List of directory names to skip during search. Common examples: [\"target\", \"node_modules\"] (build artifacts), [\".git\", \".svn\"] (version control), [\"dist\", \"build\"] (output directories). When omitted, respects .gitignore patterns."
+            description = "Directories to exclude (optional). Can be directory names like [\"target\", \"node_modules\"] (converted to glob patterns) or glob patterns like [\"**/target/**\", \"src/**/*.tmp\"]. Must be relative paths from repository root (leading slashes are automatically stripped). Common examples: [\"target\", \"node_modules\"] (build artifacts), [\".git\", \".svn\"] (version control), [\"dist\", \"build\"] (output directories). When omitted, respects .gitignore patterns."
         )]
         exclude_dirs: Option<Vec<String>>,
 
@@ -414,7 +424,8 @@ impl GitHubCodeTools {
                 tracing::debug!("Repository kept for caching");
 
                 // Convert to compact format and serialize to JSON
-                let compact_result = responses::CompactCodeSearchResponse::from_search_result(result);
+                let compact_result =
+                    responses::CompactCodeSearchResponse::from_search_result(result);
                 match serde_json::to_string(&compact_result) {
                     Ok(json) => success_result(json),
                     Err(e) => error_result(format!("Failed to serialize search results: {}", e)),

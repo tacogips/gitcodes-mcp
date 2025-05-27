@@ -1,5 +1,39 @@
 # Development Log
 
+### Lumin 0.1.16 Glob Normalization Removal Pattern
+
+Removed unnecessary glob path normalization logic from `LocalRepository` after upgrading to lumin 0.1.16. The lumin library now handles both `include_glob` and `exclude_glob` parameters consistently, both expecting relative paths from the search directory.
+
+#### Problem Analysis
+
+Previously, `LocalRepository` included a `normalize_glob_path` method that converted relative glob patterns to absolute paths for the `include_glob` parameter. This was needed for earlier versions of lumin where `include_glob` and `exclude_glob` had different path format expectations.
+
+#### Changes Made
+
+1. **Removed `normalize_glob_path` method** - No longer needed with lumin 0.1.16's consistent behavior
+2. **Simplified `include_globs` processing** - Now simply strips leading slashes to ensure relative paths:
+   ```rust
+   let normalized_include_globs = options.include_globs.as_ref().map(|globs| {
+       globs.iter().map(|glob| {
+           glob.strip_prefix('/').unwrap_or(glob).to_string()
+       }).collect::<Vec<String>>()
+   });
+   ```
+3. **Updated documentation** - Reflected new consistent behavior in comments and tool descriptions
+
+#### Pattern Application
+
+- **When to apply:** After library upgrades that standardize API behavior
+- **Testing approach:** Verify functionality with actual CLI commands after changes
+- **Documentation update:** Update both code comments and external documentation simultaneously
+
+#### Verification Command
+
+The fix was verified with this test command that now works correctly:
+```bash
+cargo run --bin gitcodes-cli grep "https://github.com/BurntSushi/ripgrep" "struct WalkParallel|impl WalkParallel" --include "crates/ignore/src/walk.rs"
+```
+
 ### Documentation Quality and Rustdoc Compliance Pattern
 
 Updated project documentation to maintain high quality standards and comply with Rustdoc best practices. This pattern ensures documentation remains current, accurate, and accessible to both AI agents and human developers.

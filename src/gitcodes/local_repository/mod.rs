@@ -458,8 +458,6 @@ impl LocalRepository {
         &self.repository_location
     }
 
-
-
     /// List references in a repository
     ///
     /// Returns a JSON string with all the references in the repository.
@@ -1234,19 +1232,21 @@ impl LocalRepository {
     ///
     /// # Notes on Glob Patterns
     ///
-    /// The `include_globs` parameter should follow these guidelines for lumin 0.1.13:
+    /// Both `include_globs` and `exclude_globs` parameters should follow these guidelines for lumin 0.1.16:
     ///
+    /// - Both parameters expect **relative paths** relative to the search directory
     /// - To include files with a specific extension: `"**/*.ext"` (e.g., `"**/*.rs"`)
     /// - To include files in a specific directory: `"**/dirname/**"` (not just `"dirname/**"`)
     /// - For nested directories, always prefix with `"**/"` to match at any level
     ///
-    /// The `exclude_globs` parameter works differently:
+    /// The `exclude_globs` parameter:
     ///
-    /// - Just provide directory names like `["node_modules", "target"]`
-    /// - The method will format them into glob patterns: `["**/node_modules/**", "**/target/**"]`
+    /// - Can accept directory names like `["node_modules", "target"]` which are converted to glob patterns
+    /// - Or provide glob patterns directly: `["**/target/**", "src/**/*.tmp"]`
+    /// - Leading slashes are automatically stripped to ensure relative paths
     ///
-    /// In lumin 0.1.13, glob filtering works reliably, but we still keep the legacy `file_extensions`
-    /// filtering for backward compatibility. New code should use `include_globs` instead.
+    /// In lumin 0.1.16, both include_globs and exclude_globs expect relative paths consistently.
+    /// We still keep the legacy `file_extensions` filtering for backward compatibility.
     ///
     /// # Returns
     ///
@@ -1275,11 +1275,14 @@ impl LocalRepository {
                     if dir.contains('/') || dir.contains('*') {
                         // Looks like a glob pattern or path, make it relative to search dir
                         let repo_path = self.repository_location.to_string_lossy();
-                        
+
                         // If the pattern already starts with the repository path, remove it
                         if dir.starts_with(repo_path.as_ref()) {
                             let relative_path = dir.strip_prefix(repo_path.as_ref()).unwrap_or(dir);
-                            relative_path.strip_prefix('/').unwrap_or(relative_path).to_string()
+                            relative_path
+                                .strip_prefix('/')
+                                .unwrap_or(relative_path)
+                                .to_string()
                         } else {
                             // Remove leading slash if present to make it relative
                             dir.strip_prefix('/').unwrap_or(dir).to_string()
@@ -1477,11 +1480,14 @@ mod tests {
                     if dir.contains('/') || dir.contains('*') {
                         // Looks like a glob pattern or path, make it relative to search dir
                         let repo_path = local_repo.repository_location.to_string_lossy();
-                        
+
                         // If the pattern already starts with the repository path, remove it
                         if dir.starts_with(repo_path.as_ref()) {
                             let relative_path = dir.strip_prefix(repo_path.as_ref()).unwrap_or(dir);
-                            relative_path.strip_prefix('/').unwrap_or(relative_path).to_string()
+                            relative_path
+                                .strip_prefix('/')
+                                .unwrap_or(relative_path)
+                                .to_string()
                         } else {
                             // Remove leading slash if present to make it relative
                             dir.strip_prefix('/').unwrap_or(dir).to_string()

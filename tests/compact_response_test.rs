@@ -59,8 +59,14 @@ fn test_compact_code_search_response_conversion() {
     assert_eq!(compact.pattern, "main");
     assert_eq!(compact.case_sensitive, false);
     assert_eq!(compact.file_extensions, None);
-    assert_eq!(compact.include_globs, Some(vec!["**/*.rs".to_string(), "**/*.md".to_string()]));
-    assert_eq!(compact.exclude_globs, Some(vec!["**/target/**".to_string(), "**/.git/**".to_string()]));
+    assert_eq!(
+        compact.include_globs,
+        Some(vec!["**/*.rs".to_string(), "**/*.md".to_string()])
+    );
+    assert_eq!(
+        compact.exclude_globs,
+        Some(vec!["**/target/**".to_string(), "**/.git/**".to_string()])
+    );
     assert_eq!(compact.before_context, Some(0));
     assert_eq!(compact.after_context, Some(1));
 
@@ -68,7 +74,9 @@ fn test_compact_code_search_response_conversion() {
     assert_eq!(compact.matches.len(), 3); // 3 different files
 
     // Find the main.rs match
-    let main_rs_match = compact.matches.iter()
+    let main_rs_match = compact
+        .matches
+        .iter()
         .find(|m| m.file_path == "src/main.rs")
         .expect("Should find src/main.rs match");
 
@@ -77,7 +85,9 @@ fn test_compact_code_search_response_conversion() {
     assert_eq!(main_rs_match.lines, expected_lines);
 
     // Find the lib.rs match
-    let lib_rs_match = compact.matches.iter()
+    let lib_rs_match = compact
+        .matches
+        .iter()
         .find(|m| m.file_path == "src/lib.rs")
         .expect("Should find src/lib.rs match");
 
@@ -85,7 +95,9 @@ fn test_compact_code_search_response_conversion() {
     assert_eq!(lib_rs_match.lines, expected_lib_lines);
 
     // Find the integration test match
-    let test_match = compact.matches.iter()
+    let test_match = compact
+        .matches
+        .iter()
         .find(|m| m.file_path == "tests/integration_test.rs")
         .expect("Should find tests/integration_test.rs match");
 
@@ -96,15 +108,13 @@ fn test_compact_code_search_response_conversion() {
 #[test]
 fn test_compact_code_search_response_serialization() {
     // Create a simple search result
-    let search_lines = vec![
-        SearchResultLine {
-            file_path: PathBuf::from("example.rs"),
-            line_number: 1,
-            line_content: "// Example file".to_string(),
-            content_omitted: false,
-            is_context: false,
-        },
-    ];
+    let search_lines = vec![SearchResultLine {
+        file_path: PathBuf::from("example.rs"),
+        line_number: 1,
+        line_content: "// Example file".to_string(),
+        content_omitted: false,
+        is_context: false,
+    }];
 
     let search_result = CodeSearchResult {
         total_match_line_number: 1,
@@ -123,7 +133,7 @@ fn test_compact_code_search_response_serialization() {
 
     // Test JSON serialization
     let json = serde_json::to_string(&compact).expect("Should serialize to JSON");
-    
+
     // Verify it contains expected fields
     assert!(json.contains("\"total_match_line_number\":1"));
     assert!(json.contains("\"pattern\":\"Example\""));
@@ -133,9 +143,9 @@ fn test_compact_code_search_response_serialization() {
     assert!(json.contains("\"lines\":\"1:// Example file\""));
 
     // Test deserialization
-    let deserialized: CompactCodeSearchResponse = serde_json::from_str(&json)
-        .expect("Should deserialize from JSON");
-    
+    let deserialized: CompactCodeSearchResponse =
+        serde_json::from_str(&json).expect("Should deserialize from JSON");
+
     assert_eq!(deserialized.total_match_line_number, 1);
     assert_eq!(deserialized.pattern, "Example");
     assert_eq!(deserialized.case_sensitive, true);
@@ -186,10 +196,10 @@ fn test_compact_code_search_response_json_format() {
 
     let compact = CompactCodeSearchResponse::from_search_result(search_result);
     let json = serde_json::to_string_pretty(&compact).expect("Should serialize to JSON");
-    
+
     println!("Sample JSON output:");
     println!("{}", json);
-    
+
     // Verify the structure
     assert_eq!(compact.total_match_line_number, 3);
     assert_eq!(compact.matches.len(), 2); // 2 files
