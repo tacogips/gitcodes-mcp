@@ -458,31 +458,7 @@ impl LocalRepository {
         &self.repository_location
     }
 
-    /// Normalizes a glob pattern by prepending the repository location if not already present.
-    /// Handles leading slashes appropriately to ensure correct path construction.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// // If repository_location is "/path/to/repo"
-    /// // "some_dir/aaa.json" -> "/path/to/repo/some_dir/aaa.json"
-    /// // "/some_dir/aaa.json" -> "/path/to/repo/some_dir/aaa.json"
-    /// // "/path/to/repo/some_dir/aaa.json" -> "/path/to/repo/some_dir/aaa.json" (unchanged)
-    /// ```
-    pub fn normalize_glob_path(&self, glob_pattern: &str) -> String {
-        let repo_path = self.repository_location.to_string_lossy();
 
-        // If the glob already starts with the repository path, return as-is
-        if glob_pattern.starts_with(repo_path.as_ref()) {
-            return glob_pattern.to_string();
-        }
-
-        // Remove leading slash if present
-        let cleaned_pattern = glob_pattern.strip_prefix('/').unwrap_or(glob_pattern);
-
-        // Construct the full path
-        format!("{}/{}", repo_path, cleaned_pattern)
-    }
 
     /// List references in a repository
     ///
@@ -1279,11 +1255,14 @@ impl LocalRepository {
         &self,
         options: CodeSearchOptions,
     ) -> Result<CodeSearchResult, String> {
-        // For include_globs, lumin 0.1.15 works with absolute paths when using omit_path_prefix
+        // For include_globs, lumin 0.1.16 expects relative paths (relative to the search directory)
         let normalized_include_globs = options.include_globs.as_ref().map(|globs| {
             globs
                 .iter()
-                .map(|glob| self.normalize_glob_path(glob))
+                .map(|glob| {
+                    // Remove leading slash if present to make it relative
+                    glob.strip_prefix('/').unwrap_or(glob).to_string()
+                })
                 .collect::<Vec<String>>()
         });
 
@@ -1313,8 +1292,8 @@ impl LocalRepository {
                 .collect::<Vec<String>>()
         });
 
-        // Configure search options for lumin 0.1.13
-        // Note: in lumin 0.1.13, glob patterns work reliably for both include_glob and exclude_glob
+        // Configure search options for lumin 0.1.16
+        // Note: in lumin 0.1.16, both include_glob and exclude_glob expect relative paths
         let search_options = search::SearchOptions {
             case_sensitive: options.case_sensitive,
             respect_gitignore: true,
@@ -1423,68 +1402,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_normalize_glob_path() {
-        let repo_path = PathBuf::from("/path/to/repo");
-        let local_repo = LocalRepository {
-            repository_location: repo_path,
-        };
-
-        // Test case 1: Basic relative path
-        let result = local_repo.normalize_glob_path("some_dir/aaa.json");
-        assert_eq!(result, "/path/to/repo/some_dir/aaa.json");
-
-        // Test case 2: Path with leading slash
-        let result = local_repo.normalize_glob_path("/some_dir/aaa.json");
-        assert_eq!(result, "/path/to/repo/some_dir/aaa.json");
-
-        // Test case 3: Path already starts with repository location
-        let result = local_repo.normalize_glob_path("/path/to/repo/some_dir/aaa.json");
-        assert_eq!(result, "/path/to/repo/some_dir/aaa.json");
-
-        // Test case 4: Empty glob pattern
-        let result = local_repo.normalize_glob_path("");
-        assert_eq!(result, "/path/to/repo/");
-
-        // Test case 5: Just a slash
-        let result = local_repo.normalize_glob_path("/");
-        assert_eq!(result, "/path/to/repo/");
-
-        // Test case 6: Glob pattern with wildcards
-        let result = local_repo.normalize_glob_path("**/*.rs");
-        assert_eq!(result, "/path/to/repo/**/*.rs");
-
-        // Test case 7: Glob pattern with wildcards and leading slash
-        let result = local_repo.normalize_glob_path("/**/*.rs");
-        assert_eq!(result, "/path/to/repo/**/*.rs");
-
-        // Test case 8: Complex nested path
-        let result = local_repo.normalize_glob_path("src/main/java/**/*.java");
-        assert_eq!(result, "/path/to/repo/src/main/java/**/*.java");
-    }
-
-    #[test]
-    fn test_normalize_glob_path_with_windows_style_repo_path() {
-        let repo_path = PathBuf::from("C:\\path\\to\\repo");
-        let local_repo = LocalRepository {
-            repository_location: repo_path,
-        };
-
-        // Test with forward slashes in glob pattern on Windows-style repo path
-        let result = local_repo.normalize_glob_path("some_dir/aaa.json");
-        assert_eq!(result, "C:\\path\\to\\repo/some_dir/aaa.json");
-
-        // Test with leading slash
-        let result = local_repo.normalize_glob_path("/some_dir/aaa.json");
-        assert_eq!(result, "C:\\path\\to\\repo/some_dir/aaa.json");
-    }
-
-    #[test]
     fn test_perform_code_search_normalizes_include_globs() {
-        let repo_path = PathBuf::from("/tmp/test_repo");
-        let local_repo = LocalRepository {
-            repository_location: repo_path,
-        };
-
         let options = CodeSearchOptions {
             pattern: "test".to_string(),
             case_sensitive: false,
@@ -1503,19 +1421,22 @@ mod tests {
         };
 
         // We can't actually run the search without setting up a real repository,
-        // but we can test that the normalization logic works by examining
+        // but we can test that the glob transformation logic works by examining
         // how the method would transform the include_globs
         let normalized_globs = options.include_globs.as_ref().map(|globs| {
             globs
                 .iter()
-                .map(|glob| local_repo.normalize_glob_path(glob))
+                .map(|glob| {
+                    // Remove leading slash if present to make it relative
+                    glob.strip_prefix('/').unwrap_or(glob).to_string()
+                })
                 .collect::<Vec<String>>()
         });
 
         let expected = Some(vec![
-            "/tmp/test_repo/src/**/*.rs".to_string(),
-            "/tmp/test_repo/docs/**/*.md".to_string(),
-            "/tmp/test_repo/already/prefixed.txt".to_string(),
+            "src/**/*.rs".to_string(),
+            "docs/**/*.md".to_string(),
+            "tmp/test_repo/already/prefixed.txt".to_string(),
         ]);
 
         assert_eq!(normalized_globs, expected);

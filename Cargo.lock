@@ -2559,9 +2559,9 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "lumin"
-version = "0.1.15"
+version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f5a597ce68569564de9597f2d7a9aea5c9ec5eb38a02243ec8cae5aa50a51d9"
+checksum = "a1a1c9f785b23a5026b76757c96ebd90dd7814580ec486c260e3f587f9bb2b92"
 dependencies = [
  "anyhow",
  "clap",
