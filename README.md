@@ -1,15 +1,15 @@
 # gitcodes MCP
 
-This is an MCP (Model Context Protocol) server that provides tools for Rust crate documentation lookup and GitHub code search. It allows LLMs to look up documentation for Rust crates they are unfamiliar with and search code repositories on GitHub.
+This is an MCP (Model Context Protocol) server that provides tools for GitHub code search and repository exploration. It allows LLMs to search GitHub repositories, grep through code, view file contents, and explore repository structures.
 
 ## Features
 
-- Lookup crate documentation: Get general documentation for a Rust crate
-- Search crates: Search for crates on crates.io based on keywords
-- Lookup item documentation: Get documentation for a specific item (e.g., struct, function, trait) within a crate
 - GitHub repository search: Search for repositories on GitHub
-- GitHub code search: Grep through code in GitHub repositories
-- GitHub repository exploration: List branches and tags in repositories
+- GitHub code search: Grep through code in GitHub repositories using regex patterns
+- File content viewing: View file contents with line range support
+- Repository exploration: List branches, tags, and directory trees
+- Local repository caching: Clone and cache repositories for efficient searching
+- Authentication support: Works with both public and private repositories
 
 ## Installation
 
@@ -82,33 +82,26 @@ cargo run --bin gitcodes-mcp http --cache-dir /path/to/cache/dir
 
 ````
 
-### Directly Testing Documentation Tools
+### Directly Testing GitHub Code Tools
 
-You can directly test the documentation tools from the command line without starting a server:
+You can directly test the GitHub code tools from the command line without starting a server:
 
 ```bash
-# Get help for the test command
-cargo run --bin gitcodes-cli test --tool help
+# Search for repositories
+cargo run --bin gitcodes-cli repository-search "rust http client"
 
-# Look up crate documentation
-cargo run --bin gitcodes-cli test --tool lookup_crate --crate-name tokio
+# Search code in a repository
+cargo run --bin gitcodes-cli grep "git@github.com:rust-lang/rust.git" "fn main"
 
-# Look up item documentation
-cargo run --bin gitcodes-cli test --tool lookup_item --crate-name tokio --item-path sync::mpsc::Sender
+# View file contents
+cargo run --bin gitcodes-cli show-file "github:user/repo" "README.md"
 
-# Look up documentation for a specific version
-cargo run --bin gitcodes-cli test --tool lookup_item --crate-name serde --item-path Serialize --version 1.0.147
+# List repository branches and tags
+cargo run --bin gitcodes-cli list-refs "https://github.com/rust-lang/rust"
 
-# Search for crates
-cargo run --bin gitcodes-cli test --tool search_crates --query logger --limit 5
-
-# Output in different formats (markdown, text, json)
-cargo run --bin gitcodes-cli test --tool search_crates --query logger --format json
-cargo run --bin gitcodes-cli test --tool lookup_crate --crate-name tokio --format text
-
-# Save output to a file
-cargo run --bin gitcodes-cli test --tool lookup_crate --crate-name tokio --output tokio-docs.md
-````
+# Get repository directory tree
+cargo run --bin gitcodes-cli tree "git@github.com:user/repo.git"
+```
 
 By default, the HTTP server will listen on `http://127.0.0.1:8080/sse`.
 
@@ -116,72 +109,7 @@ By default, the HTTP server will listen on `http://127.0.0.1:8080/sse`.
 
 The server provides the following tools:
 
-### 1. `lookup_crate`
-
-Retrieves documentation for a specified Rust crate.
-
-Parameters:
-
-- `crate_name` (required): The name of the crate to look up
-- `version` (optional): The version of the crate (defaults to latest)
-
-Example:
-
-```json
-{
-  "name": "lookup_crate",
-  "arguments": {
-    "crate_name": "tokio",
-    "version": "1.28.0"
-  }
-}
-```
-
-### 2. `search_crates`
-
-Searches for Rust crates on crates.io.
-
-Parameters:
-
-- `query` (required): The search query
-- `limit` (optional): Maximum number of results to return (defaults to 10, max 100)
-
-Example:
-
-```json
-{
-  "name": "search_crates",
-  "arguments": {
-    "query": "async runtime",
-    "limit": 5
-  }
-}
-```
-
-### 3. `lookup_item`
-
-Retrieves documentation for a specific item in a crate.
-
-Parameters:
-
-- `crate_name` (required): The name of the crate
-- `item_path` (required): Path to the item (e.g., 'std::vec::Vec')
-- `version` (optional): The version of the crate (defaults to latest)
-
-Example:
-
-```json
-{
-  "name": "lookup_item",
-  "arguments": {
-    "crate_name": "serde",
-    "item_path": "serde::Deserialize",
-    "version": "1.0.160"
-  }
-}
-```
-
-### 4. `search_repositories`
+### 1. `search_repositories`
 
 Searches for repositories on GitHub.
 
@@ -210,22 +138,24 @@ Example:
 
 **Note**: The `sort_by` and `order` parameters now accept enum values directly rather than strings, improving type safety and enabling IDE autocompletion. These options are standardized across different Git providers through a unified type system.
 
-### 5. `grep_repository`
+### 2. `grep_repository`
 
 Searches for code patterns within a GitHub repository.
 
 Parameters:
 
-- `repository` (required): Repository URL (formats: "git@github.com:user/repo.git" (most reliable for grep), "https://github.com/user/repo", "github:user/repo")
-- `ref_name` (optional): Branch or tag name (default: main or master)
-- `pattern` (required): Search pattern
-- `case_sensitive` (optional): Whether to be case-sensitive (default: false)
-- `use_regex` (optional): Whether to use regex (default: true)
-- `file_extensions` (optional, deprecated): File extensions to search (e.g., ["rs", "toml"])
-- `include_globs` (optional): Glob patterns to include in search (e.g., ["**/*.rs", "src/**/*.md"]) - more flexible than file_extensions. See [docs/glob-patterns.md](docs/glob-patterns.md) for detailed pattern information and examples
+- `repository_location` (required): Repository URL or local path (formats: "git@github.com:user/repo.git" (SSH, recommended), "https://github.com/user/repo", "github:user/repo", or absolute local paths)
+- `ref_name` (optional): Branch, commit, or tag (default: main or master)
+- `pattern` (required): Regular expression pattern to search for
+- `case_sensitive` (optional): Case-sensitive matching (default: false)
+- `file_extensions` (optional, deprecated): File extensions to search - use `include_globs` instead
+- `include_globs` (optional): Glob patterns to include in search (e.g., ["**/*.rs", "src/**/*.md"])
 - `exclude_dirs` (optional): Directories to exclude (e.g., ["target", "node_modules"])
-- `before_context` (optional): Number of lines to include before each match (default: 0)
-- `after_context` (optional): Number of lines to include after each match (default: 0)
+- `before_context` (optional): Lines of context before each match (default: 0)
+- `after_context` (optional): Lines of context after each match (default: 0)
+- `skip` (optional): Number of results to skip for pagination
+- `take` (optional): Maximum number of results to return
+- `max_content_length` (optional): Maximum characters to show from matched content (default: 150)
 
 Example:
 
@@ -233,27 +163,43 @@ Example:
 {
   "name": "grep_repository",
   "arguments": {
-    "repository": "git@github.com:tokio-rs/tokio.git",
+    "repository_location": "git@github.com:tokio-rs/tokio.git",
     "ref_name": "master",
     "pattern": "async fn",
     "case_sensitive": false,
-    "include_globs": ["**/*.rs", "src/**/*.md"],
-    "exclude_dirs": ["target", "node_modules"],
+    "include_globs": ["**/*.rs"],
+    "exclude_dirs": ["target"],
     "before_context": 2,
     "after_context": 3
   }
 }
 ```
 
-**Note**: Use `include_globs` instead of `file_extensions` for more flexible file matching. While `file_extensions` only filters by extension, `include_globs` supports full glob patterns for more precise file selection.
+### 3. `grep_repository_match_line_number`
 
-### 6. `list_repository_refs`
+Counts matching lines in repository code search (like `grep_repository` but returns only the total count).
 
-Lists branches and tags for a GitHub repository.
+Parameters: Same as `grep_repository`
+
+Example:
+
+```json
+{
+  "name": "grep_repository_match_line_number",
+  "arguments": {
+    "repository_location": "git@github.com:user/repo.git",
+    "pattern": "fn main"
+  }
+}
+```
+
+### 4. `list_repository_refs`
+
+Lists all branches and tags for a repository.
 
 Parameters:
 
-- `repository` (required): Repository URL (formats: "git@github.com:user/repo.git" (most reliable), "https://github.com/user/repo", "github:user/repo")
+- `repository_location` (required): Repository URL or local path (formats: "git@github.com:user/repo.git" (SSH, recommended), "https://github.com/user/repo", "github:user/repo", or absolute local paths)
 
 Example:
 
@@ -261,34 +207,34 @@ Example:
 {
   "name": "list_repository_refs",
   "arguments": {
-    "repository": "https://github.com/rust-lang/rust"
+    "repository_location": "https://github.com/rust-lang/rust"
   }
 }
 ```
 
-### 7. `view_file_contents`
+### 5. `show_file_contents`
 
-Retrieves the contents of a file from a GitHub repository.
+Views file contents from repositories or local directories.
 
 Parameters:
 
-- `repository` (required): Repository URL (formats: "git@github.com:user/repo.git", "https://github.com/user/repo", "github:user/repo")
-- `ref_name` (optional): Branch or tag name (default: main or master)
-- `file_path` (required): Path to the file within the repository
-- `max_size` (optional): Maximum file size to read in bytes
+- `repository_location` (required): Repository URL or local path (formats: "git@github.com:user/repo.git" (SSH, recommended), "https://github.com/user/repo", "github:user/repo", or absolute local paths)
+- `ref_name` (optional): Branch, commit, or tag (default: main or master)
+- `file_path` (required): File path relative to repository root
+- `max_size` (optional): Maximum file size in bytes
 - `line_from` (optional): Start line number (1-indexed)
 - `line_to` (optional): End line number (1-indexed, inclusive)
-- `without_line_numbers` (optional): Whether to display the file without line numbers (default: false)
+- `without_line_numbers` (optional): Show content without line numbers (default: false)
 
 Example:
 
 ```json
 {
-  "name": "view_file_contents",
+  "name": "show_file_contents",
   "arguments": {
-    "repository": "git@github.com:rust-lang/rust.git",
+    "repository_location": "git@github.com:rust-lang/rust.git",
     "ref_name": "master",
-    "file_path": "src/libstd/lib.rs",
+    "file_path": "README.md",
     "line_from": 10,
     "line_to": 30,
     "without_line_numbers": true
@@ -296,12 +242,34 @@ Example:
 }
 ```
 
-## Implementation Notes
+### 6. `get_repository_tree`
 
-### Crate Documentation Features
-- The server includes a caching mechanism to prevent redundant API calls for the same documentation
-- It interfaces with docs.rs for crate documentation and crates.io for search functionality
-- Results are returned as plain text/HTML content that can be parsed and presented by the client
+Gets repository directory tree in hierarchical format.
+
+Parameters:
+
+- `repository_location` (required): Repository URL or local path (formats: "git@github.com:user/repo.git" (SSH, recommended), "https://github.com/user/repo", "github:user/repo", or absolute local paths)
+- `ref_name` (optional): Branch, commit, or tag (default: main or master)
+- `case_sensitive` (optional): Case-sensitive path matching (default: false)
+- `respect_gitignore` (optional): Respect .gitignore files (default: true)
+- `depth` (optional): Maximum traversal depth (default: unlimited)
+- `strip_path_prefix` (optional): Strip repository path prefix (default: true)
+- `search_relative_path` (optional): Relative path to start tree generation from
+
+Example:
+
+```json
+{
+  "name": "get_repository_tree",
+  "arguments": {
+    "repository_location": "github:user/repo",
+    "depth": 2,
+    "search_relative_path": "src"
+  }
+}
+```
+
+## Implementation Notes
 
 ### GitHub Code Search Features
 - Repositories are cloned to a local cache directory using shallow clones (--depth=1)
