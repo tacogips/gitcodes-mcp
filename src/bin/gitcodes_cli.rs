@@ -498,7 +498,9 @@ async fn main() -> Result<()> {
 
                         println!("   Archived: {}", repo.archived);
                         println!("   Created: {}", repo.created_at);
-                        println!("   Score: {:.2}", repo.score);
+                        if let Some(score) = repo.score {
+                            println!("   Score: {:.2}", score);
+                        }
                         println!("   Last Push: {}", repo.pushed_at);
 
                         // Add empty line after each repository
@@ -620,7 +622,9 @@ async fn main() -> Result<()> {
                             println!("   Milestone: {} [{}]", milestone.title, milestone.state);
                         }
 
-                        println!("   Score: {:.2}", issue.score);
+                        if let Some(score) = issue.score {
+                            println!("   Score: {:.2}", score);
+                        }
 
                         // Add empty line after each issue
                         println!();

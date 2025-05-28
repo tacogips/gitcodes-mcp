@@ -733,7 +733,7 @@ impl GithubClient {
                 }),
                 topics: github_item.topics.unwrap_or_default(),
                 default_branch: github_item.default_branch,
-                score: github_item.score,
+                score: Some(github_item.score),
                 created_at: github_item.created_at,
                 updated_at: github_item.updated_at,
                 pushed_at: github_item.pushed_at,
@@ -1010,7 +1010,7 @@ impl GithubClient {
                 created_at: github_item.created_at,
                 updated_at: github_item.updated_at,
                 closed_at: github_item.closed_at,
-                score: github_item.score,
+                score: Some(github_item.score),
                 repository,
             });
         }
@@ -1270,7 +1270,10 @@ impl GithubClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(format!("GraphQL request failed with status {}: {}", status, error_text));
+            return Err(format!(
+                "GraphQL request failed with status {}: {}",
+                status, error_text
+            ));
         }
 
         // Parse the GraphQL response
@@ -1317,7 +1320,10 @@ impl GithubClient {
     }
 
     /// Parse a GraphQL issue node into our Issue format
-    fn parse_graphql_issue_node(&self, node: &serde_json::Value) -> Result<super::models::IssueItem, String> {
+    fn parse_graphql_issue_node(
+        &self,
+        node: &serde_json::Value,
+    ) -> Result<super::models::IssueItem, String> {
         let id = node
             .get("id")
             .and_then(|v| v.as_str())
@@ -1383,8 +1389,10 @@ impl GithubClient {
                     .unwrap_or("")
                     .to_string(),
                 type_field: "User".to_string(),
-                html_url: format!("https://github.com/{}", 
-                    author.get("login").and_then(|v| v.as_str()).unwrap_or("")),
+                html_url: format!(
+                    "https://github.com/{}",
+                    author.get("login").and_then(|v| v.as_str()).unwrap_or("")
+                ),
             }
         } else {
             super::models::IssueUser {
@@ -1396,7 +1404,11 @@ impl GithubClient {
         };
 
         // Parse labels
-        let labels = if let Some(labels_data) = node.get("labels").and_then(|l| l.get("nodes")).and_then(|n| n.as_array()) {
+        let labels = if let Some(labels_data) = node
+            .get("labels")
+            .and_then(|l| l.get("nodes"))
+            .and_then(|n| n.as_array())
+        {
             labels_data
                 .iter()
                 .filter_map(|label| {
@@ -1404,7 +1416,10 @@ impl GithubClient {
                         id: label.get("id").and_then(|v| v.as_str())?.to_string(),
                         name: label.get("name").and_then(|v| v.as_str())?.to_string(),
                         color: label.get("color").and_then(|v| v.as_str())?.to_string(),
-                        description: label.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        description: label
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
                     })
                 })
                 .collect()
@@ -1413,7 +1428,11 @@ impl GithubClient {
         };
 
         // Parse assignees
-        let assignees = if let Some(assignees_data) = node.get("assignees").and_then(|a| a.get("nodes")).and_then(|n| n.as_array()) {
+        let assignees = if let Some(assignees_data) = node
+            .get("assignees")
+            .and_then(|a| a.get("nodes"))
+            .and_then(|n| n.as_array())
+        {
             assignees_data
                 .iter()
                 .filter_map(|assignee| {
@@ -1421,8 +1440,10 @@ impl GithubClient {
                         login: assignee.get("login").and_then(|v| v.as_str())?.to_string(),
                         id: assignee.get("id").and_then(|v| v.as_str())?.to_string(),
                         type_field: "User".to_string(),
-                        html_url: format!("https://github.com/{}", 
-                            assignee.get("login").and_then(|v| v.as_str())?),
+                        html_url: format!(
+                            "https://github.com/{}",
+                            assignee.get("login").and_then(|v| v.as_str())?
+                        ),
                     })
                 })
                 .collect()
@@ -1482,11 +1503,24 @@ impl GithubClient {
         // Parse repository information
         let repository = if let Some(repo_data) = node.get("repository") {
             super::models::IssueRepository {
-                id: repo_data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                name: repo_data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                full_name: repo_data.get("nameWithOwner").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                id: repo_data
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                name: repo_data
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                full_name: repo_data
+                    .get("nameWithOwner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 owner: super::models::RepositoryOwner {
-                    login: repo_data.get("nameWithOwner")
+                    login: repo_data
+                        .get("nameWithOwner")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .split('/')
@@ -1497,7 +1531,11 @@ impl GithubClient {
                     type_field: "User".to_string(),
                 },
                 private: false,
-                html_url: repo_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                html_url: repo_data
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 description: None,
             }
         } else {
@@ -1539,7 +1577,7 @@ impl GithubClient {
             created_at,
             updated_at,
             closed_at,
-            score: 1.0, // GraphQL doesn't provide score
+            score: None, // GraphQL doesn't provide score
             repository,
         })
     }
@@ -1718,7 +1756,7 @@ mod tests {
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
-        
+
         // The URL should be properly encoded and contain all qualifiers
         assert!(url.contains("performance%20issue"));
         assert!(url.contains("repo%3Arust-lang%2Frust"));
@@ -1755,7 +1793,7 @@ mod tests {
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
-        
+
         // Ensure text search and qualifiers are properly combined
         assert!(url.contains("documentation"));
         assert!(url.contains("repo%3Aowner%2Frepo"));
@@ -1785,7 +1823,7 @@ mod tests {
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
-        
+
         // Should contain advanced_search parameter
         assert!(url.contains("&advanced_search=true"));
         // Should still contain the regular parameters

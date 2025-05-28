@@ -100,7 +100,8 @@ pub struct RepositoryItem {
     pub default_branch: String,
 
     /// Score (relevance to search query)
-    pub score: f64,
+    /// Only available when using REST API, None for GraphQL searches
+    pub score: Option<f64>,
 
     /// When the repository was created
     pub created_at: String,
@@ -235,7 +236,8 @@ pub struct IssueItem {
     pub closed_at: Option<String>,
 
     /// Score (relevance to search query)
-    pub score: f64,
+    /// Only available when using REST API, None for GraphQL searches
+    pub score: Option<f64>,
 
     /// Repository information where the issue exists
     pub repository: IssueRepository,
