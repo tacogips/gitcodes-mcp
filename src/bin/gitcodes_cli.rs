@@ -7,7 +7,7 @@ use tracing_subscriber::{self, EnvFilter};
 use gitcodes_mcp::gitcodes::local_repository::prevent_directory_traversal;
 use gitcodes_mcp::gitcodes::repository_manager;
 use gitcodes_mcp::gitcodes::LocalRepository;
-use gitcodes_mcp::tools::{OrderOption, SortOption};
+use gitcodes_mcp::tools::{IssueSortOption, OrderOption, SortOption};
 
 #[derive(Parser)]
 #[command(author, version = "0.1.0", about = "GitCodes CLI for GitHub and repository operations", long_about = None)]
@@ -56,6 +56,30 @@ enum Commands {
         /// How to sort results (default is 'relevance')
         #[arg(long, value_enum, default_value = "relevance")]
         sort_by: Option<SortOptionArg>,
+
+        /// Sort order (default is 'descending')
+        #[arg(long, value_enum, default_value = "descending")]
+        order: Option<OrderOptionArg>,
+
+        /// Results per page (default is 30, max 100)
+        #[arg(long, default_value = "30")]
+        per_page: Option<u8>,
+
+        /// Result page number (default is 1)
+        #[arg(long, default_value = "1")]
+        page: Option<u32>,
+    },
+    /// Search for GitHub issues
+    IssueSearch {
+        /// Search query for issues
+        #[arg(
+            help = "Search query - keywords and filters to search for issues. Supports GitHub search syntax like 'repo:owner/name state:open label:bug' or 'assignee:username created:>2023-01-01'"
+        )]
+        query: String,
+
+        /// How to sort results (default is 'best-match')
+        #[arg(long, value_enum, default_value = "best-match")]
+        sort_by: Option<IssueSortOptionArg>,
 
         /// Sort order (default is 'descending')
         #[arg(long, value_enum, default_value = "descending")]
@@ -200,6 +224,16 @@ enum SortOptionArg {
     Updated,
 }
 
+/// Sorting options for issue search
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum IssueSortOptionArg {
+    Created,
+    Updated,
+    Comments,
+    #[value(name = "best-match")]
+    BestMatch,
+}
+
 /// Order options for repository search
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum OrderOptionArg {
@@ -214,6 +248,17 @@ impl From<SortOptionArg> for SortOption {
             SortOptionArg::Stars => SortOption::Stars,
             SortOptionArg::Forks => SortOption::Forks,
             SortOptionArg::Updated => SortOption::Updated,
+        }
+    }
+}
+
+impl From<IssueSortOptionArg> for IssueSortOption {
+    fn from(value: IssueSortOptionArg) -> Self {
+        match value {
+            IssueSortOptionArg::Created => IssueSortOption::Created,
+            IssueSortOptionArg::Updated => IssueSortOption::Updated,
+            IssueSortOptionArg::Comments => IssueSortOption::Comments,
+            IssueSortOptionArg::BestMatch => IssueSortOption::BestMatch,
         }
     }
 }
@@ -478,6 +523,127 @@ async fn main() -> Result<()> {
                         "\nSuggestion: Authentication failed. Try the following:\n  - Check that your GitHub token is valid and has not expired\n  - Ensure the token has appropriate permissions\n  - Regenerate your GitHub token if necessary"
                     } else {
                         "\nSuggestion: Check your network connection and GitHub credentials."
+                    };
+
+                    anyhow::bail!("{}{}", error_msg, suggestion)
+                }
+            }
+        }
+        Commands::IssueSearch {
+            query,
+            sort_by,
+            order,
+            per_page,
+            page,
+        } => {
+            use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
+
+            // Default to GitHub as provider
+            let git_provider = GitProvider::Github;
+
+            // Convert from clap enum types to the types used by repository_manager
+            let sort_option = sort_by.map(|s| s.into());
+            let order_option = order.map(|o| o.into());
+
+            // Execute the search using the repository manager
+            match manager
+                .search_issues(
+                    git_provider,
+                    query,
+                    sort_option,
+                    order_option,
+                    per_page,
+                    page,
+                )
+                .await
+            {
+                Ok(result) => {
+                    // Pretty print each issue item
+                    for (i, issue) in result.items.iter().enumerate() {
+                        let body_preview = issue.body.as_deref()
+                            .unwrap_or("<no description>")
+                            .chars()
+                            .take(100)
+                            .collect::<String>();
+                        let body_display = if issue.body.as_deref().unwrap_or("").len() > 100 {
+                            format!("{}...", body_preview)
+                        } else {
+                            body_preview
+                        };
+
+                        // Basic format
+                        println!(
+                            "{}. #{} - {} [{}]",
+                            i + 1,
+                            issue.number,
+                            issue.title,
+                            issue.state
+                        );
+                        println!("   Repository: {}", issue.repository.full_name);
+                        println!("   Author: {}", issue.user.login);
+                        println!("   Description: {}", body_display);
+                        println!("   URL: {}", issue.html_url);
+
+                        // Additional fields
+                        println!("   Comments: {}", issue.comments);
+                        println!("   Created: {}", issue.created_at);
+                        println!("   Updated: {}", issue.updated_at);
+                        
+                        if let Some(closed_at) = &issue.closed_at {
+                            println!("   Closed: {}", closed_at);
+                        }
+
+                        // Show labels if any
+                        if !issue.labels.is_empty() {
+                            let label_names: Vec<String> = issue.labels.iter()
+                                .map(|label| label.name.clone())
+                                .collect();
+                            println!("   Labels: {}", label_names.join(", "));
+                        }
+
+                        // Show assignees if any
+                        if !issue.assignees.is_empty() {
+                            let assignee_names: Vec<String> = issue.assignees.iter()
+                                .map(|assignee| assignee.login.clone())
+                                .collect();
+                            println!("   Assignees: {}", assignee_names.join(", "));
+                        }
+
+                        // Show milestone if any
+                        if let Some(milestone) = &issue.milestone {
+                            println!("   Milestone: {} [{}]", milestone.title, milestone.state);
+                        }
+
+                        println!("   Score: {:.2}", issue.score);
+
+                        // Add empty line after each issue
+                        println!();
+                    }
+
+                    // Summary information
+                    println!("Found {} issues (total: {})", result.items.len(), result.total_count);
+                    if result.incomplete_results {
+                        println!("Note: Results may be incomplete due to timeout or other factors.");
+                    }
+
+                    // If no results found
+                    if result.items.is_empty() {
+                        println!("No issues matched your search criteria.");
+                    }
+
+                    Ok(())
+                }
+                Err(err) => {
+                    tracing::error!("Issue search failed: {}", err);
+
+                    // Provide more user-friendly error message with suggestions
+                    let error_msg = format!("Issue search failed: {}", err);
+                    let suggestion = if error_msg.contains("API rate limit") {
+                        "\nSuggestion: You may have exceeded GitHub's API rate limits. Try the following:\n  - Use a GitHub token with '-t' option\n  - Wait a few minutes and try again\n  - Reduce the number of requests"
+                    } else if error_msg.contains("authentication") || error_msg.contains("401") {
+                        "\nSuggestion: Authentication failed. Try the following:\n  - Check that your GitHub token is valid and has not expired\n  - Ensure the token has appropriate permissions\n  - Regenerate your GitHub token if necessary"
+                    } else {
+                        "\nSuggestion: Check your network connection, GitHub credentials, and search query syntax."
                     };
 
                     anyhow::bail!("{}{}", error_msg, suggestion)
