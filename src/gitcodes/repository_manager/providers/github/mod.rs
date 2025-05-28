@@ -212,20 +212,36 @@ pub struct GithubSearchParams {
 ///
 /// // Basic search with defaults
 /// let params = GithubIssueSearchParams {
-///    query: "bug label:bug".to_string(),
+///    query: "bug in documentation".to_string(),
 ///    sort_by: None,
 ///    order: None,
 ///    per_page: None,
 ///    page: None,
+///    repository: None,
+///    labels: Some("bug".to_string()),
+///    state: None,
+///    creator: None,
+///    mentioned: None,
+///    assignee: None,
+///    milestone: None,
+///    issue_type: None,
 /// };
 ///
 /// // Advanced search with custom options
 /// let advanced_params = GithubIssueSearchParams {
-///    query: "repo:owner/repo state:open label:enhancement".to_string(),
+///    query: "performance issue".to_string(),
 ///    sort_by: Some(GithubIssueSortOption::Updated),
 ///    order: Some(GithubOrderOption::Descending),
 ///    per_page: Some(50),
 ///    page: Some(1),
+///    repository: Some("owner/repo".to_string()),
+///    labels: Some("enhancement".to_string()),
+///    state: Some("open".to_string()),
+///    creator: None,
+///    mentioned: None,
+///    assignee: None,
+///    milestone: None,
+///    issue_type: None,
 /// };
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
@@ -247,10 +263,41 @@ pub struct GithubIssueSearchParams {
     /// When None, defaults to 1
     pub page: Option<u32>,
 
-    /// Search query for issues
-    /// This is the only required parameter
-    /// Supports GitHub's search syntax, e.g., "repo:owner/repo state:open label:bug"
+    /// Full-text search query for issues
+    /// This should contain only the search terms, not qualifiers
+    /// Example: "bug in documentation"
     pub query: String,
+
+    /// Repository specification in the format "owner/repo"
+    /// When specified, limits search to this specific repository
+    /// Example: "octocat/Hello-World"
+    pub repository: Option<String>,
+
+    /// Labels to search for (comma-separated)
+    /// Example: "bug,ui,@high"
+    pub labels: Option<String>,
+
+    /// State of issues to search for
+    /// Can be "open", "closed", or "all"
+    pub state: Option<String>,
+
+    /// User who created the issue
+    pub creator: Option<String>,
+
+    /// User mentioned in the issue
+    pub mentioned: Option<String>,
+
+    /// User assigned to the issue
+    /// Can be a username, "none" for unassigned, or "*" for any assignee
+    pub assignee: Option<String>,
+
+    /// Milestone number or special values
+    /// Can be a number, "*" for any milestone, or "none" for no milestone
+    pub milestone: Option<String>,
+
+    /// Issue type name
+    /// Can be a type name, "*" for any type, or "none" for no type
+    pub issue_type: Option<String>,
 }
 
 pub struct GithubClient {
@@ -514,9 +561,55 @@ impl GithubClient {
         let per_page = params.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
         let page = params.page.unwrap_or(1);
 
+        // Build the search query with qualifiers
+        let mut query_parts = vec![params.query.clone()];
+
+        // Add repository qualifier if specified
+        if let Some(repo) = &params.repository {
+            query_parts.push(format!("repo:{}", repo));
+        }
+
+        // Add labels qualifier if specified
+        if let Some(labels) = &params.labels {
+            query_parts.push(format!("label:{}", labels));
+        }
+
+        // Add state qualifier if specified
+        if let Some(state) = &params.state {
+            query_parts.push(format!("state:{}", state));
+        }
+
+        // Add creator qualifier if specified
+        if let Some(creator) = &params.creator {
+            query_parts.push(format!("author:{}", creator));
+        }
+
+        // Add mentioned qualifier if specified
+        if let Some(mentioned) = &params.mentioned {
+            query_parts.push(format!("mentions:{}", mentioned));
+        }
+
+        // Add assignee qualifier if specified
+        if let Some(assignee) = &params.assignee {
+            query_parts.push(format!("assignee:{}", assignee));
+        }
+
+        // Add milestone qualifier if specified
+        if let Some(milestone) = &params.milestone {
+            query_parts.push(format!("milestone:{}", milestone));
+        }
+
+        // Add issue type qualifier if specified
+        if let Some(issue_type) = &params.issue_type {
+            query_parts.push(format!("type:{}", issue_type));
+        }
+
+        // Combine all query parts
+        let full_query = query_parts.join(" ");
+
         let mut url = format!(
             "https://api.github.com/search/issues?q={}",
-            urlencoding::encode(&params.query)
+            urlencoding::encode(&full_query)
         );
 
         if !sort.is_empty() && sort != "best-match" {
@@ -527,11 +620,6 @@ impl GithubClient {
         url.push_str(&format!("&per_page={}&page={}", per_page, page));
 
         url
-    }
-
-    //TODO(tacogips) implthis
-    pub async fn get_default_branch(&self, _target_repository: &GitRemoteRepositoryInfo) -> String {
-        unimplemented!()
     }
 
     /// Executes a GitHub API search repository request
@@ -932,11 +1020,19 @@ impl GithubClient {
     ///
     /// // Search for open bugs in a specific repository
     /// let params = GithubIssueSearchParams {
-    ///     query: "repo:rust-lang/rust state:open label:bug".to_string(),
+    ///     query: "memory leak".to_string(),
     ///     sort_by: Some(GithubIssueSortOption::Updated),
     ///     order: Some(GithubOrderOption::Descending),
     ///     per_page: Some(10),
     ///     page: Some(1),
+    ///     repository: Some("rust-lang/rust".to_string()),
+    ///     labels: Some("bug".to_string()),
+    ///     state: Some("open".to_string()),
+    ///     creator: None,
+    ///     mentioned: None,
+    ///     assignee: None,
+    ///     milestone: None,
+    ///     issue_type: None,
     /// };
     /// ```
     pub async fn search_issues(
@@ -1069,4 +1165,99 @@ pub(crate) fn parse_github_repository_url_internal(url: &str) -> Result<GithubRe
         clone_url,
         repo_info,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_construct_issue_search_url_basic() {
+        let params = GithubIssueSearchParams {
+            query: "memory leak".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+        };
+
+        let url = GithubClient::construct_issue_search_url(&params);
+        assert!(url.contains("q=memory%20leak"));
+        assert!(url.contains("&order=desc"));
+        assert!(url.contains("&per_page=30"));
+        assert!(url.contains("&page=1"));
+    }
+
+    #[test]
+    fn test_construct_issue_search_url_with_qualifiers() {
+        let params = GithubIssueSearchParams {
+            query: "performance issue".to_string(),
+            sort_by: Some(GithubIssueSortOption::Updated),
+            order: Some(GithubOrderOption::Ascending),
+            per_page: Some(50),
+            page: Some(2),
+            repository: Some("rust-lang/rust".to_string()),
+            labels: Some("bug,performance".to_string()),
+            state: Some("open".to_string()),
+            creator: Some("octocat".to_string()),
+            mentioned: Some("maintainer".to_string()),
+            assignee: Some("developer".to_string()),
+            milestone: Some("1".to_string()),
+            issue_type: Some("enhancement".to_string()),
+        };
+
+        let url = GithubClient::construct_issue_search_url(&params);
+        
+        // The URL should be properly encoded and contain all qualifiers
+        assert!(url.contains("performance%20issue"));
+        assert!(url.contains("repo%3Arust-lang%2Frust"));
+        assert!(url.contains("label%3Abug%2Cperformance"));
+        assert!(url.contains("state%3Aopen"));
+        assert!(url.contains("author%3Aoctocat"));
+        assert!(url.contains("mentions%3Amaintainer"));
+        assert!(url.contains("assignee%3Adeveloper"));
+        assert!(url.contains("milestone%3A1"));
+        assert!(url.contains("type%3Aenhancement"));
+        assert!(url.contains("&sort=updated"));
+        assert!(url.contains("&order=asc"));
+        assert!(url.contains("&per_page=50"));
+        assert!(url.contains("&page=2"));
+    }
+
+    #[test]
+    fn test_construct_issue_search_url_separates_text_from_qualifiers() {
+        let params = GithubIssueSearchParams {
+            query: "documentation".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: Some("owner/repo".to_string()),
+            labels: Some("docs".to_string()),
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+        };
+
+        let url = GithubClient::construct_issue_search_url(&params);
+        
+        // Ensure text search and qualifiers are properly combined
+        assert!(url.contains("documentation"));
+        assert!(url.contains("repo%3Aowner%2Frepo"));
+        assert!(url.contains("label%3Adocs"));
+        // Should not contain bare qualifiers in the search text
+        assert!(!url.contains("repo:owner/repo"));
+        assert!(!url.contains("label:docs"));
+    }
 }

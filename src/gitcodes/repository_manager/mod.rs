@@ -1122,6 +1122,14 @@ impl RepositoryManager {
                     order,
                     per_page,
                     page,
+                    repository: None,
+                    labels: None,
+                    state: None,
+                    creator: None,
+                    mentioned: None,
+                    assignee: None,
+                    milestone: None,
+                    issue_type: None,
                 };
 
                 // Use the GitHub client to perform the search
