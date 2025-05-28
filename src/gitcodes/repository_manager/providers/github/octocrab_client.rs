@@ -69,7 +69,8 @@ impl OctocrabGithubClient {
         &self,
         params: GithubIssueSearchParams,
     ) -> Result<IssueSearchResults, String> {
-        let query = Self::build_issue_search_query(&params);
+        let query = Self::build_issue_search_query(&params)?;
+        tracing::debug!("GitHub issue search query: {}", query);
 
         let mut search_builder = self.client.search().issues_and_pull_requests(&query);
 
@@ -92,7 +93,10 @@ impl OctocrabGithubClient {
         let results = search_builder
             .send()
             .await
-            .map_err(|e| format!("Issue search failed: {}", e))?;
+            .map_err(|e| {
+                tracing::error!("GitHub API request failed: {:?}", e);
+                format!("Issue search failed: {}", e)
+            })?;
 
         Ok(Self::convert_issue_search_results(results))
     }
@@ -148,8 +152,20 @@ impl OctocrabGithubClient {
     }
 
     /// Build issue search query from parameters
-    fn build_issue_search_query(params: &GithubIssueSearchParams) -> String {
+    fn build_issue_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
         let mut query_parts = vec![params.query.clone()];
+
+        // This function is specifically for issue searches - reject pull request queries
+        let query_lower = params.query.to_lowercase();
+        if query_lower.contains("is:pull-request") {
+            return Err("Cannot search for pull requests in issue search. Use a generic search or remove 'is:pull-request' from your query.".to_string());
+        }
+
+        // GitHub API requires 'is:issue' qualifier for issue searches
+        // Add 'is:issue' if the query doesn't already contain it
+        if !query_lower.contains("is:issue") {
+            query_parts.push("is:issue".to_string());
+        }
 
         if let Some(repo) = &params.repository {
             let normalized_repo = Self::normalize_repository_identifier(repo);
@@ -184,7 +200,7 @@ impl OctocrabGithubClient {
             query_parts.push(format!("type:{}", issue_type));
         }
 
-        query_parts.join(" ")
+        Ok(query_parts.join(" "))
     }
 
     /// Normalize repository identifier from various formats to owner/repo

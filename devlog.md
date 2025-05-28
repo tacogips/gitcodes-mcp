@@ -1,5 +1,50 @@
 # Development Log
 
+### GitHub Issue Search Query Fix Pattern
+
+Fixed GitHub issue search to automatically include required 'is:issue' qualifier when not present in user queries. This pattern demonstrates handling API requirements transparently while maintaining user-friendly interfaces.
+
+#### Problem Analysis
+
+GitHub's issue search API requires queries to include either 'is:issue' or 'is:pull-request' qualifiers. When users provided empty queries or queries without these qualifiers, the API would return a 422 error: "Query must include 'is:issue' or 'is:pull-request'".
+
+#### Solution Implementation
+
+Modified the `build_issue_search_query` function to validate input and automatically add 'is:issue' qualifier:
+
+```rust
+fn build_issue_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
+    let mut query_parts = vec![params.query.clone()];
+
+    // This function is specifically for issue searches - reject pull request queries
+    let query_lower = params.query.to_lowercase();
+    if query_lower.contains("is:pull-request") {
+        return Err("Cannot search for pull requests in issue search. Use a generic search or remove 'is:pull-request' from your query.".to_string());
+    }
+
+    // GitHub API requires 'is:issue' qualifier for issue searches
+    // Add 'is:issue' if the query doesn't already contain it
+    if !query_lower.contains("is:issue") {
+        query_parts.push("is:issue".to_string());
+    }
+    
+    // ... rest of query building
+    Ok(query_parts.join(" "))
+}
+```
+
+#### Pattern Guidelines
+
+When wrapping external APIs with strict requirements:
+1. **Validate input semantics**: Reject queries that contradict the function's purpose (e.g., pull-request queries in issue search)
+2. **Check for required qualifiers** in user input before API calls
+3. **Automatically add missing required parameters** when they don't conflict with user intent
+4. **Preserve user-specified qualifiers** to maintain control over search scope
+5. **Use case-insensitive matching** for robustness
+6. **Return meaningful error messages** that guide users toward correct usage
+
+This ensures the CLI works intuitively for users while satisfying API constraints and maintaining semantic correctness.
+
 ### Octocrab GitHub Client Migration Pattern
 
 Migrated GitHub provider implementation from manual reqwest HTTP calls to octocrab library while maintaining the same public interface and user-facing command behavior. This pattern demonstrates how to replace internal API client implementations without breaking existing functionality.
