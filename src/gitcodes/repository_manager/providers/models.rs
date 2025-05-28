@@ -50,7 +50,7 @@ pub struct RepositoryItem {
     pub name: String,
 
     /// Whether the repository is private
-    pub private: bool,
+    pub private: Option<bool>,
 
     /// Repository owner information
     pub owner: RepositoryOwner,
@@ -62,53 +62,53 @@ pub struct RepositoryItem {
     pub description: Option<String>,
 
     /// Whether the repository is a fork
-    pub fork: bool,
+    pub fork: Option<bool>,
 
     /// URL for repository homepage or documentation
     pub homepage: Option<String>,
 
     /// Size of the repository in kilobytes
-    pub size: u64,
+    pub size: Option<u64>,
 
     /// Number of stargazers (stars)
-    pub stargazers_count: u64,
+    pub stargazers_count: Option<u64>,
 
     /// Number of watchers
-    pub watchers_count: u64,
+    pub watchers_count: Option<u64>,
 
     /// Primary programming language
     pub language: Option<String>,
 
     /// Number of forks
-    pub forks_count: u64,
+    pub forks_count: Option<u64>,
 
     /// Whether the repository is archived
-    pub archived: bool,
+    pub archived: Option<bool>,
 
     /// Number of open issues
-    pub open_issues_count: u64,
+    pub open_issues_count: Option<u64>,
 
     /// Repository license information
     pub license: Option<RepositoryLicense>,
 
     /// Repository topics/tags
-    pub topics: Vec<String>,
+    pub topics: Option<Vec<String>>,
 
     /// Default branch name
-    pub default_branch: String,
+    pub default_branch: Option<String>,
 
     /// Score (relevance to search query)
     /// Only available when using REST API, None for GraphQL searches
     pub score: Option<f64>,
 
     /// When the repository was created
-    pub created_at: String,
+    pub created_at: Option<String>,
 
     /// When the repository was last updated
-    pub updated_at: String,
+    pub updated_at: Option<String>,
 
     /// When the repository was last pushed to
-    pub pushed_at: String,
+    pub pushed_at: Option<String>,
 }
 
 /// Repository owner information
@@ -117,10 +117,10 @@ pub struct RepositoryItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepositoryOwner {
     /// Owner's ID (as a string to support different ID formats)
-    pub id: String,
+    pub id: Option<String>,
 
     /// Owner type (User or Organization)
-    pub type_field: String,
+    pub type_field: Option<String>,
 }
 
 /// Repository license information

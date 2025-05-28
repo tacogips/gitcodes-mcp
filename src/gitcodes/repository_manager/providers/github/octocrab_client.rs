@@ -223,46 +223,28 @@ impl OctocrabGithubClient {
                 description: repo.description,
                 html_url: repo.html_url,
                 homepage: repo.homepage,
-                language: repo
-                    .language
-                    .as_ref()
-                    .and_then(|l| l.as_str())
-                    .map(|s| s.to_string()),
-                stargazers_count: repo.stargazers_count.unwrap_or(0) as u64,
-                watchers_count: repo.watchers_count.unwrap_or(0) as u64,
-                forks_count: repo.forks_count.unwrap_or(0) as u64,
-                open_issues_count: repo.open_issues_count.unwrap_or(0) as u64,
-                topics: repo.topics.unwrap_or_default(),
-                created_at: repo
-                    .created_at
-                    .map(|dt| dt.to_rfc3339())
-                    .unwrap_or_default(),
-                updated_at: repo
-                    .updated_at
-                    .map(|dt| dt.to_rfc3339())
-                    .unwrap_or_default(),
-                pushed_at: repo.pushed_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-                size: repo.size.unwrap_or(0) as u64,
-                default_branch: repo.default_branch.unwrap_or_default(),
-                archived: repo.archived.unwrap_or(false),
-                fork: repo.fork.unwrap_or(false),
-                private: repo.private.unwrap_or(false),
+                language: repo.language.as_ref().and_then(|l| l.as_str()).map(|s| s.to_string()),
+                stargazers_count: repo.stargazers_count.map(|c| c as u64),
+                watchers_count: repo.watchers_count.map(|c| c as u64),
+                forks_count: repo.forks_count.map(|c| c as u64),
+                open_issues_count: repo.open_issues_count.map(|c| c as u64),
+                topics: repo.topics,
+                created_at: repo.created_at.map(|dt| dt.to_rfc3339()),
+                updated_at: repo.updated_at.map(|dt| dt.to_rfc3339()),
+                pushed_at: repo.pushed_at.map(|dt| dt.to_rfc3339()),
+                size: repo.size.map(|s| s as u64),
+                default_branch: repo.default_branch,
+                archived: repo.archived,
+                fork: repo.fork,
+                private: repo.private,
                 score: None, // octocrab doesn't expose score, use default
                 owner: RepositoryOwner {
-                    id: repo
-                        .owner
-                        .as_ref()
-                        .map(|o| o.id.0.to_string())
-                        .unwrap_or_default(),
-                    type_field: repo
-                        .owner
-                        .as_ref()
-                        .map(|o| format!("{:?}", o.r#type))
-                        .unwrap_or_default(),
+                    id: repo.owner.as_ref().map(|o| o.id.0.to_string()),
+                    type_field: repo.owner.as_ref().map(|o| format!("{:?}", o.r#type)),
                 },
-                license: repo.license.as_ref().map(|license| RepositoryLicense {
-                    key: license.key.clone(),
-                    name: license.name.clone(),
+                license: repo.license.map(|license| RepositoryLicense {
+                    key: license.key,
+                    name: license.name,
                 }),
             })
             .collect();
@@ -337,8 +319,8 @@ impl OctocrabGithubClient {
                     description: None, // Not available in issue search
                     private: false,    // Not available in issue search
                     owner: RepositoryOwner {
-                        id: issue.user.id.0.to_string(),
-                        type_field: format!("{:?}", issue.user.r#type),
+                        id: Some(issue.user.id.0.to_string()),
+                        type_field: Some(format!("{:?}", issue.user.r#type)),
                     },
                 },
             })
