@@ -547,18 +547,26 @@ async fn main() -> Result<()> {
             let sort_option = sort_by.map(|s| s.into());
             let order_option = order.map(|o| o.into());
 
+            // Create issue search parameters
+            let search_params = gitcodes_mcp::gitcodes::repository_manager::IssueSearchParams {
+                query,
+                sort_by: sort_option,
+                order: order_option,
+                per_page: per_page.map(|p| p as u32),
+                page,
+                legacy: None,
+                repository: None,
+                labels: None,
+                state: None,
+                creator: None,
+                mentioned: None,
+                assignee: None,
+                milestone: None,
+                issue_type: None,
+            };
+
             // Execute the search using the repository manager
-            match manager
-                .search_issues(
-                    git_provider,
-                    query,
-                    sort_option,
-                    order_option,
-                    per_page,
-                    page,
-                )
-                .await
-            {
+            match manager.search_issues(git_provider, search_params).await {
                 Ok(result) => {
                     // Pretty print each issue item
                     for (i, issue) in result.items.iter().enumerate() {

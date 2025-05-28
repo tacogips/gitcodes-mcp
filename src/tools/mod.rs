@@ -1073,9 +1073,27 @@ async fn inner_search_issues(
         None => GitProvider::Github, // Default to GitHub if not provided
     };
 
+    // Create issue search parameters
+    let search_params = crate::gitcodes::repository_manager::IssueSearchParams {
+        query,
+        sort_by,
+        order,
+        per_page: per_page.map(|p| p as u32),
+        page,
+        legacy: None,
+        repository: None,
+        labels: None,
+        state: None,
+        creator: None,
+        mentioned: None,
+        assignee: None,
+        milestone: None,
+        issue_type: None,
+    };
+
     // Execute the search against the specified provider using the repository manager
     match repository_manager
-        .search_issues(git_provider, query, sort_by, order, per_page, page)
+        .search_issues(git_provider, search_params)
         .await
     {
         Ok(search_results) => {

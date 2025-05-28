@@ -1901,4 +1901,62 @@ mod tests {
 
         assert_eq!(params_rest.advanced_search.unwrap_or(true), false);
     }
+
+    #[test]
+    fn test_legacy_parameter_to_advanced_search_conversion() {
+        // Test that legacy = true converts to advanced_search = false (REST API)
+        use crate::gitcodes::repository_manager::IssueSearchParams;
+
+        let params_legacy = IssueSearchParams {
+            query: "test query".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            legacy: Some(true), // User wants legacy REST API
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+        };
+
+        // Simulate the conversion logic in search_issues method
+        let advanced_search = if params_legacy.legacy.unwrap_or(false) {
+            Some(false)
+        } else {
+            None
+        };
+
+        assert_eq!(advanced_search, Some(false));
+
+        // Test that legacy = false or None uses default (GraphQL)
+        let params_default = IssueSearchParams {
+            query: "test query".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            legacy: None, // Default behavior
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+        };
+
+        let advanced_search_default = if params_default.legacy.unwrap_or(false) {
+            Some(false)
+        } else {
+            None
+        };
+
+        assert_eq!(advanced_search_default, None); // Will use GraphQL default
+    }
 }

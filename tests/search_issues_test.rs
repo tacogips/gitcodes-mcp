@@ -78,11 +78,22 @@ async fn test_search_issues_parameter_conversion() {
         let result = manager
             .search_issues(
                 provider,
-                query.to_string(),
-                sort_option.clone(),  // Clone to avoid move
-                order_option.clone(), // Clone to avoid move
-                Some(5),              // Limit results to 5 per page
-                Some(1),              // First page
+                gitcodes_mcp::gitcodes::repository_manager::IssueSearchParams {
+                    query: query.to_string(),
+                    sort_by: sort_option.clone(),
+                    order: order_option.clone(),
+                    per_page: Some(5),
+                    page: Some(1),
+                    legacy: None,
+                    repository: None,
+                    labels: None,
+                    state: None,
+                    creator: None,
+                    mentioned: None,
+                    assignee: None,
+                    milestone: None,
+                    issue_type: None,
+                },
             )
             .await;
 
@@ -150,11 +161,22 @@ async fn test_search_issues_basic() {
     let result = manager
         .search_issues(
             GitProvider::Github,
-            query.to_string(),
-            None,    // No sort option
-            None,    // No order option
-            Some(3), // Limit results to 3 per page
-            Some(1), // First page
+            gitcodes_mcp::gitcodes::repository_manager::IssueSearchParams {
+                query: query.to_string(),
+                sort_by: None,
+                order: None,
+                per_page: Some(3),
+                page: Some(1),
+                legacy: None,
+                repository: None,
+                labels: None,
+                state: None,
+                creator: None,
+                mentioned: None,
+                assignee: None,
+                milestone: None,
+                issue_type: None,
+            },
         )
         .await;
 
@@ -246,11 +268,22 @@ async fn test_search_issues_query_syntax() {
         let result = manager
             .search_issues(
                 GitProvider::Github,
-                query.to_string(),
-                Some(IssueSortOption::Updated), // Sort by updated for consistency
-                Some(OrderOption::Descending),
-                Some(5), // Limit results
-                Some(1), // First page
+                gitcodes_mcp::gitcodes::repository_manager::IssueSearchParams {
+                    query: query.to_string(),
+                    sort_by: Some(IssueSortOption::Updated),
+                    order: Some(OrderOption::Descending),
+                    per_page: Some(5),
+                    page: Some(1),
+                    legacy: None,
+                    repository: None,
+                    labels: None,
+                    state: None,
+                    creator: None,
+                    mentioned: None,
+                    assignee: None,
+                    milestone: None,
+                    issue_type: None,
+                },
             )
             .await;
 
@@ -334,11 +367,22 @@ async fn test_search_issues_pagination() {
         let result = manager
             .search_issues(
                 GitProvider::Github,
-                query.to_string(),
-                Some(IssueSortOption::Updated),
-                Some(OrderOption::Descending),
-                per_page,
-                page,
+                gitcodes_mcp::gitcodes::repository_manager::IssueSearchParams {
+                    query: query.to_string(),
+                    sort_by: Some(IssueSortOption::Updated),
+                    order: Some(OrderOption::Descending),
+                    per_page,
+                    page,
+                    legacy: None,
+                    repository: None,
+                    labels: None,
+                    state: None,
+                    creator: None,
+                    mentioned: None,
+                    assignee: None,
+                    milestone: None,
+                    issue_type: None,
+                },
             )
             .await;
 

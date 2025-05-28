@@ -164,10 +164,43 @@ pub struct IssueSearchParams {
     pub order: Option<OrderOption>,
 
     /// Optional number of results per page (defaults to provider-specific value, typically 30)
-    pub per_page: Option<u8>,
+    pub per_page: Option<u32>,
 
-    /// Optional page number (defaults to 1 if None)
+    /// Optional page number for pagination (defaults to 1)
     pub page: Option<u32>,
+
+    /// Use legacy REST API instead of GraphQL
+    /// When true, forces the use of REST API instead of the default GraphQL
+    pub legacy: Option<bool>,
+
+    /// Repository specification in the format "owner/repo"
+    /// When specified, limits search to this specific repository
+    pub repository: Option<String>,
+
+    /// Labels to search for (comma-separated)
+    pub labels: Option<String>,
+
+    /// State of issues to search for
+    /// Can be "open", "closed", or "all"
+    pub state: Option<String>,
+
+    /// User who created the issue
+    pub creator: Option<String>,
+
+    /// User mentioned in the issue
+    pub mentioned: Option<String>,
+
+    /// User assigned to the issue
+    /// Can be a username, "none" for unassigned, or "*" for any assignee
+    pub assignee: Option<String>,
+
+    /// Milestone number or special values
+    /// Can be a number, "*" for any milestone, or "none" for no milestone
+    pub milestone: Option<String>,
+
+    /// Issue type name
+    /// Can be a type name, "*" for any type, or "none" for no type
+    pub issue_type: Option<String>,
 }
 
 /// Repository manager for Git operations
@@ -1101,40 +1134,42 @@ impl RepositoryManager {
     pub async fn search_issues(
         &self,
         provider: providers::models::GitProvider,
-        query: String,
-        sort_option: Option<IssueSortOption>,
-        order_option: Option<OrderOption>,
-        per_page: Option<u8>,
-        page: Option<u32>,
+        params: IssueSearchParams,
     ) -> Result<providers::IssueSearchResults, String> {
         match provider {
             providers::models::GitProvider::Github => {
                 // Convert generic IssueSortOption to GitHub-specific GithubIssueSortOption
-                let sort_by = sort_option.map(providers::github::GithubIssueSortOption::from);
+                let sort_by = params
+                    .sort_by
+                    .map(providers::github::GithubIssueSortOption::from);
 
                 // Convert generic OrderOption to GitHub-specific GithubOrderOption
-                let order = order_option.map(providers::github::GithubOrderOption::from);
+                let order = params.order.map(providers::github::GithubOrderOption::from);
 
                 // Create GitHub issue search parameters
-                let params = providers::github::GithubIssueSearchParams {
-                    query,
+                let github_params = providers::github::GithubIssueSearchParams {
+                    query: params.query,
                     sort_by,
                     order,
-                    per_page,
-                    page,
-                    repository: None,
-                    labels: None,
-                    state: None,
-                    creator: None,
-                    mentioned: None,
-                    assignee: None,
-                    milestone: None,
-                    issue_type: None,
-                    advanced_search: None,
+                    per_page: params.per_page.map(|p| p as u8),
+                    page: params.page,
+                    repository: params.repository,
+                    labels: params.labels,
+                    state: params.state,
+                    creator: params.creator,
+                    mentioned: params.mentioned,
+                    assignee: params.assignee,
+                    milestone: params.milestone,
+                    issue_type: params.issue_type,
+                    advanced_search: if params.legacy.unwrap_or(false) {
+                        Some(false)
+                    } else {
+                        None
+                    },
                 };
 
                 // Use the GitHub client to perform the search
-                self.search_github_issues(params).await
+                self.search_github_issues(github_params).await
             }
         }
     }
