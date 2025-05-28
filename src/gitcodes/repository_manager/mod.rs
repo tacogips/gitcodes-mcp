@@ -1130,6 +1130,7 @@ impl RepositoryManager {
                     assignee: None,
                     milestone: None,
                     issue_type: None,
+                    advanced_search: None,
                 };
 
                 // Use the GitHub client to perform the search

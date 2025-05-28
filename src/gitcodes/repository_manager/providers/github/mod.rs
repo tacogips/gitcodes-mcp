@@ -225,6 +225,7 @@ pub struct GithubSearchParams {
 ///    assignee: None,
 ///    milestone: None,
 ///    issue_type: None,
+///    advanced_search: None,
 /// };
 ///
 /// // Advanced search with custom options
@@ -242,6 +243,7 @@ pub struct GithubSearchParams {
 ///    assignee: None,
 ///    milestone: None,
 ///    issue_type: None,
+///    advanced_search: Some(true),
 /// };
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
@@ -298,6 +300,11 @@ pub struct GithubIssueSearchParams {
     /// Issue type name
     /// Can be a type name, "*" for any type, or "none" for no type
     pub issue_type: Option<String>,
+
+    /// Use advanced search with GraphQL
+    /// When true, uses GraphQL with ISSUE_ADVANCED type instead of REST API
+    /// Default: false
+    pub advanced_search: Option<bool>,
 }
 
 pub struct GithubClient {
@@ -619,6 +626,13 @@ impl GithubClient {
         url.push_str(&format!("&order={}", order));
         url.push_str(&format!("&per_page={}&page={}", per_page, page));
 
+        // Add advanced_search parameter if specified
+        if let Some(advanced_search) = params.advanced_search {
+            if advanced_search {
+                url.push_str("&advanced_search=true");
+            }
+        }
+
         url
     }
 
@@ -839,7 +853,7 @@ impl GithubClient {
     pub async fn execute_search_issues_request(
         &self,
         params: &GithubIssueSearchParams,
-    ) -> Result<super::IssueSearchResults, String> {
+    ) -> Result<super::models::IssueSearchResults, String> {
         let url = Self::construct_issue_search_url(params);
         // Set up the API request
         let mut req_builder = self.client.get(url).header(
@@ -1033,14 +1047,458 @@ impl GithubClient {
     ///     assignee: None,
     ///     milestone: None,
     ///     issue_type: None,
+    ///     advanced_search: None,
     /// };
     /// ```
     pub async fn search_issues(
         &self,
         params: GithubIssueSearchParams,
-    ) -> Result<super::IssueSearchResults, String> {
-        // Execute the search issues request
-        self.execute_search_issues_request(&params).await
+    ) -> Result<super::models::IssueSearchResults, String> {
+        // Check if advanced search is enabled
+        if params.advanced_search.unwrap_or(false) {
+            self.execute_graphql_search_issues_request(&params).await
+        } else {
+            self.execute_search_issues_request(&params).await
+        }
+    }
+
+    /// Execute GraphQL search for issues using ISSUE_ADVANCED type
+    ///
+    /// This method is used when advanced_search is enabled and sends GraphQL queries
+    /// to GitHub's GraphQL API endpoint using the ISSUE_ADVANCED search type.
+    async fn execute_graphql_search_issues_request(
+        &self,
+        params: &GithubIssueSearchParams,
+    ) -> Result<super::models::IssueSearchResults, String> {
+        // Build the search query with qualifiers (same as REST API)
+        let mut query_parts = vec![params.query.clone()];
+
+        // Add repository qualifier if specified
+        if let Some(repo) = &params.repository {
+            query_parts.push(format!("repo:{}", repo));
+        }
+
+        // Add labels qualifier if specified
+        if let Some(labels) = &params.labels {
+            query_parts.push(format!("label:{}", labels));
+        }
+
+        // Add state qualifier if specified
+        if let Some(state) = &params.state {
+            query_parts.push(format!("state:{}", state));
+        }
+
+        // Add creator qualifier if specified
+        if let Some(creator) = &params.creator {
+            query_parts.push(format!("author:{}", creator));
+        }
+
+        // Add mentioned qualifier if specified
+        if let Some(mentioned) = &params.mentioned {
+            query_parts.push(format!("mentions:{}", mentioned));
+        }
+
+        // Add assignee qualifier if specified
+        if let Some(assignee) = &params.assignee {
+            query_parts.push(format!("assignee:{}", assignee));
+        }
+
+        // Add milestone qualifier if specified
+        if let Some(milestone) = &params.milestone {
+            query_parts.push(format!("milestone:{}", milestone));
+        }
+
+        // Add issue type qualifier if specified
+        if let Some(issue_type) = &params.issue_type {
+            query_parts.push(format!("type:{}", issue_type));
+        }
+
+        // Combine all query parts
+        let full_query = query_parts.join(" ");
+
+        // Set up pagination parameters
+        let per_page = params.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
+
+        // Construct GraphQL query
+        let graphql_query = format!(
+            r#"
+            query {{
+                search(query: "{}", type: ISSUE_ADVANCED, first: {}) {{
+                    issueCount
+                    nodes {{
+                        ... on Issue {{
+                            id
+                            number
+                            title
+                            body
+                            state
+                            createdAt
+                            updatedAt
+                            closedAt
+                            url
+                            author {{
+                                login
+                                ... on User {{
+                                    id
+                                }}
+                            }}
+                            labels(first: 50) {{
+                                nodes {{
+                                    id
+                                    name
+                                    color
+                                    description
+                                }}
+                            }}
+                            assignees(first: 10) {{
+                                nodes {{
+                                    login
+                                    id
+                                }}
+                            }}
+                            milestone {{
+                                id
+                                number
+                                title
+                                description
+                                state
+                                createdAt
+                                updatedAt
+                                dueOn
+                                closedAt
+                            }}
+                            repository {{
+                                name
+                                nameWithOwner
+                                url
+                            }}
+                            comments {{
+                                totalCount
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+            "#,
+            full_query.replace('"', r#"\""#), // Escape quotes in the query
+            per_page
+        );
+
+        // Create GraphQL request payload
+        let graphql_payload = serde_json::json!({
+            "query": graphql_query
+        });
+
+        // Set up request headers
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static("application/json"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("gitcodes-mcp/0.1.0"),
+        );
+
+        // Add authentication header if token is available
+        if let Some(token) = &self.github_token {
+            let auth_value = format!("Bearer {}", token);
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&auth_value)
+                    .map_err(|e| format!("Invalid auth header: {}", e))?,
+            );
+        }
+
+        // Send GraphQL request to GitHub's GraphQL API
+        let response = self
+            .client
+            .post("https://api.github.com/graphql")
+            .headers(headers)
+            .json(&graphql_payload)
+            .send()
+            .await
+            .map_err(|e| format!("GraphQL request failed: {}", e))?;
+
+        // Check if the request was successful
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("GraphQL request failed with status {}: {}", status, error_text));
+        }
+
+        // Parse the GraphQL response
+        let graphql_response: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse GraphQL response: {}", e))?;
+
+        // Check for GraphQL errors
+        if let Some(errors) = graphql_response.get("errors") {
+            return Err(format!("GraphQL query errors: {}", errors));
+        }
+
+        // Extract search results from GraphQL response
+        let search_data = graphql_response
+            .get("data")
+            .and_then(|data| data.get("search"))
+            .ok_or("Missing search data in GraphQL response")?;
+
+        let total_count = search_data
+            .get("issueCount")
+            .and_then(|count| count.as_u64())
+            .unwrap_or(0) as u32;
+
+        let empty_vec = vec![];
+        let nodes = search_data
+            .get("nodes")
+            .and_then(|nodes| nodes.as_array())
+            .unwrap_or(&empty_vec);
+
+        // Convert GraphQL response to our issue format
+        let mut issues = Vec::new();
+        for node in nodes {
+            if let Ok(issue) = self.parse_graphql_issue_node(node) {
+                issues.push(issue);
+            }
+        }
+
+        Ok(super::models::IssueSearchResults {
+            total_count: total_count as u64,
+            incomplete_results: false, // GraphQL doesn't provide this field
+            items: issues,
+        })
+    }
+
+    /// Parse a GraphQL issue node into our Issue format
+    fn parse_graphql_issue_node(&self, node: &serde_json::Value) -> Result<super::models::IssueItem, String> {
+        let id = node
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing issue id")?
+            .to_string();
+
+        let number = node
+            .get("number")
+            .and_then(|v| v.as_u64())
+            .ok_or("Missing issue number")?;
+
+        let title = node
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let body = node
+            .get("body")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let state = node
+            .get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("open")
+            .to_string();
+
+        let html_url = node
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let created_at = node
+            .get("createdAt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let updated_at = node
+            .get("updatedAt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let closed_at = node
+            .get("closedAt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Parse author
+        let user = if let Some(author) = node.get("author") {
+            super::models::IssueUser {
+                login: author
+                    .get("login")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                id: author
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                type_field: "User".to_string(),
+                html_url: format!("https://github.com/{}", 
+                    author.get("login").and_then(|v| v.as_str()).unwrap_or("")),
+            }
+        } else {
+            super::models::IssueUser {
+                login: "unknown".to_string(),
+                id: "unknown".to_string(),
+                type_field: "User".to_string(),
+                html_url: "".to_string(),
+            }
+        };
+
+        // Parse labels
+        let labels = if let Some(labels_data) = node.get("labels").and_then(|l| l.get("nodes")).and_then(|n| n.as_array()) {
+            labels_data
+                .iter()
+                .filter_map(|label| {
+                    Some(super::models::IssueLabel {
+                        id: label.get("id").and_then(|v| v.as_str())?.to_string(),
+                        name: label.get("name").and_then(|v| v.as_str())?.to_string(),
+                        color: label.get("color").and_then(|v| v.as_str())?.to_string(),
+                        description: label.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    })
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+
+        // Parse assignees
+        let assignees = if let Some(assignees_data) = node.get("assignees").and_then(|a| a.get("nodes")).and_then(|n| n.as_array()) {
+            assignees_data
+                .iter()
+                .filter_map(|assignee| {
+                    Some(super::models::IssueUser {
+                        login: assignee.get("login").and_then(|v| v.as_str())?.to_string(),
+                        id: assignee.get("id").and_then(|v| v.as_str())?.to_string(),
+                        type_field: "User".to_string(),
+                        html_url: format!("https://github.com/{}", 
+                            assignee.get("login").and_then(|v| v.as_str())?),
+                    })
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+
+        // Parse milestone
+        let milestone = if let Some(milestone_data) = node.get("milestone") {
+            Some(super::models::IssueMilestone {
+                id: milestone_data
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                number: milestone_data
+                    .get("number")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                title: milestone_data
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                description: milestone_data
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                state: milestone_data
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("open")
+                    .to_string(),
+                created_at: milestone_data
+                    .get("createdAt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                updated_at: milestone_data
+                    .get("updatedAt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                due_on: milestone_data
+                    .get("dueOn")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                closed_at: milestone_data
+                    .get("closedAt")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            })
+        } else {
+            None
+        };
+
+        // Parse repository information
+        let repository = if let Some(repo_data) = node.get("repository") {
+            super::models::IssueRepository {
+                id: repo_data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                name: repo_data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                full_name: repo_data.get("nameWithOwner").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                owner: super::models::RepositoryOwner {
+                    login: repo_data.get("nameWithOwner")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .split('/')
+                        .next()
+                        .unwrap_or("")
+                        .to_string(),
+                    id: "".to_string(),
+                    type_field: "User".to_string(),
+                },
+                private: false,
+                html_url: repo_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                description: None,
+            }
+        } else {
+            super::models::IssueRepository {
+                id: "".to_string(),
+                name: "".to_string(),
+                full_name: "".to_string(),
+                owner: super::models::RepositoryOwner {
+                    login: "".to_string(),
+                    id: "".to_string(),
+                    type_field: "User".to_string(),
+                },
+                private: false,
+                html_url: "".to_string(),
+                description: None,
+            }
+        };
+
+        // Parse comments count
+        let comments = node
+            .get("comments")
+            .and_then(|c| c.get("totalCount"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        Ok(super::models::IssueItem {
+            id,
+            number,
+            title,
+            body,
+            state,
+            user,
+            assignee: assignees.first().cloned(),
+            assignees,
+            labels,
+            milestone,
+            comments,
+            html_url,
+            created_at,
+            updated_at,
+            closed_at,
+            score: 1.0, // GraphQL doesn't provide score
+            repository,
+        })
     }
 }
 
@@ -1187,6 +1645,7 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
+            advanced_search: None,
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
@@ -1212,6 +1671,7 @@ mod tests {
             assignee: Some("developer".to_string()),
             milestone: Some("1".to_string()),
             issue_type: Some("enhancement".to_string()),
+            advanced_search: None,
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
@@ -1248,6 +1708,7 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
+            advanced_search: None,
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
