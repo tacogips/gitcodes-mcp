@@ -15,8 +15,8 @@ use crate::gitcodes::local_repository::LocalRepository;
 /// Sorting options for repository search
 ///
 /// This enum defines the generic sort options that can be used across different
-/// Git providers. It's used in the repository manager to provide a unified interface
-/// for sorting repository search results.
+/// Git providers. It's used in the repository manager to provide a unified
+/// interface for sorting repository search results.
 ///
 /// When passed to provider-specific methods, these generic options are converted
 /// to provider-specific sorting options using the `From` trait.
@@ -30,6 +30,26 @@ pub enum SortOption {
     Forks,
     /// Sort by most recently updated
     Updated,
+}
+
+/// Sorting options for issue search
+///
+/// This enum defines the generic sort options that can be used across different
+/// Git providers for issue search. It's used in the repository manager to provide
+/// a unified interface for sorting issue search results.
+///
+/// When passed to provider-specific methods, these generic options are converted
+/// to provider-specific sorting options using the `From` trait.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum IssueSortOption {
+    /// Sort by creation date
+    Created,
+    /// Sort by last update date
+    Updated,
+    /// Sort by number of comments
+    Comments,
+    /// Sort by relevance (provider's default)
+    BestMatch,
 }
 
 /// Order options for repository search
@@ -62,6 +82,23 @@ impl From<SortOption> for providers::github::GithubSortOption {
             SortOption::Stars => Self::Stars,
             SortOption::Forks => Self::Forks,
             SortOption::Updated => Self::Updated,
+        }
+    }
+}
+
+/// Implement conversion from generic IssueSortOption to GitHub-specific GithubIssueSortOption
+///
+/// This allows us to use generic `IssueSortOption` values throughout the codebase
+/// and convert them to GitHub-specific options only when needed for API calls.
+/// This maintains a clean separation between our generic API and provider-specific
+/// implementation details.
+impl From<IssueSortOption> for providers::github::GithubIssueSortOption {
+    fn from(value: IssueSortOption) -> Self {
+        match value {
+            IssueSortOption::Created => Self::Created,
+            IssueSortOption::Updated => Self::Updated,
+            IssueSortOption::Comments => Self::Comments,
+            IssueSortOption::BestMatch => Self::BestMatch,
         }
     }
 }
@@ -107,6 +144,63 @@ pub struct SearchParams {
     pub page: Option<u32>,
 }
 
+/// Issue search parameters
+///
+/// This struct encapsulates all the parameters needed for an issue search query.
+/// It uses the generic `IssueSortOption` and `OrderOption` enums to provide a consistent
+/// interface across different Git providers.
+///
+/// When passed to provider-specific methods, these generic options are converted
+/// to provider-specific options using the `From` trait.
+#[derive(Debug, Clone)]
+pub struct IssueSearchParams {
+    /// The search query string
+    pub query: String,
+
+    /// Optional sort option (defaults to BestMatch if None)
+    pub sort_by: Option<IssueSortOption>,
+
+    /// Optional order direction (defaults to Descending if None)
+    pub order: Option<OrderOption>,
+
+    /// Optional number of results per page (defaults to provider-specific value, typically 30)
+    pub per_page: Option<u8>,
+
+    /// Optional page number for pagination (defaults to 1)
+    pub page: Option<u32>,
+
+
+
+    /// Repository specification in the format "owner/repo"
+    /// When specified, limits search to this specific repository
+    pub repository: Option<String>,
+
+    /// Labels to search for (comma-separated)
+    pub labels: Option<String>,
+
+    /// State of issues to search for
+    /// Can be "open", "closed", or "all"
+    pub state: Option<String>,
+
+    /// User who created the issue
+    pub creator: Option<String>,
+
+    /// User mentioned in the issue
+    pub mentioned: Option<String>,
+
+    /// User assigned to the issue
+    /// Can be a username, "none" for unassigned, or "*" for any assignee
+    pub assignee: Option<String>,
+
+    /// Milestone number or special values
+    /// Can be a number, "*" for any milestone, or "none" for no milestone
+    pub milestone: Option<String>,
+
+    /// Issue type name
+    /// Can be a type name, "*" for any type, or "none" for no type
+    pub issue_type: Option<String>,
+}
+
 /// Repository manager for Git operations
 ///
 /// Handles cloning, updating, and retrieving information from GitHub repositories.
@@ -126,7 +220,8 @@ impl RepositoryManager {
     ///
     /// # Parameters
     ///
-    /// * `github_token` - Optional GitHub token for authentication
+    /// * `github_token` - Optional GitHub token for authentication. If None, will attempt
+    ///                    to read from the GITCODES_MCP_GITHUB_TOKEN environment variable.
     /// * `repository_cache_dir` - Optional custom path for storing repositories.
     ///                            If None, the system's temporary directory is used.
     ///
@@ -138,6 +233,8 @@ impl RepositoryManager {
         github_token: Option<String>,
         local_repository_cache_dir_base: Option<PathBuf>,
     ) -> Result<Self, String> {
+        // If no github_token is provided, check environment variable
+        let github_token = github_token.or_else(|| std::env::var("GITCODES_MCP_GITHUB_TOKEN").ok());
         // Use provided path or default to system temp directory
         let local_repository_cache_dir_base = match local_repository_cache_dir_base {
             Some(path) => path,
@@ -749,9 +846,8 @@ impl RepositoryManager {
     /// # Returns
     ///
     /// A GitHub client instance configured with the manager's authentication token
-    fn get_github_client(&self) -> providers::github::GithubClient {
-        let client = reqwest::Client::new();
-        providers::github::GithubClient::new(client, self.github_token.clone())
+    fn get_github_client(&self) -> Result<providers::github::GithubClient, String> {
+        providers::github::GithubClient::new(self.github_token.clone())
     }
 
     /// Lists all references (branches and tags) for a given repository using the GitHub API
@@ -794,7 +890,7 @@ impl RepositoryManager {
                 match remote_repo {
                     GitRemoteRepository::Github(github_repo_info) => {
                         // For GitHub repositories, use the GitHub API
-                        let github_client = self.get_github_client();
+                        let github_client = self.get_github_client()?;
                         let refs = github_client
                             .list_repository_refs(&github_repo_info.repo_info)
                             .await?;
@@ -965,10 +1061,156 @@ impl RepositoryManager {
         params: providers::github::GithubSearchParams,
     ) -> Result<providers::RepositorySearchResults, String> {
         // Get a GitHub client instance
-        let github_client = self.get_github_client();
+        let github_client = self.get_github_client()?;
 
         // Execute the search and return the results
         github_client.search_repositories(params).await
+    }
+
+    /// Search for issues across different Git providers
+    ///
+    /// This method performs a search for issues on the specified Git provider
+    /// based on the provided query and search parameters. It abstracts the provider-specific
+    /// implementation details and provides a unified interface for searching issues.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider` - The Git provider to search (currently only GitHub is supported)
+    /// * `query` - The search query string
+    /// * `sort_by` - Optional sort option for results
+    /// * `order` - Optional sort direction
+    /// * `per_page` - Optional number of results per page (1-100)
+    /// * `page` - Optional page number
+    ///
+    /// # Returns
+    ///
+    /// * `Result<providers::IssueSearchResults, String>` - Issue search results or an error message
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
+    /// use gitcodes_mcp::gitcodes::repository_manager::{IssueSearchParams, IssueSortOption, OrderOption};
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::models::GitProvider;
+    ///
+    /// async fn example() {
+    ///     let repo_manager = RepositoryManager::default();
+    ///
+    ///     // Basic search with minimal parameters
+    ///     let basic_params = IssueSearchParams {
+    ///         query: "repo:rust-lang/rust state:open label:bug".to_string(),
+    ///         sort_by: None,
+    ///         order: None,
+    ///         per_page: None,
+    ///         page: None,
+    ///         repository: None,
+    ///         labels: None,
+    ///         state: None,
+    ///         creator: None,
+    ///         mentioned: None,
+    ///         assignee: None,
+    ///         milestone: None,
+    ///         issue_type: None,
+    ///     };
+    ///
+    ///     match repo_manager.search_issues(GitProvider::Github, basic_params).await {
+    ///         Ok(results) => println!("Found issues: {:?}", results),
+    ///         Err(e) => eprintln!("Search failed: {}", e),
+    ///     }
+    ///
+    ///     // Search with all parameters
+    ///     let detailed_params = IssueSearchParams {
+    ///         query: "label:enhancement state:open".to_string(),
+    ///         sort_by: Some(IssueSortOption::Updated),
+    ///         order: Some(OrderOption::Descending),
+    ///         per_page: Some(50),
+    ///         page: Some(1),
+    ///         repository: None,
+    ///         labels: None,
+    ///         state: None,
+    ///         creator: None,
+    ///         mentioned: None,
+    ///         assignee: None,
+    ///         milestone: None,
+    ///         issue_type: None,
+    ///     };
+    ///
+    ///     match repo_manager.search_issues(GitProvider::Github, detailed_params).await {
+    ///         Ok(results) => println!("Found enhancement issues: {:?}", results),
+    ///         Err(e) => eprintln!("Search failed: {}", e),
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Authentication
+    ///
+    /// Uses the provider-specific token configured in the RepositoryManager instance.
+    /// Authentication increases rate limits and enables access to private repositories.
+    pub async fn search_issues(
+        &self,
+        provider: providers::models::GitProvider,
+        params: IssueSearchParams,
+    ) -> Result<providers::IssueSearchResults, String> {
+        match provider {
+            providers::models::GitProvider::Github => {
+                // Convert generic IssueSortOption to GitHub-specific GithubIssueSortOption
+                let sort_by = params
+                    .sort_by
+                    .map(providers::github::GithubIssueSortOption::from);
+
+                // Convert generic OrderOption to GitHub-specific GithubOrderOption
+                let order = params.order.map(providers::github::GithubOrderOption::from);
+
+                // Create GitHub issue search parameters
+                let github_params = providers::github::GithubIssueSearchParams {
+                    query: params.query,
+                    sort_by,
+                    order,
+                    per_page: params.per_page,
+                    page: params.page,
+                    repository: params.repository,
+                    labels: params.labels,
+                    state: params.state,
+                    creator: params.creator,
+                    mentioned: params.mentioned,
+                    assignee: params.assignee,
+                    milestone: params.milestone,
+                    issue_type: params.issue_type,
+                };
+
+                // Use the GitHub client to perform the search
+                self.search_github_issues(github_params).await
+            }
+        }
+    }
+
+    /// Search for GitHub issues matching the specified query
+    ///
+    /// This method performs a search for issues on GitHub based on the provided
+    /// search parameters. It handles authentication and API communication internally.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - GitHub issue search parameters including query, sort options, and pagination
+    ///
+    /// # Returns
+    ///
+    /// * `Result<providers::IssueSearchResults, String>` - Issue search results or an error message
+    ///
+    /// # Authentication
+    ///
+    /// Uses the GitHub token configured in the RepositoryManager instance.
+    /// Without a token, limited to 60 requests/hour.
+    /// With a token, allows 5,000 requests/hour.
+    async fn search_github_issues(
+        &self,
+        params: providers::github::GithubIssueSearchParams,
+    ) -> Result<providers::IssueSearchResults, String> {
+        // Get a GitHub client instance
+        let github_client = self.get_github_client()?;
+
+        // Execute the search and return the results
+        github_client.search_issues(params).await
     }
 }
 

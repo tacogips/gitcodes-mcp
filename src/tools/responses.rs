@@ -10,6 +10,10 @@
 //! - [`CodeSearchResponse`]: Direct alias to `CodeSearchResult` (legacy format)
 //! - [`CompactCodeSearchResponse`]: New compact format that groups results by file
 //!
+//! ## Issue Search Responses
+//! - [`CompactIssueSearchResponse`]: Compact format with simplified issue structure
+//! - [`CompactIssueItem`]: Simplified issue item with flattened user, labels, and repository data
+//!
 //! ## File Content Responses  
 //! - [`FileContentsResponse`]: Direct alias to `FileContents` (legacy format)
 //! - [`CompactFileContentsResponse`]: Compact format with concatenated line contents
@@ -29,6 +33,7 @@
 //! efficiency and readability are important considerations.
 
 use crate::gitcodes::CodeSearchResult;
+use crate::gitcodes::repository_manager::providers::IssueSearchResults;
 use lumin::view::FileContents;
 use serde::{Deserialize, Serialize};
 
@@ -110,6 +115,119 @@ pub struct CompactFileMatch {
     /// Concatenated line contents with line numbers
     /// Format: "{line_number}:{content}\n{line_number}:{content}..."
     pub lines: String,
+}
+
+/// Compact response for the search_issues tool
+///
+/// This provides a more concise format where issue data is simplified by
+/// flattening nested user, label, and repository information into simple strings.
+///
+/// # Format
+///
+/// The response structure is:
+/// ```json
+/// {
+///   "total_count": 2,
+///   "incomplete_results": false,
+///   "items": [
+///     {
+///       "id": "1234567890",
+///       "number": 123,
+///       "title": "Memory leak in async task handling",
+///       "body": "When using async tasks...",
+///       "state": "open",
+///       "user": "developer123",
+///       "labels": ["bug", "memory"],
+///       "comments": 5,
+///       "html_url": "https://github.com/example/repo/issues/123",
+///       "created_at": "2024-01-15T10:30:00Z",
+///       "updated_at": "2024-01-20T14:45:00Z",
+///       "closed_at": null,
+///       "score": 95.5,
+///       "repository_url": "https://github.com/example-org/awesome-project",
+///       "repository_name": "awesome-project"
+///     }
+///   ]
+/// }
+/// ```
+///
+/// # Simplifications
+///
+/// - User information is flattened to just the login name string
+/// - Labels are simplified to an array of label name strings
+/// - Repository information is flattened to just URL and name strings
+/// - Assignee and milestone information is omitted for brevity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactIssueSearchResponse {
+    /// Total number of matching issues
+    pub total_count: u64,
+
+    /// Indicates if the result was incomplete due to rate limiting
+    pub incomplete_results: bool,
+
+    /// List of simplified issue items
+    pub items: Vec<CompactIssueItem>,
+}
+
+/// Simplified issue item for compact response format
+///
+/// This structure flattens the complex nested data from the full IssueItem
+/// into a more streamlined format suitable for MCP tool responses.
+///
+/// # Simplifications
+///
+/// - User data is reduced to just the login name
+/// - Labels are simplified to just the label names
+/// - Repository data is reduced to URL and name only
+/// - Assignee and milestone information is omitted
+/// - All essential issue metadata is preserved
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactIssueItem {
+    /// Issue ID (unique within the provider)
+    pub id: String,
+
+    /// Issue number within the repository
+    pub number: u64,
+
+    /// Issue title
+    pub title: String,
+
+    /// Issue body/description
+    pub body: Option<String>,
+
+    /// Current state of the issue (open, closed)
+    pub state: String,
+
+    /// Issue author login name
+    pub user: String,
+
+    /// List of label names attached to the issue
+    pub labels: Vec<String>,
+
+    /// Number of comments on the issue
+    pub comments: u32,
+
+    /// URL for viewing the issue in a browser
+    pub html_url: String,
+
+    /// When the issue was created
+    pub created_at: String,
+
+    /// When the issue was last updated
+    pub updated_at: String,
+
+    /// When the issue was closed (if applicable)
+    pub closed_at: Option<String>,
+
+    /// Score (relevance to search query)
+    /// May not be available in all search responses
+    pub score: Option<f64>,
+
+    /// URL for viewing the repository in a browser
+    pub repository_url: String,
+
+    /// Repository name (without owner)
+    pub repository_name: String,
 }
 
 /// Response for the list_repository_refs tool
@@ -308,6 +426,67 @@ impl CompactFileContentsResponse {
                     size: metadata.size_bytes as usize,
                 },
             },
+        }
+    }
+}
+
+impl CompactIssueSearchResponse {
+    /// Convert IssueSearchResults to CompactIssueSearchResponse
+    ///
+    /// Transforms the verbose IssueSearchResults format into a compact
+    /// representation suitable for MCP tool responses by flattening nested structures.
+    ///
+    /// # Arguments
+    ///
+    /// * `search_results` - The original IssueSearchResults
+    ///
+    /// # Returns
+    ///
+    /// A CompactIssueSearchResponse with:
+    /// - Simplified issue items with flattened user, label, and repository data
+    /// - All original search metadata preserved
+    /// - More concise JSON structure for network efficiency
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use gitcodes_mcp::tools::responses::CompactIssueSearchResponse;
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::IssueSearchResults;
+    ///
+    /// let search_results = IssueSearchResults {
+    ///     total_count: 1,
+    ///     incomplete_results: false,
+    ///     items: vec![/* issue items */],
+    /// };
+    /// let compact = CompactIssueSearchResponse::from_search_results(search_results);
+    /// ```
+    pub fn from_search_results(search_results: IssueSearchResults) -> Self {
+        let items = search_results
+            .items
+            .into_iter()
+            .map(|issue| CompactIssueItem {
+                id: issue.id,
+                number: issue.number,
+                title: issue.title,
+                body: issue.body,
+                state: issue.state,
+                user: issue.user.login,
+                labels: issue.labels.into_iter().map(|label| label.name).collect(),
+                comments: issue.comments,
+                html_url: issue.html_url,
+                created_at: issue.created_at,
+                updated_at: issue.updated_at,
+                closed_at: issue.closed_at,
+                score: issue.score,
+                repository_url: issue.repository.html_url,
+                repository_name: issue.repository.name,
+            })
+            .collect();
+
+        CompactIssueSearchResponse {
+            total_count: search_results.total_count,
+            incomplete_results: search_results.incomplete_results,
+            items,
         }
     }
 }

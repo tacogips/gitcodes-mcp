@@ -196,7 +196,7 @@ async fn stdio_client() -> Result<()> {
                             println!(
                                 "{}. {} - {}",
                                 i + 1,
-                                repo["full_name"].as_str().unwrap_or("Unknown"),
+                                repo["name"].as_str().unwrap_or("Unknown"),
                                 repo["description"].as_str().unwrap_or("No description")
                             );
                         }
