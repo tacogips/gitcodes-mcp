@@ -164,7 +164,7 @@ pub struct IssueSearchParams {
     pub order: Option<OrderOption>,
 
     /// Optional number of results per page (defaults to provider-specific value, typically 30)
-    pub per_page: Option<u32>,
+    pub per_page: Option<u8>,
 
     /// Optional page number for pagination (defaults to 1)
     pub page: Option<u32>,
@@ -1151,7 +1151,7 @@ impl RepositoryManager {
                     query: params.query,
                     sort_by,
                     order,
-                    per_page: params.per_page.map(|p| p as u8),
+                    per_page: params.per_page,
                     page: params.page,
                     repository: params.repository,
                     labels: params.labels,

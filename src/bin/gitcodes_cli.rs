@@ -552,7 +552,7 @@ async fn main() -> Result<()> {
                 query,
                 sort_by: sort_option,
                 order: order_option,
-                per_page: per_page.map(|p| p as u32),
+                per_page,
                 page,
                 legacy: None,
                 repository: None,

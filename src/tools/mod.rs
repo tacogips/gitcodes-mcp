@@ -1078,7 +1078,7 @@ async fn inner_search_issues(
         query,
         sort_by,
         order,
-        per_page: per_page.map(|p| p as u32),
+        per_page,
         page,
         legacy: None,
         repository: None,
