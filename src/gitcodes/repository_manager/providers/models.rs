@@ -48,8 +48,6 @@ pub struct RepositoryItem {
     /// Repository name (without owner)
     pub name: String,
 
-
-
     /// Whether the repository is private
     pub private: bool,
 
@@ -57,7 +55,7 @@ pub struct RepositoryItem {
     pub owner: RepositoryOwner,
 
     /// URL for viewing the repository in a browser
-    pub html_url: String,
+    pub html_url: Url,
 
     /// Repository description
     pub description: Option<String>,
@@ -213,11 +211,8 @@ pub struct IssueItem {
     /// List of labels attached to the issue
     pub labels: Vec<IssueLabel>,
 
-    /// Milestone information
-    pub milestone: Option<IssueMilestone>,
-
     /// Number of comments on the issue
-    pub comments: u64,
+    pub comments: u32,
 
     /// URL for viewing the issue in a browser
     pub html_url: String,
@@ -249,12 +244,6 @@ pub struct IssueUser {
 
     /// User's ID (as a string to support different ID formats)
     pub id: String,
-
-    /// User type (User or Bot)
-    pub type_field: String,
-
-    /// URL for viewing the user's profile
-    pub html_url: String,
 }
 
 /// Issue label information
