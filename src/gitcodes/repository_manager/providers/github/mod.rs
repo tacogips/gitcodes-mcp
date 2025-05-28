@@ -207,36 +207,20 @@ pub struct GithubSearchParams {
 /// qualifiers like labels, state, etc. are specified through dedicated fields.
 /// This design follows GitHub's search API structure and provides type safety.
 ///
-/// ## Search Methods
+/// ## Search Method
 ///
-/// ### GraphQL (Default)
-/// When `advanced_search` is `None` or `Some(true)`, uses GitHub's GraphQL API:
-/// - Endpoint: `https://api.github.com/graphql`
-/// - Uses `ISSUE_ADVANCED` search type
-/// - Supports complex boolean logic (AND, OR, parentheses)
-/// - Better performance through precise field selection
-/// - Current default behavior
-///
-/// ### REST API (Legacy)
-/// When `advanced_search` is `Some(false)`, uses GitHub's REST API:
+/// This method uses GitHub's REST API search endpoint for issues and pull requests:
 /// - Endpoint: `https://api.github.com/search/issues`
-/// - Standard search syntax
-/// - Limited boolean operations
-/// - Provides relevance scores
-///
-/// ## Advanced Search Examples
-///
-/// The GraphQL mode supports complex queries like:
-/// - `"memory leak AND (label:bug OR label:performance)"`
-/// - `"assignee:@me AND (created:>2024-01-01 OR updated:>2024-06-01)"`
-/// - `"(state:open OR state:closed) AND mentions:security"`
+/// - Supports GitHub's standard search syntax
+/// - Searches both issues and pull requests by default
+/// - Provides comprehensive filtering options
 ///
 /// # Examples
 ///
 /// ```
 /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubIssueSearchParams, GithubIssueSortOption, GithubOrderOption};
 ///
-/// // Basic GraphQL search (default)
+/// // Basic search for issues and pull requests
 /// let params = GithubIssueSearchParams {
 ///    query: "bug in documentation".to_string(),
 ///    sort_by: None,
@@ -251,10 +235,10 @@ pub struct GithubSearchParams {
 ///    assignee: None,
 ///    milestone: None,
 ///    issue_type: None,
-///    advanced_search: None, // Uses default (GraphQL)
+
 /// };
 ///
-/// // Advanced GraphQL search with boolean operations
+/// // Advanced search with boolean operations
 /// let advanced_params = GithubIssueSearchParams {
 ///    query: "performance AND (memory OR cpu)".to_string(),
 ///    sort_by: Some(GithubIssueSortOption::Updated),
@@ -269,7 +253,7 @@ pub struct GithubSearchParams {
 ///    assignee: None,
 ///    milestone: None,
 ///    issue_type: None,
-///    advanced_search: Some(true), // Explicitly enables GraphQL
+
 /// };
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
@@ -326,13 +310,6 @@ pub struct GithubIssueSearchParams {
     /// Issue type name
     /// Can be a type name, "*" for any type, or "none" for no type
     pub issue_type: Option<String>,
-
-    /// Use advanced search with GraphQL
-    /// When true, uses GraphQL with ISSUE_ADVANCED type instead of REST API
-    /// This enables support for advanced search syntax like AND, OR operators and nested queries
-    /// Note: After September 4, 2025, this will become the default behavior
-    /// Default: true
-    pub advanced_search: Option<bool>,
 }
 
 pub struct GithubClient {
@@ -419,44 +396,28 @@ impl GithubClient {
     /// - `author:username` - Filter by author
     /// - `created:2021-01-01..2021-12-31` - Filter by creation date range
     /// - `updated:>2021-01-01` - Filter by last update date
-    /// Search for issues in a GitHub repository
+    /// Search for issues and pull requests in a GitHub repository
     ///
-    /// /// This method sends a request to GitHub's search issues API to find issues
-    /// matching the specified criteria. It uses GraphQL by default for enhanced
-    /// search capabilities, with optional fallback to REST API.
+    /// This method sends a request to GitHub's search API to find issues and pull requests
+    /// matching the specified criteria. The search automatically includes both issues and
+    /// pull requests unless specifically filtered by the query.
     ///
-    /// By default (advanced_search: None or true), the method uses GitHub's GraphQL API with
-    /// the ISSUE_ADVANCED type, which supports complex queries with AND/OR operators
-    /// and nested searches. Set advanced_search to false to use the legacy REST API.
+    /// The method uses GitHub's REST API search endpoint for issues and pull requests,
+    /// which supports comprehensive search capabilities with various filtering options.
     ///
     /// # Examples
     ///
     /// ```
     /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubIssueSearchParams, GithubIssueSortOption, GithubOrderOption};
     ///
-    /// // Search for open bugs in a specific repository using GraphQL (default)
-    /// let params = GithubIssueSearchParams {
-    ///     query: "memory leak".to_string(),
-    ///     sort_by: Some(GithubIssueSortOption::Updated),
-    ///     order: Some(GithubOrderOption::Descending),
-    ///     per_page: Some(10),
-    ///     page: Some(1),
-    ///     repository: Some("rust-lang/rust".to_string()),
-    ///     labels: Some("bug".to_string()),
-    ///     state: Some("open".to_string()),
-    ///     creator: None,
-    ///     mentioned: None,
-    ///     assignee: None,
-    ///     milestone: None,
-    ///     issue_type: None,
-    ///     advanced_search: None, // Uses default (GraphQL)
-    /// };
+    /// // Search for open bugs in a specific repository
+
     /// ```
     pub async fn search_issues(
         &self,
         params: GithubIssueSearchParams,
     ) -> Result<super::models::IssueSearchResults, String> {
-        self.octocrab_client.search_issues(params).await
+        self.octocrab_client.search_issues_and_pull_requests(params).await
     }
 }
 

@@ -84,7 +84,6 @@ async fn test_search_issues_parameter_conversion() {
                     order: order_option.clone(),
                     per_page: Some(5),
                     page: Some(1),
-                    legacy: None,
                     repository: None,
                     labels: None,
                     state: None,
@@ -93,7 +92,7 @@ async fn test_search_issues_parameter_conversion() {
                     assignee: None,
                     milestone: None,
                     issue_type: None,
-                },
+                }
             )
             .await;
 
@@ -167,7 +166,6 @@ async fn test_search_issues_basic() {
                 order: None,
                 per_page: Some(3),
                 page: Some(1),
-                legacy: None,
                 repository: None,
                 labels: None,
                 state: None,
@@ -176,7 +174,7 @@ async fn test_search_issues_basic() {
                 assignee: None,
                 milestone: None,
                 issue_type: None,
-            },
+            }
         )
         .await;
 
@@ -274,7 +272,6 @@ async fn test_search_issues_query_syntax() {
                     order: Some(OrderOption::Descending),
                     per_page: Some(5),
                     page: Some(1),
-                    legacy: None,
                     repository: None,
                     labels: None,
                     state: None,
@@ -283,7 +280,7 @@ async fn test_search_issues_query_syntax() {
                     assignee: None,
                     milestone: None,
                     issue_type: None,
-                },
+                }
             )
             .await;
 
@@ -373,7 +370,6 @@ async fn test_search_issues_pagination() {
                     order: Some(OrderOption::Descending),
                     per_page,
                     page,
-                    legacy: None,
                     repository: None,
                     labels: None,
                     state: None,
@@ -382,7 +378,7 @@ async fn test_search_issues_pagination() {
                     assignee: None,
                     milestone: None,
                     issue_type: None,
-                },
+                }
             )
             .await;
 

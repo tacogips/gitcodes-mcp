@@ -1,31 +1,26 @@
 # Development Log
 
-### GitHub Issue Search Query Fix Pattern
+### GitHub Issue and Pull Request Search Pattern
 
-Fixed GitHub issue search to automatically include required 'is:issue' qualifier when not present in user queries. This pattern demonstrates handling API requirements transparently while maintaining user-friendly interfaces.
+Enhanced GitHub search functionality to support both issues and pull requests in a single search operation, removing legacy API distinctions and simplifying the user interface.
 
 #### Problem Analysis
 
-GitHub's issue search API requires queries to include either 'is:issue' or 'is:pull-request' qualifiers. When users provided empty queries or queries without these qualifiers, the API would return a 422 error: "Query must include 'is:issue' or 'is:pull-request'".
+The original implementation had separate search paths for issues and pull requests, with complex configuration options (`advanced_search`, `legacy`) that exposed internal API details to users. This created confusion and unnecessary complexity.
 
 #### Solution Implementation
 
-Modified the `build_issue_search_query` function to validate input and automatically add 'is:issue' qualifier:
+1. **Unified Search Method**: Renamed `search_issues` to `search_issues_and_pull_requests` internally, while keeping the public API as `search_issues`
+2. **Automatic Query Enhancement**: Modified query building to include both issues and pull requests by default:
 
 ```rust
-fn build_issue_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
+fn build_issue_and_pull_request_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
     let mut query_parts = vec![params.query.clone()];
-
-    // This function is specifically for issue searches - reject pull request queries
     let query_lower = params.query.to_lowercase();
-    if query_lower.contains("is:pull-request") {
-        return Err("Cannot search for pull requests in issue search. Use a generic search or remove 'is:pull-request' from your query.".to_string());
-    }
-
-    // GitHub API requires 'is:issue' qualifier for issue searches
-    // Add 'is:issue' if the query doesn't already contain it
-    if !query_lower.contains("is:issue") {
-        query_parts.push("is:issue".to_string());
+    
+    // Add both 'is:issue' and 'is:pull-request' if neither is present
+    if !query_lower.contains("is:issue") && !query_lower.contains("is:pull-request") {
+        query_parts.push("(is:issue OR is:pull-request)".to_string());
     }
     
     // ... rest of query building
@@ -33,17 +28,19 @@ fn build_issue_search_query(params: &GithubIssueSearchParams) -> Result<String, 
 }
 ```
 
+3. **Removed Obsolete Fields**: Eliminated `advanced_search` and `legacy` parameters from all interfaces
+
 #### Pattern Guidelines
 
-When wrapping external APIs with strict requirements:
-1. **Validate input semantics**: Reject queries that contradict the function's purpose (e.g., pull-request queries in issue search)
-2. **Check for required qualifiers** in user input before API calls
-3. **Automatically add missing required parameters** when they don't conflict with user intent
-4. **Preserve user-specified qualifiers** to maintain control over search scope
-5. **Use case-insensitive matching** for robustness
-6. **Return meaningful error messages** that guide users toward correct usage
+When simplifying API interfaces:
+1. **Remove internal implementation details** from public APIs (GraphQL vs REST, advanced vs legacy)
+2. **Provide sensible defaults** that work for most use cases (search both issues and PRs)
+3. **Preserve user control** when they specify explicit qualifiers
+4. **Maintain backward compatibility** at the public API level while simplifying internals
+5. **Use inclusive search patterns** by default rather than restrictive ones
+6. **Document the unified behavior** clearly in tool descriptions
 
-This ensures the CLI works intuitively for users while satisfying API constraints and maintaining semantic correctness.
+This pattern reduces cognitive load for users while providing more comprehensive search results by default.
 
 ### Octocrab GitHub Client Migration Pattern
 

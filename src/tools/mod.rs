@@ -122,7 +122,7 @@ impl ServerHandler for GitHubCodeTools {
 
 ## Available Tools
 - `search_repositories`: Search for GitHub repositories
-- `search_issues`: Search for GitHub issues
+- `search_issues`: Search for GitHub issues and pull requests
 - `grep_repository`: Search code within a GitHub repository (returns compact grouped format)
 - `grep_repository_match_line_number`: Count matching lines only (returns number)
 - `list_repository_refs`: List branches and tags for a repository
@@ -130,9 +130,9 @@ impl ServerHandler for GitHubCodeTools {
 - `get_repository_tree`: Get the directory tree structure of a repository
 
 ### search_issues Examples
-Search for GitHub issues with powerful query syntax support:
+Search for GitHub issues and pull requests with powerful query syntax support:
 
-Basic issue search:
+Basic issue and pull request search:
 ```json
 {{\"name\": \"search_issues\", \"arguments\": {{\"query\": \"repo:rust-lang/rust state:open label:bug\"}}}}
 ```
@@ -354,7 +354,7 @@ impl GitHubCodeTools {
     /// - `created:2021-01-01..2021-12-31` - Filter by creation date range
     /// - `updated:>2021-01-01` - Filter by last update date
     #[tool(
-        description = "Search GitHub issues by query. Supports sorting and pagination. Example: `{\"name\": \"search_issues\", \"arguments\": {\"query\": \"repo:rust-lang/rust state:open label:bug\"}}`. With sorting: `{\"name\": \"search_issues\", \"arguments\": {\"query\": \"label:enhancement\", \"sort_by\": \"Updated\"}}`"
+        description = "Search GitHub issues and pull requests by query. Automatically searches both issues and pull requests unless specifically filtered. Supports sorting and pagination. Example: `{\"name\": \"search_issues\", \"arguments\": {\"query\": \"repo:rust-lang/rust state:open label:bug\"}}`. With sorting: `{\"name\": \"search_issues\", \"arguments\": {\"query\": \"label:enhancement\", \"sort_by\": \"Updated\"}}`"
     )]
     async fn search_issues(
         &self,
@@ -1080,7 +1080,6 @@ async fn inner_search_issues(
         order,
         per_page,
         page,
-        legacy: None,
         repository: None,
         labels: None,
         state: None,

@@ -14,7 +14,7 @@ use gitcodes_mcp::tools::{IssueSortOption, OrderOption, SortOption};
     author,
     version = "0.1.0",
     about = "GitCodes CLI for GitHub and repository operations with comprehensive search capabilities",
-    long_about = "A command-line tool for GitHub repository operations including advanced issue search with GraphQL support, repository search, and code searching with regex patterns."
+    long_about = "A command-line tool for GitHub repository operations including comprehensive issue and pull request search, repository search, and code searching with regex patterns."
 )]
 #[command(propagate_version = true)]
 struct Cli {
@@ -79,7 +79,7 @@ enum Commands {
     /// Examples:
     ///   gitcodes-cli issue-search "memory leak" --repository rust-lang/rust --state open --labels bug
     ///   gitcodes-cli issue-search "performance" --creator username --assignee developer
-    ///   gitcodes-cli issue-search "documentation" --labels docs,help-wanted --legacy
+    ///   gitcodes-cli issue-search "documentation" --labels docs,help-wanted
     IssueSearch {
         /// Search query for issues (full-text search only, use other options for qualifiers)
         #[arg(
@@ -101,14 +101,8 @@ enum Commands {
 
         /// Result page number (default is 1)
         #[arg(long, default_value = "1")]
+        /// Optional page number for pagination (defaults to 1)
         page: Option<u32>,
-
-        /// Use legacy REST API instead of GraphQL (GraphQL is default)
-        #[arg(
-            long,
-            help = "Use legacy REST API instead of the default GraphQL advanced search"
-        )]
-        legacy: bool,
 
         /// Repository to search in (format: owner/repo)
         #[arg(
@@ -608,7 +602,6 @@ async fn main() -> Result<()> {
             order,
             per_page,
             page,
-            legacy,
             repository,
             labels,
             state,
@@ -634,7 +627,6 @@ async fn main() -> Result<()> {
                 order: order_option,
                 per_page,
                 page,
-                legacy: if legacy { Some(true) } else { None },
                 repository,
                 labels,
                 state,

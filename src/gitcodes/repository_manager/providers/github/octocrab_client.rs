@@ -64,13 +64,13 @@ impl OctocrabGithubClient {
         Ok(Self::convert_repository_search_results(results))
     }
 
-    /// Search issues using octocrab
-    pub async fn search_issues(
+    /// Search issues and pull requests using octocrab
+    pub async fn search_issues_and_pull_requests(
         &self,
         params: GithubIssueSearchParams,
     ) -> Result<IssueSearchResults, String> {
-        let query = Self::build_issue_search_query(&params)?;
-        tracing::debug!("GitHub issue search query: {}", query);
+        let query = Self::build_issue_and_pull_request_search_query(&params)?;
+        tracing::debug!("GitHub issue and pull request search query: {}", query);
 
         let mut search_builder = self.client.search().issues_and_pull_requests(&query);
 
@@ -151,20 +151,15 @@ impl OctocrabGithubClient {
         Ok(RepositoryRefs { branches, tags })
     }
 
-    /// Build issue search query from parameters
-    fn build_issue_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
+    /// Build issue and pull request search query from parameters
+    fn build_issue_and_pull_request_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
         let mut query_parts = vec![params.query.clone()];
 
-        // This function is specifically for issue searches - reject pull request queries
         let query_lower = params.query.to_lowercase();
-        if query_lower.contains("is:pull-request") {
-            return Err("Cannot search for pull requests in issue search. Use a generic search or remove 'is:pull-request' from your query.".to_string());
-        }
-
-        // GitHub API requires 'is:issue' qualifier for issue searches
-        // Add 'is:issue' if the query doesn't already contain it
-        if !query_lower.contains("is:issue") {
-            query_parts.push("is:issue".to_string());
+        
+        // Add both 'is:issue' and 'is:pull-request' if neither is present
+        if !query_lower.contains("is:issue") && !query_lower.contains("is:pull-request") {
+            query_parts.push("(is:issue OR is:pull-request)".to_string());
         }
 
         if let Some(repo) = &params.repository {
@@ -351,5 +346,97 @@ impl OctocrabGithubClient {
             incomplete_results: false, // octocrab doesn't expose this
             items,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_issue_and_pull_request_search_query() {
+        // Test basic query without is:issue or is:pull-request
+        let params = GithubIssueSearchParams {
+            query: "memory leak".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+
+        };
+        
+        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+        assert_eq!(result, "memory leak (is:issue OR is:pull-request)");
+
+        // Test query that already contains is:issue
+        let params = GithubIssueSearchParams {
+            query: "memory leak is:issue".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+
+        };
+        
+        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+        assert_eq!(result, "memory leak is:issue");
+
+        // Test query that already contains is:pull-request
+        let params = GithubIssueSearchParams {
+            query: "memory leak is:pull-request".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+
+        };
+        
+        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+        assert_eq!(result, "memory leak is:pull-request");
+
+        // Test with additional parameters
+        let params = GithubIssueSearchParams {
+            query: "bug".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: Some("rust-lang/rust".to_string()),
+            labels: Some("enhancement".to_string()),
+            state: Some("open".to_string()),
+            creator: Some("user123".to_string()),
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+
+        };
+        
+        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+        assert_eq!(result, "bug (is:issue OR is:pull-request) repo:rust-lang/rust label:enhancement state:open author:user123");
     }
 }

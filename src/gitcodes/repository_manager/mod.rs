@@ -169,9 +169,7 @@ pub struct IssueSearchParams {
     /// Optional page number for pagination (defaults to 1)
     pub page: Option<u32>,
 
-    /// Use legacy REST API instead of GraphQL
-    /// When true, forces the use of REST API instead of the default GraphQL
-    pub legacy: Option<bool>,
+
 
     /// Repository specification in the format "owner/repo"
     /// When specified, limits search to this specific repository
@@ -1105,7 +1103,6 @@ impl RepositoryManager {
     ///         order: None,
     ///         per_page: None,
     ///         page: None,
-    ///         legacy: None,
     ///         repository: None,
     ///         labels: None,
     ///         state: None,
@@ -1128,7 +1125,6 @@ impl RepositoryManager {
     ///         order: Some(OrderOption::Descending),
     ///         per_page: Some(50),
     ///         page: Some(1),
-    ///         legacy: None,
     ///         repository: None,
     ///         labels: None,
     ///         state: None,
@@ -1180,11 +1176,6 @@ impl RepositoryManager {
                     assignee: params.assignee,
                     milestone: params.milestone,
                     issue_type: params.issue_type,
-                    advanced_search: if params.legacy.unwrap_or(false) {
-                        Some(false)
-                    } else {
-                        None
-                    },
                 };
 
                 // Use the GitHub client to perform the search

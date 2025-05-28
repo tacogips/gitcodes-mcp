@@ -220,7 +220,7 @@ pub struct CompactIssueItem {
     pub closed_at: Option<String>,
 
     /// Score (relevance to search query)
-    /// Only available when using REST API, None for GraphQL searches
+    /// May not be available in all search responses
     pub score: Option<f64>,
 
     /// URL for viewing the repository in a browser
