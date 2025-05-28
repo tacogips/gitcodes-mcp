@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
+use url::Url;
 
 /// Git Provider enum
 ///
@@ -55,7 +56,7 @@ pub struct RepositoryItem {
     pub owner: RepositoryOwner,
 
     /// URL for viewing the repository in a browser
-    pub html_url: Url,
+    pub html_url: Option<Url>,
 
     /// Repository description
     pub description: Option<String>,

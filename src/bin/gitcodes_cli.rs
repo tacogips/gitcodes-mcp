@@ -540,13 +540,14 @@ async fn main() -> Result<()> {
 
                         // Basic format as shown in the documentation
                         println!(
-                            "{}. {} - {} stars",
+                            "{}. {}/{} - {} stars",
                             i + 1,
-                            repo.full_name,
+                            repo.owner.id,
+                            repo.name,
                             repo.stargazers_count
                         );
                         println!("   Description: {}", description);
-                        println!("   URL: {}", repo.html_url);
+                        println!("   URL: {}", repo.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"));
 
                         // Additional fields requested
                         println!("   ID: {}", repo.id);
@@ -696,9 +697,9 @@ async fn main() -> Result<()> {
                         }
 
                         // Show milestone if any
-                        if let Some(milestone) = &issue.milestone {
-                            println!("   Milestone: {} [{}]", milestone.title, milestone.state);
-                        }
+                        // if let Some(milestone) = &issue.milestone {
+                        //     println!("   Milestone: {} [{}]", milestone.title, milestone.state);
+                        // }
 
                         if let Some(score) = issue.score {
                             println!("   Score: {:.2}", score);

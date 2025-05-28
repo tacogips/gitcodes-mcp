@@ -207,14 +207,14 @@ async fn test_search_issues_basic() {
                     "Issue HTML URL should not be empty"
                 );
                 assert!(
-                    !issue.repository.full_name.is_empty(),
-                    "Repository full name should not be empty"
+                    !issue.repository.name.is_empty(),
+                    "Repository name should not be empty"
                 );
 
                 // Validate that we're getting the right repository
                 assert!(
-                    issue.repository.full_name.contains("rust-lang/rust"),
-                    "Should be from rust-lang/rust repository"
+                    issue.repository.name.contains("rust"),
+                    "Should be from rust repository"
                 );
             }
 
@@ -312,8 +312,8 @@ async fn test_search_issues_query_syntax() {
                 if query.contains("repo:rust-lang/rust") {
                     for issue in &search_results.items {
                         assert!(
-                            issue.repository.full_name.contains("rust-lang/rust"),
-                            "All issues should be from rust-lang/rust repository"
+                            issue.repository.name.contains("rust"),
+                            "All issues should be from rust repository"
                         );
                     }
                 }

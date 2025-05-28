@@ -897,11 +897,7 @@ impl GithubClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
-                full_name: repo_data
-                    .get("nameWithOwner")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+
                 owner: super::models::RepositoryOwner {
                     login: repo_data
                         .get("nameWithOwner")
@@ -926,7 +922,6 @@ impl GithubClient {
             super::models::IssueRepository {
                 id: "".to_string(),
                 name: "".to_string(),
-                full_name: "".to_string(),
                 owner: super::models::RepositoryOwner {
                     login: "".to_string(),
                     id: "".to_string(),
