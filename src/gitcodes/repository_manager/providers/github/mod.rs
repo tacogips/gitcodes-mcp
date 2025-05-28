@@ -1201,7 +1201,7 @@ impl GithubClient {
                                 }}
                             }}
                             milestone {{
-                                id
+             
                                 number
                                 title
                                 description
@@ -1246,7 +1246,7 @@ impl GithubClient {
 
         // Add authentication header if token is available
         if let Some(token) = &self.github_token {
-            let auth_value = format!("Bearer {}", token);
+            let auth_value = format!("token {}", token);
             headers.insert(
                 reqwest::header::AUTHORIZATION,
                 reqwest::header::HeaderValue::from_str(&auth_value)

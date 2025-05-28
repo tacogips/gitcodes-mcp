@@ -10,7 +10,12 @@ use gitcodes_mcp::gitcodes::LocalRepository;
 use gitcodes_mcp::tools::{IssueSortOption, OrderOption, SortOption};
 
 #[derive(Parser)]
-#[command(author, version = "0.1.0", about = "GitCodes CLI for GitHub and repository operations", long_about = None)]
+#[command(
+    author,
+    version = "0.1.0",
+    about = "GitCodes CLI for GitHub and repository operations with comprehensive search capabilities",
+    long_about = "A command-line tool for GitHub repository operations including advanced issue search with GraphQL support, repository search, and code searching with regex patterns."
+)]
 #[command(propagate_version = true)]
 struct Cli {
     /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
@@ -70,10 +75,15 @@ enum Commands {
         page: Option<u32>,
     },
     /// Search for GitHub issues
+    ///
+    /// Examples:
+    ///   gitcodes-cli issue-search "memory leak" --repository rust-lang/rust --state open --labels bug
+    ///   gitcodes-cli issue-search "performance" --creator username --assignee developer
+    ///   gitcodes-cli issue-search "documentation" --labels docs,help-wanted --legacy
     IssueSearch {
-        /// Search query for issues
+        /// Search query for issues (full-text search only, use other options for qualifiers)
         #[arg(
-            help = "Search query - keywords and filters to search for issues. Supports GitHub search syntax like 'repo:owner/name state:open label:bug' or 'assignee:username created:>2023-01-01'"
+            help = "Search query - use keywords and phrases for full-text search. Use other options like --repository, --labels, etc. for specific qualifiers instead of embedding them in the query."
         )]
         query: String,
 
@@ -92,6 +102,57 @@ enum Commands {
         /// Result page number (default is 1)
         #[arg(long, default_value = "1")]
         page: Option<u32>,
+
+        /// Use legacy REST API instead of GraphQL (GraphQL is default)
+        #[arg(
+            long,
+            help = "Use legacy REST API instead of the default GraphQL advanced search"
+        )]
+        legacy: bool,
+
+        /// Repository to search in (format: owner/repo)
+        #[arg(
+            long,
+            help = "Limit search to specific repository (e.g., 'rust-lang/rust')"
+        )]
+        repository: Option<String>,
+
+        /// Labels to filter by (comma-separated)
+        #[arg(long, help = "Filter by labels (e.g., 'bug,urgent' or 'enhancement')")]
+        labels: Option<String>,
+
+        /// Issue state to filter by
+        #[arg(long, help = "Filter by issue state: 'open', 'closed', or 'all'")]
+        state: Option<String>,
+
+        /// Filter by issue creator
+        #[arg(long, help = "Filter by user who created the issue")]
+        creator: Option<String>,
+
+        /// Filter by mentioned user
+        #[arg(long, help = "Filter by user mentioned in the issue")]
+        mentioned: Option<String>,
+
+        /// Filter by assignee
+        #[arg(
+            long,
+            help = "Filter by assignee: username, 'none' for unassigned, or '*' for any assignee"
+        )]
+        assignee: Option<String>,
+
+        /// Filter by milestone
+        #[arg(
+            long,
+            help = "Filter by milestone: number, '*' for any milestone, or 'none' for no milestone"
+        )]
+        milestone: Option<String>,
+
+        /// Filter by issue type
+        #[arg(
+            long,
+            help = "Filter by issue type: type name, '*' for any type, or 'none' for no type"
+        )]
+        issue_type: Option<String>,
     },
     /// Search code in a GitHub repository using regex patterns and glob file matching
     Grep {
@@ -537,6 +598,15 @@ async fn main() -> Result<()> {
             order,
             per_page,
             page,
+            legacy,
+            repository,
+            labels,
+            state,
+            creator,
+            mentioned,
+            assignee,
+            milestone,
+            issue_type,
         } => {
             use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
 
@@ -554,15 +624,15 @@ async fn main() -> Result<()> {
                 order: order_option,
                 per_page,
                 page,
-                legacy: None,
-                repository: None,
-                labels: None,
-                state: None,
-                creator: None,
-                mentioned: None,
-                assignee: None,
-                milestone: None,
-                issue_type: None,
+                legacy: if legacy { Some(true) } else { None },
+                repository,
+                labels,
+                state,
+                creator,
+                mentioned,
+                assignee,
+                milestone,
+                issue_type,
             };
 
             // Execute the search using the repository manager
