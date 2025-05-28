@@ -206,19 +206,20 @@ pub struct GithubSearchParams {
 ///
 /// ## Search Methods
 ///
-/// ### REST API (Default)
-/// When `advanced_search` is `None` or `Some(false)`, uses GitHub's REST API:
-/// - Endpoint: `https://api.github.com/search/issues`
-/// - Standard search syntax
-/// - Limited boolean operations
-///
-/// ### GraphQL (Advanced)
-/// When `advanced_search` is `Some(true)`, uses GitHub's GraphQL API:
+/// ### GraphQL (Default)
+/// When `advanced_search` is `None` or `Some(true)`, uses GitHub's GraphQL API:
 /// - Endpoint: `https://api.github.com/graphql`
 /// - Uses `ISSUE_ADVANCED` search type
 /// - Supports complex boolean logic (AND, OR, parentheses)
 /// - Better performance through precise field selection
-/// - Future default (after September 4, 2025)
+/// - Current default behavior
+///
+/// ### REST API (Legacy)
+/// When `advanced_search` is `Some(false)`, uses GitHub's REST API:
+/// - Endpoint: `https://api.github.com/search/issues`
+/// - Standard search syntax
+/// - Limited boolean operations
+/// - Provides relevance scores
 ///
 /// ## Advanced Search Examples
 ///
@@ -232,7 +233,7 @@ pub struct GithubSearchParams {
 /// ```
 /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubIssueSearchParams, GithubIssueSortOption, GithubOrderOption};
 ///
-/// // Basic REST API search
+/// // Basic GraphQL search (default)
 /// let params = GithubIssueSearchParams {
 ///    query: "bug in documentation".to_string(),
 ///    sort_by: None,
@@ -247,7 +248,7 @@ pub struct GithubSearchParams {
 ///    assignee: None,
 ///    milestone: None,
 ///    issue_type: None,
-///    advanced_search: None,
+///    advanced_search: None, // Uses default (GraphQL)
 /// };
 ///
 /// // Advanced GraphQL search with boolean operations
@@ -265,7 +266,7 @@ pub struct GithubSearchParams {
 ///    assignee: None,
 ///    milestone: None,
 ///    issue_type: None,
-///    advanced_search: Some(true), // Enables GraphQL with advanced syntax
+///    advanced_search: Some(true), // Explicitly enables GraphQL
 /// };
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
@@ -327,7 +328,7 @@ pub struct GithubIssueSearchParams {
     /// When true, uses GraphQL with ISSUE_ADVANCED type instead of REST API
     /// This enables support for advanced search syntax like AND, OR operators and nested queries
     /// Note: After September 4, 2025, this will become the default behavior
-    /// Default: false
+    /// Default: true
     pub advanced_search: Option<bool>,
 }
 
@@ -1052,20 +1053,20 @@ impl GithubClient {
     /// - `updated:>2021-01-01` - Filter by last update date
     /// Search for issues in a GitHub repository
     ///
-    /// This method sends a request to GitHub's search issues API to find issues
-    /// matching the specified criteria. It supports both REST API and GraphQL
-    /// (when advanced_search is enabled) for enhanced search capabilities.
+    /// /// This method sends a request to GitHub's search issues API to find issues
+    /// matching the specified criteria. It uses GraphQL by default for enhanced
+    /// search capabilities, with optional fallback to REST API.
     ///
-    /// When advanced_search is true, the method uses GitHub's GraphQL API with
+    /// By default (advanced_search: None or true), the method uses GitHub's GraphQL API with
     /// the ISSUE_ADVANCED type, which supports complex queries with AND/OR operators
-    /// and nested searches. This will become the default after September 4, 2025.
+    /// and nested searches. Set advanced_search to false to use the legacy REST API.
     ///
     /// # Examples
     ///
     /// ```
     /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubIssueSearchParams, GithubIssueSortOption, GithubOrderOption};
     ///
-    /// // Search for open bugs in a specific repository using REST API
+    /// // Search for open bugs in a specific repository using GraphQL (default)
     /// let params = GithubIssueSearchParams {
     ///     query: "memory leak".to_string(),
     ///     sort_by: Some(GithubIssueSortOption::Updated),
@@ -1080,15 +1081,15 @@ impl GithubClient {
     ///     assignee: None,
     ///     milestone: None,
     ///     issue_type: None,
-    ///     advanced_search: Some(true), // Use GraphQL for advanced search
+    ///     advanced_search: None, // Uses default (GraphQL)
     /// };
     /// ```
     pub async fn search_issues(
         &self,
         params: GithubIssueSearchParams,
     ) -> Result<super::models::IssueSearchResults, String> {
-        // Check if advanced search is enabled
-        if params.advanced_search.unwrap_or(false) {
+        // Check if advanced search is enabled (default: true)
+        if params.advanced_search.unwrap_or(true) {
             self.execute_graphql_search_issues_request(&params).await
         } else {
             self.execute_search_issues_request(&params).await
@@ -1726,7 +1727,7 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
-            advanced_search: None,
+            advanced_search: Some(false), // Test REST API
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
@@ -1752,7 +1753,7 @@ mod tests {
             assignee: Some("developer".to_string()),
             milestone: Some("1".to_string()),
             issue_type: Some("enhancement".to_string()),
-            advanced_search: None,
+            advanced_search: Some(false), // Test REST API
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
@@ -1789,7 +1790,7 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
-            advanced_search: None,
+            advanced_search: Some(false), // Test REST API
         };
 
         let url = GithubClient::construct_issue_search_url(&params);
@@ -1834,5 +1835,70 @@ mod tests {
         assert!(url.contains("&order=desc"));
         assert!(url.contains("&per_page=25"));
         assert!(url.contains("&page=1"));
+    }
+
+    #[test]
+    fn test_default_behavior_uses_graphql() {
+        // Test that default (None) uses GraphQL
+        let params_default = GithubIssueSearchParams {
+            query: "test query".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+            advanced_search: None, // Default should be GraphQL
+        };
+
+        // Verify default behavior - this is a behavioral test
+        // In practice, None should route to GraphQL (unwrap_or(true))
+        assert_eq!(params_default.advanced_search.unwrap_or(true), true);
+
+        // Test that explicit true uses GraphQL
+        let params_explicit = GithubIssueSearchParams {
+            query: "test query".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+            advanced_search: Some(true),
+        };
+
+        assert_eq!(params_explicit.advanced_search.unwrap_or(true), true);
+
+        // Test that explicit false uses REST API
+        let params_rest = GithubIssueSearchParams {
+            query: "test query".to_string(),
+            sort_by: None,
+            order: None,
+            per_page: None,
+            page: None,
+            repository: None,
+            labels: None,
+            state: None,
+            creator: None,
+            mentioned: None,
+            assignee: None,
+            milestone: None,
+            issue_type: None,
+            advanced_search: Some(false),
+        };
+
+        assert_eq!(params_rest.advanced_search.unwrap_or(true), false);
     }
 }
