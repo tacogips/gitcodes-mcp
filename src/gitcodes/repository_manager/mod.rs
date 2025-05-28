@@ -189,7 +189,8 @@ impl RepositoryManager {
     ///
     /// # Parameters
     ///
-    /// * `github_token` - Optional GitHub token for authentication
+    /// * `github_token` - Optional GitHub token for authentication. If None, will attempt
+    ///                    to read from the GITCODES_MCP_GITHUB_TOKEN environment variable.
     /// * `repository_cache_dir` - Optional custom path for storing repositories.
     ///                            If None, the system's temporary directory is used.
     ///
@@ -201,6 +202,8 @@ impl RepositoryManager {
         github_token: Option<String>,
         local_repository_cache_dir_base: Option<PathBuf>,
     ) -> Result<Self, String> {
+        // If no github_token is provided, check environment variable
+        let github_token = github_token.or_else(|| std::env::var("GITCODES_MCP_GITHUB_TOKEN").ok());
         // Use provided path or default to system temp directory
         let local_repository_cache_dir_base = match local_repository_cache_dir_base {
             Some(path) => path,
