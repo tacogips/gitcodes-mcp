@@ -560,7 +560,9 @@ async fn main() -> Result<()> {
                 Ok(result) => {
                     // Pretty print each issue item
                     for (i, issue) in result.items.iter().enumerate() {
-                        let body_preview = issue.body.as_deref()
+                        let body_preview = issue
+                            .body
+                            .as_deref()
                             .unwrap_or("<no description>")
                             .chars()
                             .take(100)
@@ -588,14 +590,16 @@ async fn main() -> Result<()> {
                         println!("   Comments: {}", issue.comments);
                         println!("   Created: {}", issue.created_at);
                         println!("   Updated: {}", issue.updated_at);
-                        
+
                         if let Some(closed_at) = &issue.closed_at {
                             println!("   Closed: {}", closed_at);
                         }
 
                         // Show labels if any
                         if !issue.labels.is_empty() {
-                            let label_names: Vec<String> = issue.labels.iter()
+                            let label_names: Vec<String> = issue
+                                .labels
+                                .iter()
                                 .map(|label| label.name.clone())
                                 .collect();
                             println!("   Labels: {}", label_names.join(", "));
@@ -603,7 +607,9 @@ async fn main() -> Result<()> {
 
                         // Show assignees if any
                         if !issue.assignees.is_empty() {
-                            let assignee_names: Vec<String> = issue.assignees.iter()
+                            let assignee_names: Vec<String> = issue
+                                .assignees
+                                .iter()
                                 .map(|assignee| assignee.login.clone())
                                 .collect();
                             println!("   Assignees: {}", assignee_names.join(", "));
@@ -621,9 +627,15 @@ async fn main() -> Result<()> {
                     }
 
                     // Summary information
-                    println!("Found {} issues (total: {})", result.items.len(), result.total_count);
+                    println!(
+                        "Found {} issues (total: {})",
+                        result.items.len(),
+                        result.total_count
+                    );
                     if result.incomplete_results {
-                        println!("Note: Results may be incomplete due to timeout or other factors.");
+                        println!(
+                            "Note: Results may be incomplete due to timeout or other factors."
+                        );
                     }
 
                     // If no results found

@@ -341,7 +341,8 @@ fn test_github_token_environment_variable_fallback() {
     // Test case 2: Environment variable is not set
     env::remove_var("GITCODES_MCP_GITHUB_TOKEN");
 
-    let _manager_no_token = RepositoryManager::new(None, None).expect("Failed to create RepositoryManager without token");
+    let _manager_no_token = RepositoryManager::new(None, None)
+        .expect("Failed to create RepositoryManager without token");
 
     // Test case 3: Explicit token overrides environment variable
     env::set_var("GITCODES_MCP_GITHUB_TOKEN", "env_token");
