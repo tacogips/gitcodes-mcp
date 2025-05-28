@@ -34,6 +34,90 @@ The fix was verified with this test command that now works correctly:
 cargo run --bin gitcodes-cli grep "https://github.com/BurntSushi/ripgrep" "struct WalkParallel|impl WalkParallel" --include "crates/ignore/src/walk.rs"
 ```
 
+### GitHub Issue Search Implementation Pattern
+
+Implemented comprehensive GitHub issue search functionality following the established repository search pattern. This pattern demonstrates how to extend the MCP tooling framework with new search capabilities while maintaining consistent architecture and strong type safety.
+
+#### Core Components Added
+
+1. **Issue-specific domain models** in `providers/models.rs`:
+   ```rust
+   pub struct IssueSearchResults {
+       pub total_count: u64,
+       pub incomplete_results: bool,
+       pub items: Vec<IssueItem>,
+   }
+   
+   pub struct IssueItem {
+       pub id: String,
+       pub number: u64,
+       pub title: String,
+       pub body: Option<String>,
+       pub state: String,
+       pub user: IssueUser,
+       // ... additional fields
+   }
+   ```
+
+2. **GitHub-specific issue search parameters** with sort options:
+   ```rust
+   pub enum GithubIssueSortOption {
+       Created,
+       Updated,
+       Comments,
+       BestMatch,
+   }
+   
+   pub struct GithubIssueSearchParams {
+       pub query: String,
+       pub sort_by: Option<GithubIssueSortOption>,
+       pub order: Option<GithubOrderOption>,
+       pub per_page: Option<u8>,
+       pub page: Option<u32>,
+   }
+   ```
+
+3. **Generic issue sort options** in repository manager:
+   ```rust
+   pub enum IssueSortOption {
+       Created,
+       Updated,
+       Comments,
+       BestMatch,
+   }
+   ```
+
+#### Implementation Pattern Application
+
+- **Provider abstraction:** Issue search follows the same provider-agnostic pattern as repository search
+- **Type conversion:** Generic `IssueSortOption` converts to provider-specific `GithubIssueSortOption`
+- **Error handling:** Consistent error patterns with rate limit detection
+- **Response transformation:** GitHub API responses converted to common domain models
+- **MCP tool integration:** New `search_issues` tool with comprehensive parameter documentation
+
+#### API Integration Details
+
+The GitHub Issues Search API implementation includes:
+- URL construction with proper query encoding
+- Support for GitHub's search syntax (`repo:`, `state:`, `label:`, etc.)
+- Pagination with per_page and page parameters
+- Sorting by creation date, update date, comments, or relevance
+- Authentication token support for higher rate limits
+
+#### Pattern Benefits
+
+- **Extensibility:** Easy to add new providers (GitLab, Bitbucket) following the same pattern
+- **Type safety:** Compile-time validation of sort options and parameters
+- **Consistency:** Unified interface across repository and issue search
+- **Testing:** Comprehensive test coverage with parameter validation and query syntax testing
+
+#### Usage Examples
+
+```json
+{"name": "search_issues", "arguments": {"query": "repo:rust-lang/rust state:open label:bug"}}
+{"name": "search_issues", "arguments": {"query": "label:enhancement", "sort_by": "Updated", "per_page": 20}}
+```
+
 ### Documentation Quality and Rustdoc Compliance Pattern
 
 Updated project documentation to maintain high quality standards and comply with Rustdoc best practices. This pattern ensures documentation remains current, accurate, and accessible to both AI agents and human developers.

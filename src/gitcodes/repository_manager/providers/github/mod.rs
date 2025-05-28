@@ -57,6 +57,40 @@ pub enum GithubSortOption {
     Updated,
 }
 
+/// Sort options for GitHub issue search results
+///
+/// Controls how issue search results are ordered in the response.
+#[derive(Debug, Serialize, Deserialize, Display, EnumString, AsRefStr)]
+#[strum(serialize_all = "lowercase")]
+pub enum GithubIssueSortOption {
+    /// Sort by creation date
+    #[strum(serialize = "created")]
+    Created,
+    /// Sort by last update date
+    #[strum(serialize = "updated")]
+    Updated,
+    /// Sort by number of comments
+    #[strum(serialize = "comments")]
+    Comments,
+    /// Sort by relevance (GitHub's default)
+    #[strum(serialize = "best-match")]
+    BestMatch,
+}
+
+impl GithubIssueSortOption {
+    /// Converts the sort option to its API string representation
+    pub fn to_str(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+impl Default for GithubIssueSortOption {
+    /// Returns the default sort option (BestMatch)
+    fn default() -> Self {
+        GithubIssueSortOption::BestMatch
+    }
+}
+
 impl GithubSortOption {
     /// Converts the sort option to its API string representation
     pub fn to_str(&self) -> &str {
@@ -159,6 +193,66 @@ pub struct GithubSearchParams {
     pub query: String,
 }
 
+/// Search parameters for GitHub issue search
+///
+/// Contains all the parameters needed for configuring an issue search request to GitHub's API.
+/// This struct handles both the parameter validation and URL construction for issue searches.
+///
+/// # Parameter Handling
+///
+/// - `sort_by`: Uses IssueSortOption::BestMatch if None (GitHub's default sorting)
+/// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
+/// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
+/// - `page`: Uses 1 if None
+/// - `query`: URL encoded to handle special characters
+/// # Examples
+///
+/// ```
+/// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubIssueSearchParams, GithubIssueSortOption, GithubOrderOption};
+///
+/// // Basic search with defaults
+/// let params = GithubIssueSearchParams {
+///    query: "bug label:bug".to_string(),
+///    sort_by: None,
+///    order: None,
+///    per_page: None,
+///    page: None,
+/// };
+///
+/// // Advanced search with custom options
+/// let advanced_params = GithubIssueSearchParams {
+///    query: "repo:owner/repo state:open label:enhancement".to_string(),
+///    sort_by: Some(GithubIssueSortOption::Updated),
+///    order: Some(GithubOrderOption::Descending),
+///    per_page: Some(50),
+///    page: Some(1),
+/// };
+/// ```
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GithubIssueSearchParams {
+    /// Sort parameter for search results
+    /// When None, defaults to IssueSortOption::BestMatch (GitHub's default sorting)
+    pub sort_by: Option<GithubIssueSortOption>,
+
+    /// Order parameter for sorting results (ascending or descending)
+    /// When None, defaults to OrderOption::Descending
+    pub order: Option<GithubOrderOption>,
+
+    /// Number of results per page (1-100)
+    /// When None, defaults to 30
+    /// Values over 100 will be capped at 100 (GitHub API limit)
+    pub per_page: Option<u8>,
+
+    /// Page number for pagination (starts at 1)
+    /// When None, defaults to 1
+    pub page: Option<u32>,
+
+    /// Search query for issues
+    /// This is the only required parameter
+    /// Supports GitHub's search syntax, e.g., "repo:owner/repo state:open label:bug"
+    pub query: String,
+}
+
 pub struct GithubClient {
     client: Client,
     github_token: Option<String>,
@@ -170,6 +264,14 @@ struct GitHubRepositorySearchResponse {
     total_count: u64,
     incomplete_results: bool,
     items: Vec<GitHubRepositoryItem>,
+}
+
+/// GitHub-specific issue search response structure
+#[derive(Debug, Deserialize)]
+struct GitHubIssueSearchResponse {
+    total_count: u64,
+    incomplete_results: bool,
+    items: Vec<GitHubIssueItem>,
 }
 
 /// GitHub-specific repository item
@@ -255,6 +357,65 @@ struct GitHubRefTarget {
     url: String,
 }
 
+/// GitHub-specific issue item
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GitHubIssueItem {
+    id: u64,
+    number: u64,
+    title: String,
+    body: Option<String>,
+    state: String,
+    user: GitHubIssueUser,
+    assignee: Option<GitHubIssueUser>,
+    assignees: Vec<GitHubIssueUser>,
+    labels: Vec<GitHubIssueLabel>,
+    milestone: Option<GitHubIssueMilestone>,
+    comments: u64,
+    html_url: String,
+    created_at: String,
+    updated_at: String,
+    closed_at: Option<String>,
+    score: f64,
+    repository_url: String,
+}
+
+/// GitHub-specific issue user
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GitHubIssueUser {
+    login: String,
+    id: u64,
+    #[serde(rename = "type")]
+    type_field: String,
+    html_url: String,
+}
+
+/// GitHub-specific issue label
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GitHubIssueLabel {
+    id: u64,
+    name: String,
+    color: String,
+    description: Option<String>,
+}
+
+/// GitHub-specific issue milestone
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct GitHubIssueMilestone {
+    id: u64,
+    number: u64,
+    title: String,
+    description: Option<String>,
+    state: String,
+    created_at: String,
+    updated_at: String,
+    due_on: Option<String>,
+    closed_at: Option<String>,
+}
+
 impl GithubClient {
     pub fn new(client: Client, github_token: Option<String>) -> Self {
         GithubClient {
@@ -315,6 +476,50 @@ impl GithubClient {
         );
 
         if !sort.is_empty() {
+            url.push_str(&format!("&sort={}", sort));
+        }
+
+        url.push_str(&format!("&order={}", order));
+        url.push_str(&format!("&per_page={}&page={}", per_page, page));
+
+        url
+    }
+
+    /// Constructs the GitHub API URL for issue search
+    ///
+    /// Builds the complete URL with query parameters for the GitHub issues search API.
+    /// This function handles parameter defaults, validation, and proper URL encoding.
+    ///
+    /// # Returns
+    ///
+    /// A fully formed URL string ready for HTTP request to GitHub's issues search API
+    ///
+    /// # Parameter Handling
+    ///
+    /// - `sort_by`: Uses IssueSortOption::BestMatch if None (GitHub's default sorting)
+    /// - `order`: Uses OrderOption::Descending if None ("desc" in the URL)
+    /// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
+    /// - `page`: Uses 1 if None
+    /// - `query`: URL encoded to handle special characters
+    fn construct_issue_search_url(params: &GithubIssueSearchParams) -> String {
+        // Set up sort parameter using Default implementation
+        let default_sort = GithubIssueSortOption::default();
+        let sort = params.sort_by.as_ref().unwrap_or(&default_sort).to_str();
+
+        // Set up order parameter using Default implementation
+        let default_order = GithubOrderOption::default();
+        let order = params.order.as_ref().unwrap_or(&default_order).to_str();
+
+        // Set default values for pagination
+        let per_page = params.per_page.unwrap_or(30).min(100); // GitHub API limit is 100
+        let page = params.page.unwrap_or(1);
+
+        let mut url = format!(
+            "https://api.github.com/search/issues?q={}",
+            urlencoding::encode(&params.query)
+        );
+
+        if !sort.is_empty() && sort != "best-match" {
             url.push_str(&format!("&sort={}", sort));
         }
 
@@ -537,6 +742,209 @@ impl GithubClient {
 
         // Return the common domain model
         Ok(super::RepositoryRefs { branches, tags })
+    }
+
+    /// Executes a GitHub API search issues request
+    ///
+    /// Sends the HTTP request to the GitHub API's issues search endpoint and handles the response.
+    /// Returns a structured IssueSearchResults instead of raw JSON.
+    pub async fn execute_search_issues_request(
+        &self,
+        params: &GithubIssueSearchParams,
+    ) -> Result<super::IssueSearchResults, String> {
+        let url = Self::construct_issue_search_url(params);
+        // Set up the API request
+        let mut req_builder = self.client.get(url).header(
+            "User-Agent",
+            "gitcodes-mcp/0.1.0 (https://github.com/tacogips/gitcodes-mcp)",
+        );
+
+        // Add authentication token if available
+        if let Some(token) = &self.github_token.as_ref() {
+            req_builder = req_builder.header("Authorization", format!("token {}", token));
+        }
+
+        // Execute API request
+        let response = match req_builder.send().await {
+            Ok(resp) => resp,
+            Err(e) => return Err(format!("Failed to search issues: {}", e)),
+        };
+
+        // Check if the request was successful
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = match response.text().await {
+                Ok(text) => text,
+                Err(_) => "Unknown error".to_string(),
+            };
+
+            return Err(format!("GitHub API error {}: {}", status, error_text));
+        }
+
+        // Deserialize the response into GitHub-specific types
+        let github_response: GitHubIssueSearchResponse = match response.json().await {
+            Ok(response) => response,
+            Err(e) => return Err(format!("Failed to parse GitHub response: {}", e)),
+        };
+
+        // Convert to our common domain model
+        let mut items = Vec::new();
+        for github_item in github_response.items {
+            // Extract repository information from repository_url
+            let repo_parts: Vec<&str> = github_item
+                .repository_url
+                .trim_start_matches("https://api.github.com/repos/")
+                .split('/')
+                .collect();
+
+            let repository = if repo_parts.len() >= 2 {
+                super::IssueRepository {
+                    id: "".to_string(), // Not available in search response
+                    name: repo_parts[1].to_string(),
+                    full_name: format!("{}/{}", repo_parts[0], repo_parts[1]),
+                    owner: super::RepositoryOwner {
+                        login: repo_parts[0].to_string(),
+                        id: "".to_string(), // Not available in search response
+                        type_field: "User".to_string(), // Default, not available in search response
+                    },
+                    private: false, // Not available in search response
+                    html_url: format!("https://github.com/{}/{}", repo_parts[0], repo_parts[1]),
+                    description: None, // Not available in search response
+                }
+            } else {
+                // Fallback if URL parsing fails
+                super::IssueRepository {
+                    id: "".to_string(),
+                    name: "unknown".to_string(),
+                    full_name: "unknown/unknown".to_string(),
+                    owner: super::RepositoryOwner {
+                        login: "unknown".to_string(),
+                        id: "".to_string(),
+                        type_field: "User".to_string(),
+                    },
+                    private: false,
+                    html_url: "".to_string(),
+                    description: None,
+                }
+            };
+
+            items.push(super::IssueItem {
+                id: github_item.id.to_string(),
+                number: github_item.number,
+                title: github_item.title,
+                body: github_item.body,
+                state: github_item.state,
+                user: super::IssueUser {
+                    login: github_item.user.login,
+                    id: github_item.user.id.to_string(),
+                    type_field: github_item.user.type_field,
+                    html_url: github_item.user.html_url,
+                },
+                assignee: github_item.assignee.map(|assignee| super::IssueUser {
+                    login: assignee.login,
+                    id: assignee.id.to_string(),
+                    type_field: assignee.type_field,
+                    html_url: assignee.html_url,
+                }),
+                assignees: github_item
+                    .assignees
+                    .into_iter()
+                    .map(|assignee| super::IssueUser {
+                        login: assignee.login,
+                        id: assignee.id.to_string(),
+                        type_field: assignee.type_field,
+                        html_url: assignee.html_url,
+                    })
+                    .collect(),
+                labels: github_item
+                    .labels
+                    .into_iter()
+                    .map(|label| super::IssueLabel {
+                        id: label.id.to_string(),
+                        name: label.name,
+                        color: label.color,
+                        description: label.description,
+                    })
+                    .collect(),
+                milestone: github_item
+                    .milestone
+                    .map(|milestone| super::IssueMilestone {
+                        id: milestone.id.to_string(),
+                        number: milestone.number,
+                        title: milestone.title,
+                        description: milestone.description,
+                        state: milestone.state,
+                        created_at: milestone.created_at,
+                        updated_at: milestone.updated_at,
+                        due_on: milestone.due_on,
+                        closed_at: milestone.closed_at,
+                    }),
+                comments: github_item.comments,
+                html_url: github_item.html_url,
+                created_at: github_item.created_at,
+                updated_at: github_item.updated_at,
+                closed_at: github_item.closed_at,
+                score: github_item.score,
+                repository,
+            });
+        }
+
+        // Return the common domain model
+        Ok(super::IssueSearchResults {
+            total_count: github_response.total_count,
+            incomplete_results: github_response.incomplete_results,
+            items,
+        })
+    }
+
+    /// Search for GitHub issues using the GitHub API
+    ///
+    /// This method searches for issues on GitHub based on the provided query.
+    /// It supports sorting, pagination, and uses GitHub's issues search API.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODES_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour
+    /// - With a token, allows 5,000 requests/hour
+    ///
+    /// # Rate Limiting
+    ///
+    /// GitHub API has rate limits that vary based on authentication:
+    /// - Unauthenticated: 60 requests/hour
+    /// - Authenticated: 5,000 requests/hour
+    ///
+    /// # Search Query Syntax
+    ///
+    /// The query parameter supports GitHub's search syntax:
+    /// - `repo:owner/name` - Search within a specific repository
+    /// - `state:open` or `state:closed` - Filter by issue state
+    /// - `label:bug` - Filter by label
+    /// - `assignee:username` - Filter by assignee
+    /// - `author:username` - Filter by author
+    /// - `created:2021-01-01..2021-12-31` - Filter by creation date range
+    /// - `updated:>2021-01-01` - Filter by last update date
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::github::{GithubIssueSearchParams, GithubIssueSortOption, GithubOrderOption};
+    ///
+    /// // Search for open bugs in a specific repository
+    /// let params = GithubIssueSearchParams {
+    ///     query: "repo:rust-lang/rust state:open label:bug".to_string(),
+    ///     sort_by: Some(GithubIssueSortOption::Updated),
+    ///     order: Some(GithubOrderOption::Descending),
+    ///     per_page: Some(10),
+    ///     page: Some(1),
+    /// };
+    /// ```
+    pub async fn search_issues(
+        &self,
+        params: GithubIssueSearchParams,
+    ) -> Result<super::IssueSearchResults, String> {
+        // Execute the search issues request
+        self.execute_search_issues_request(&params).await
     }
 }
 
