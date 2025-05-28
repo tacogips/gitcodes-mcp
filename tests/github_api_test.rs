@@ -173,7 +173,9 @@ async fn test_list_repository_refs_error_handling() {
     if let Err(error_message) = result {
         println!("Error message: {}", error_message);
         assert!(
-            error_message.contains("404") || error_message.contains("not found") || error_message.contains("Failed to list branches"),
+            error_message.contains("404")
+                || error_message.contains("not found")
+                || error_message.contains("Failed to list branches"),
             "Error message should indicate repository not found or access failure"
         );
     }
@@ -192,7 +194,9 @@ async fn test_list_repository_refs_error_handling() {
     if let Err(error_message) = result {
         println!("Error message: {}", error_message);
         assert!(
-            error_message.contains("parse") || error_message.contains("format") || error_message.contains("Invalid GitHub repository URL"),
+            error_message.contains("parse")
+                || error_message.contains("format")
+                || error_message.contains("Invalid GitHub repository URL"),
             "Error message should indicate parsing error or invalid format"
         );
     }

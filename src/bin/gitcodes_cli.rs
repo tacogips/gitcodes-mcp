@@ -547,7 +547,10 @@ async fn main() -> Result<()> {
                             repo.stargazers_count.unwrap_or(0)
                         );
                         println!("   Description: {}", description);
-                        println!("   URL: {}", repo.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A"));
+                        println!(
+                            "   URL: {}",
+                            repo.html_url.as_ref().map(|u| u.as_str()).unwrap_or("N/A")
+                        );
 
                         // Additional fields requested
                         println!("   ID: {}", repo.id);
@@ -559,11 +562,17 @@ async fn main() -> Result<()> {
                         }
 
                         println!("   Archived: {}", repo.archived.unwrap_or(false));
-                        println!("   Created: {}", repo.created_at.as_ref().unwrap_or(&"N/A".to_string()));
+                        println!(
+                            "   Created: {}",
+                            repo.created_at.as_ref().unwrap_or(&"N/A".to_string())
+                        );
                         if let Some(score) = repo.score {
                             println!("   Score: {:.2}", score);
                         }
-                        println!("   Last Push: {}", repo.pushed_at.as_ref().unwrap_or(&"N/A".to_string()));
+                        println!(
+                            "   Last Push: {}",
+                            repo.pushed_at.as_ref().unwrap_or(&"N/A".to_string())
+                        );
 
                         // Add empty line after each repository
                         println!();

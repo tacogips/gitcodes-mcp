@@ -849,8 +849,7 @@ impl RepositoryManager {
     ///
     /// A GitHub client instance configured with the manager's authentication token
     fn get_github_client(&self) -> Result<providers::github::GithubClient, String> {
-        let client = reqwest::Client::new();
-        providers::github::GithubClient::new(client, self.github_token.clone())
+        providers::github::GithubClient::new(self.github_token.clone())
     }
 
     /// Lists all references (branches and tags) for a given repository using the GitHub API

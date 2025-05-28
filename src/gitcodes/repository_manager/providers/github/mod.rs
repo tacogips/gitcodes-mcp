@@ -1,4 +1,3 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
 
@@ -341,7 +340,7 @@ pub struct GithubClient {
 }
 
 impl GithubClient {
-    pub fn new(_client: Client, github_token: Option<String>) -> Result<Self, String> {
+    pub fn new(github_token: Option<String>) -> Result<Self, String> {
         let octocrab_client = OctocrabGithubClient::new(github_token)?;
         Ok(GithubClient { octocrab_client })
     }

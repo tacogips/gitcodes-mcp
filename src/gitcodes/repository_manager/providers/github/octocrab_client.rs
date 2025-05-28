@@ -223,7 +223,11 @@ impl OctocrabGithubClient {
                 description: repo.description,
                 html_url: repo.html_url,
                 homepage: repo.homepage,
-                language: repo.language.as_ref().and_then(|l| l.as_str()).map(|s| s.to_string()),
+                language: repo
+                    .language
+                    .as_ref()
+                    .and_then(|l| l.as_str())
+                    .map(|s| s.to_string()),
                 stargazers_count: repo.stargazers_count.map(|c| c as u64),
                 watchers_count: repo.watchers_count.map(|c| c as u64),
                 forks_count: repo.forks_count.map(|c| c as u64),
