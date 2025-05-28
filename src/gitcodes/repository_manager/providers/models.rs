@@ -48,8 +48,7 @@ pub struct RepositoryItem {
     /// Repository name (without owner)
     pub name: String,
 
-    /// Full repository name with owner (e.g., "owner/repo")
-    pub full_name: String,
+
 
     /// Whether the repository is private
     pub private: bool,
@@ -118,9 +117,6 @@ pub struct RepositoryItem {
 /// Common representation of a repository owner that works across Git providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepositoryOwner {
-    /// Owner's login name
-    pub login: String,
-
     /// Owner's ID (as a string to support different ID formats)
     pub id: String,
 
@@ -322,9 +318,6 @@ pub struct IssueRepository {
 
     /// Repository name (without owner)
     pub name: String,
-
-    /// Full repository name with owner (e.g., "owner/repo")
-    pub full_name: String,
 
     /// Repository owner information
     pub owner: RepositoryOwner,

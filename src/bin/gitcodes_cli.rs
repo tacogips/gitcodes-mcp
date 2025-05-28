@@ -661,7 +661,7 @@ async fn main() -> Result<()> {
                             issue.title,
                             issue.state
                         );
-                        println!("   Repository: {}", issue.repository.full_name);
+                        println!("   Repository: {}", issue.repository.name);
                         println!("   Author: {}", issue.user.login);
                         println!("   Description: {}", body_display);
                         println!("   URL: {}", issue.html_url);
