@@ -678,7 +678,7 @@ impl GithubClient {
 
         // Add authentication token if available
         if let Some(token) = &self.github_token.as_ref() {
-            req_builder = req_builder.header("Authorization", format!("token {}", token));
+            req_builder = req_builder.header("Authorization", format!("Bearer {}", token));
         }
 
         // Execute API request
@@ -814,7 +814,7 @@ impl GithubClient {
 
         // Add authentication token if available
         if let Some(token) = &self.github_token.as_ref() {
-            req_builder = req_builder.header("Authorization", format!("token {}", token));
+            req_builder = req_builder.header("Authorization", format!("Bearer {}", token));
         }
 
         // Execute API request
@@ -1243,10 +1243,14 @@ impl GithubClient {
             reqwest::header::USER_AGENT,
             reqwest::header::HeaderValue::from_static("gitcodes-mcp/0.1.0"),
         );
+        headers.insert(
+            reqwest::header::HeaderName::from_static("x-github-api-version"),
+            reqwest::header::HeaderValue::from_static("2022-11-28"),
+        );
 
         // Add authentication header if token is available
         if let Some(token) = &self.github_token {
-            let auth_value = format!("token {}", token);
+            let auth_value = format!("Bearer {}", token);
             headers.insert(
                 reqwest::header::AUTHORIZATION,
                 reqwest::header::HeaderValue::from_str(&auth_value)
