@@ -310,16 +310,16 @@ impl OctocrabGithubClient {
                 comments: issue.comments as u64,
                 score: None, // octocrab doesn't expose score
                 repository: IssueRepository {
-                    id: "".to_string(), // Not directly available
-                    name: "".to_string(), // Not directly available
-                    full_name: "".to_string(),
-                    html_url: "".to_string(),
+                    id: Self::extract_repo_info_from_url(issue.repository_url.as_str(), "id"),
+                    name: Self::extract_repo_info_from_url(issue.repository_url.as_str(), "name"),
+                    full_name: Self::extract_repo_info_from_url(issue.repository_url.as_str(), "full_name"),
+                    html_url: issue.repository_url.to_string(),
                     description: None, // Not available in issue search
                     private: false, // Not available in issue search
                     owner: RepositoryOwner {
-                        login: issue.user.login.clone(), // Best guess
-                        id: issue.user.id.0.to_string(),
-                        type_field: format!("{:?}", issue.user.r#type),
+                        login: Self::extract_repo_info_from_url(issue.repository_url.as_str(), "owner"),
+                        id: "".to_string(), // Not available in issue search
+                        type_field: "".to_string(), // Not available in issue search
                     },
                 },
             })
@@ -329,6 +329,32 @@ impl OctocrabGithubClient {
             total_count: results.total_count.unwrap_or(0),
             incomplete_results: false, // octocrab doesn't expose this
             items,
+        }
+    }
+
+    /// Extract repository information from GitHub API repository URL
+    fn extract_repo_info_from_url(repo_url: &str, info_type: &str) -> String {
+        // GitHub API repository URLs are in format: https://api.github.com/repos/owner/repo
+        if let Some(repos_index) = repo_url.find("/repos/") {
+            let path_part = &repo_url[repos_index + 7..]; // Skip "/repos/"
+            let segments: Vec<&str> = path_part.split('/').collect();
+            
+            if segments.len() >= 2 {
+                let owner = segments[0];
+                let repo_name = segments[1];
+                
+                match info_type {
+                    "owner" => owner.to_string(),
+                    "name" => repo_name.to_string(),
+                    "full_name" => format!("{}/{}", owner, repo_name),
+                    "id" => format!("{}/{}", owner, repo_name), // Use full_name as ID
+                    _ => String::new(),
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
         }
     }
 }

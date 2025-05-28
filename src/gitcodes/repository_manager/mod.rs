@@ -1093,34 +1093,54 @@ impl RepositoryManager {
     ///
     /// ```no_run
     /// use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
-    /// use gitcodes_mcp::gitcodes::repository_manager::{IssueSortOption, OrderOption};
-    /// use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
+    /// use gitcodes_mcp::gitcodes::repository_manager::{IssueSearchParams, IssueSortOption, OrderOption};
+    /// use gitcodes_mcp::gitcodes::repository_manager::providers::models::GitProvider;
     ///
     /// async fn example() {
     ///     let repo_manager = RepositoryManager::default();
     ///
     ///     // Basic search with minimal parameters
-    ///     match repo_manager.search_issues(
-    ///         GitProvider::Github,
-    ///         "repo:rust-lang/rust state:open label:bug".to_string(),
-    ///         None,
-    ///         None,
-    ///         None,
-    ///         None
-    ///     ).await {
+    ///     let basic_params = IssueSearchParams {
+    ///         query: "repo:rust-lang/rust state:open label:bug".to_string(),
+    ///         sort_by: None,
+    ///         order: None,
+    ///         per_page: None,
+    ///         page: None,
+    ///         legacy: None,
+    ///         repository: None,
+    ///         labels: None,
+    ///         state: None,
+    ///         creator: None,
+    ///         mentioned: None,
+    ///         assignee: None,
+    ///         milestone: None,
+    ///         issue_type: None,
+    ///     };
+    ///
+    ///     match repo_manager.search_issues(GitProvider::Github, basic_params).await {
     ///         Ok(results) => println!("Found issues: {:?}", results),
     ///         Err(e) => eprintln!("Search failed: {}", e),
     ///     }
     ///
     ///     // Search with all parameters
-    ///     match repo_manager.search_issues(
-    ///         GitProvider::Github,
-    ///         "label:enhancement state:open".to_string(),
-    ///         Some(IssueSortOption::Updated),
-    ///         Some(OrderOption::Descending),
-    ///         Some(50),
-    ///         Some(1)
-    ///     ).await {
+    ///     let detailed_params = IssueSearchParams {
+    ///         query: "label:enhancement state:open".to_string(),
+    ///         sort_by: Some(IssueSortOption::Updated),
+    ///         order: Some(OrderOption::Descending),
+    ///         per_page: Some(50),
+    ///         page: Some(1),
+    ///         legacy: None,
+    ///         repository: None,
+    ///         labels: None,
+    ///         state: None,
+    ///         creator: None,
+    ///         mentioned: None,
+    ///         assignee: None,
+    ///         milestone: None,
+    ///         issue_type: None,
+    ///     };
+    ///
+    ///     match repo_manager.search_issues(GitProvider::Github, detailed_params).await {
     ///         Ok(results) => println!("Found enhancement issues: {:?}", results),
     ///         Err(e) => eprintln!("Search failed: {}", e),
     ///     }
