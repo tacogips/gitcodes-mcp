@@ -42,6 +42,8 @@ When simplifying API interfaces:
 
 This pattern reduces cognitive load for users while providing more comprehensive search results by default.
 
+4. **Updated MCP Tool Interface**: Renamed the MCP tool method from `search_issues` to `search_issues_and_pull_requests` to better reflect its unified functionality and updated the tool description to clarify that both `is:issue` and `is:pull-request` qualifiers are included by default.
+
 ### Octocrab GitHub Client Migration Pattern
 
 Migrated GitHub provider implementation from manual reqwest HTTP calls to octocrab library while maintaining the same public interface and user-facing command behavior. This pattern demonstrates how to replace internal API client implementations without breaking existing functionality.

@@ -122,29 +122,29 @@ impl ServerHandler for GitHubCodeTools {
 
 ## Available Tools
 - `search_repositories`: Search for GitHub repositories
-- `search_issues`: Search for GitHub issues and pull requests
+- `search_issues_and_pull_requests`: Search for GitHub issues and pull requests
 - `grep_repository`: Search code within a GitHub repository (returns compact grouped format)
 - `grep_repository_match_line_number`: Count matching lines only (returns number)
 - `list_repository_refs`: List branches and tags for a repository
 - `show_file_contents`: View file contents in compact format with concatenated lines and enhanced metadata
 - `get_repository_tree`: Get the directory tree structure of a repository
 
-### search_issues Examples
+### search_issues_and_pull_requests Examples
 Search for GitHub issues and pull requests with powerful query syntax support:
 
 Basic issue and pull request search:
 ```json
-{{\"name\": \"search_issues\", \"arguments\": {{\"query\": \"repo:rust-lang/rust state:open label:bug\"}}}}
+{{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {{\"query\": \"repo:rust-lang/rust state:open label:bug\"}}}}
 ```
 
 Search with sorting and pagination:
 ```json
-{{\"name\": \"search_issues\", \"arguments\": {{\"query\": \"label:enhancement state:open\", \"sort_by\": \"Updated\", \"order\": \"Descending\", \"per_page\": 20}}}}
+{{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {{\"query\": \"label:enhancement state:open\", \"sort_by\": \"Updated\", \"order\": \"Descending\", \"per_page\": 20}}}}
 ```
 
 Advanced filtering:
 ```json
-{{\"name\": \"search_issues\", \"arguments\": {{\"query\": \"assignee:username author:contributor created:>2023-01-01\"}}}}
+{{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {{\"query\": \"assignee:username author:contributor created:>2023-01-01\"}}}}
 ```
 
 Search query syntax supports:
@@ -354,9 +354,9 @@ impl GitHubCodeTools {
     /// - `created:2021-01-01..2021-12-31` - Filter by creation date range
     /// - `updated:>2021-01-01` - Filter by last update date
     #[tool(
-        description = "Search GitHub issues and pull requests by query. Automatically searches both issues and pull requests unless specifically filtered. Supports sorting and pagination. Example: `{\"name\": \"search_issues\", \"arguments\": {\"query\": \"repo:rust-lang/rust state:open label:bug\"}}`. With sorting: `{\"name\": \"search_issues\", \"arguments\": {\"query\": \"label:enhancement\", \"sort_by\": \"Updated\"}}`"
+        description = "Search GitHub issues and pull requests by query. Automatically includes both 'is:issue' and 'is:pull-request' qualifiers by default unless explicitly specified in the query. Supports sorting and pagination. Example: `{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {\"query\": \"repo:rust-lang/rust state:open label:bug\"}}`. With sorting: `{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {\"query\": \"label:enhancement\", \"sort_by\": \"Updated\"}}`"
     )]
-    async fn search_issues(
+    async fn search_issues_and_pull_requests(
         &self,
         #[tool(param)]
         #[schemars(
@@ -394,7 +394,7 @@ impl GitHubCodeTools {
         )]
         page: Option<u32>,
     ) -> Result<CallToolResult, McpError> {
-        inner_search_issues(
+        inner_search_issues_and_pull_requests(
             &self.manager,
             provider,
             query,
@@ -1050,7 +1050,7 @@ async fn inner_search_repositories(
     }
 }
 
-async fn inner_search_issues(
+async fn inner_search_issues_and_pull_requests(
     repository_manager: &RepositoryManager,
     provider: Option<String>,
     query: String,
