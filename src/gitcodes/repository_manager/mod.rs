@@ -848,7 +848,7 @@ impl RepositoryManager {
     /// # Returns
     ///
     /// A GitHub client instance configured with the manager's authentication token
-    fn get_github_client(&self) -> providers::github::GithubClient {
+    fn get_github_client(&self) -> Result<providers::github::GithubClient, String> {
         let client = reqwest::Client::new();
         providers::github::GithubClient::new(client, self.github_token.clone())
     }
@@ -893,7 +893,7 @@ impl RepositoryManager {
                 match remote_repo {
                     GitRemoteRepository::Github(github_repo_info) => {
                         // For GitHub repositories, use the GitHub API
-                        let github_client = self.get_github_client();
+                        let github_client = self.get_github_client()?;
                         let refs = github_client
                             .list_repository_refs(&github_repo_info.repo_info)
                             .await?;
@@ -1064,7 +1064,7 @@ impl RepositoryManager {
         params: providers::github::GithubSearchParams,
     ) -> Result<providers::RepositorySearchResults, String> {
         // Get a GitHub client instance
-        let github_client = self.get_github_client();
+        let github_client = self.get_github_client()?;
 
         // Execute the search and return the results
         github_client.search_repositories(params).await
@@ -1197,7 +1197,7 @@ impl RepositoryManager {
         params: providers::github::GithubIssueSearchParams,
     ) -> Result<providers::IssueSearchResults, String> {
         // Get a GitHub client instance
-        let github_client = self.get_github_client();
+        let github_client = self.get_github_client()?;
 
         // Execute the search and return the results
         github_client.search_issues(params).await

@@ -4,6 +4,10 @@ use strum::{AsRefStr, Display, EnumString};
 
 use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
 
+// Octocrab-based client
+pub mod octocrab_client;
+pub use octocrab_client::OctocrabGithubClient;
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct GithubRemoteInfo {
     pub clone_url: String,
@@ -333,8 +337,7 @@ pub struct GithubIssueSearchParams {
 }
 
 pub struct GithubClient {
-    client: Client,
-    github_token: Option<String>,
+    octocrab_client: OctocrabGithubClient,
 }
 
 /// GitHub-specific search response structure
@@ -496,11 +499,11 @@ struct GitHubIssueMilestone {
 }
 
 impl GithubClient {
-    pub fn new(client: Client, github_token: Option<String>) -> Self {
-        GithubClient {
-            client,
-            github_token,
-        }
+    pub fn new(_client: Client, github_token: Option<String>) -> Result<Self, String> {
+        let octocrab_client = OctocrabGithubClient::new(github_token)?;
+        Ok(GithubClient {
+            octocrab_client,
+        })
     }
 
     /// Constructs the GitHub API URL for repository search
@@ -580,6 +583,28 @@ impl GithubClient {
     /// - `per_page`: Uses 30 if None, caps at 100 (GitHub API limit)
     /// - `page`: Uses 1 if None
     /// - `query`: URL encoded to handle special characters
+    /// Normalize repository identifier from various formats to owner/repo
+    /// 
+    /// Handles:
+    /// - Full GitHub URLs: https://github.com/owner/repo -> owner/repo
+    /// - SSH URLs: git@github.com:owner/repo.git -> owner/repo
+    /// - GitHub shorthand: github:owner/repo -> owner/repo
+    /// - Already normalized: owner/repo -> owner/repo
+    fn normalize_repository_identifier(repo_input: &str) -> String {
+        // If it's already in owner/repo format (no protocol prefixes), return as-is
+        if !repo_input.contains("://") && !repo_input.starts_with("git@") && !repo_input.starts_with("github:") && repo_input.matches('/').count() == 1 {
+            return repo_input.to_string();
+        }
+
+        // Try to parse as GitHub URL and extract owner/repo
+        if let Ok(github_info) = parse_github_repository_url_internal(repo_input) {
+            format!("{}/{}", github_info.repo_info.user, github_info.repo_info.repo)
+        } else {
+            // If parsing fails, return the input as-is (let GitHub API handle the error)
+            repo_input.to_string()
+        }
+    }
+
     fn construct_issue_search_url(params: &GithubIssueSearchParams) -> String {
         // Set up sort parameter using Default implementation
         let default_sort = GithubIssueSortOption::default();
@@ -598,7 +623,9 @@ impl GithubClient {
 
         // Add repository qualifier if specified
         if let Some(repo) = &params.repository {
-            query_parts.push(format!("repo:{}", repo));
+            // Normalize repository format from URL to owner/repo
+            let normalized_repo = Self::normalize_repository_identifier(repo);
+            query_parts.push(format!("repo:{}", normalized_repo));
         }
 
         // Add labels qualifier if specified
@@ -663,91 +690,7 @@ impl GithubClient {
 
     /// Executes a GitHub API search repository request
     ///
-    /// Sends the HTTP request to the GitHub API's repository search endpoint and handles the response.
-    /// Returns a structured RepositorySearchResults instead of raw JSON.
-    pub async fn execute_search_repository_request(
-        &self,
-        params: &GithubSearchParams,
-    ) -> Result<super::RepositorySearchResults, String> {
-        let url = Self::construct_search_url(params);
-        // Set up the API request
-        let mut req_builder = self.client.get(url).header(
-            "User-Agent",
-            "gitcodes-mcp/0.1.0 (https://github.com/tacogips/gitcodes-mcp)",
-        );
 
-        // Add authentication token if available
-        if let Some(token) = &self.github_token.as_ref() {
-            req_builder = req_builder.header("Authorization", format!("Bearer {}", token));
-        }
-
-        // Execute API request
-        let response = match req_builder.send().await {
-            Ok(resp) => resp,
-            Err(e) => return Err(format!("Failed to search repositories: {}", e)),
-        };
-
-        // Check if the request was successful
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = match response.text().await {
-                Ok(text) => text,
-                Err(_) => "Unknown error".to_string(),
-            };
-
-            return Err(format!("GitHub API error {}: {}", status, error_text));
-        }
-
-        // Deserialize the response into GitHub-specific types
-        let github_response: GitHubRepositorySearchResponse = match response.json().await {
-            Ok(response) => response,
-            Err(e) => return Err(format!("Failed to parse GitHub response: {}", e)),
-        };
-
-        // Convert to our common domain model
-        let mut items = Vec::new();
-        for github_item in github_response.items {
-            items.push(super::RepositoryItem {
-                id: github_item.id.to_string(),
-                name: github_item.name,
-                full_name: github_item.full_name,
-                private: github_item.private,
-                owner: super::RepositoryOwner {
-                    login: github_item.owner.login,
-                    id: github_item.owner.id.to_string(),
-                    type_field: github_item.owner.type_field,
-                },
-                html_url: github_item.html_url,
-                description: github_item.description,
-                fork: github_item.fork,
-                homepage: github_item.homepage,
-                size: github_item.size,
-                stargazers_count: github_item.stargazers_count,
-                watchers_count: github_item.watchers_count,
-                language: github_item.language,
-                forks_count: github_item.forks_count,
-                archived: github_item.archived,
-                open_issues_count: github_item.open_issues_count,
-                license: github_item.license.map(|license| super::RepositoryLicense {
-                    key: license.key,
-                    name: license.name,
-                }),
-                topics: github_item.topics.unwrap_or_default(),
-                default_branch: github_item.default_branch,
-                score: Some(github_item.score),
-                created_at: github_item.created_at,
-                updated_at: github_item.updated_at,
-                pushed_at: github_item.pushed_at,
-            });
-        }
-
-        // Return the common domain model
-        Ok(super::RepositorySearchResults {
-            total_count: github_response.total_count,
-            incomplete_results: github_response.incomplete_results,
-            items,
-        })
-    }
 
     /// Search for GitHub repositories using the GitHub API
     ///
@@ -769,8 +712,7 @@ impl GithubClient {
         &self,
         params: GithubSearchParams,
     ) -> Result<super::RepositorySearchResults, String> {
-        // Execute the search repository request
-        self.execute_search_repository_request(&params).await
+        self.octocrab_client.search_repositories(params).await
     }
 
     /// List branches and tags for a GitHub repository using the GitHub API
@@ -795,234 +737,10 @@ impl GithubClient {
         &self,
         repo_info: &GitRemoteRepositoryInfo,
     ) -> Result<super::RepositoryRefs, String> {
-        // Construct the API URL for listing refs
-        let url_str = format!(
-            "https://api.github.com/repos/{}/{}/git/refs",
-            repo_info.user, repo_info.repo
-        );
-
-        // Parse the URL to ensure it's valid
-        let url = url_str
-            .parse::<reqwest::Url>()
-            .map_err(|e| format!("Failed to parse GitHub API URL: {}", e))?;
-
-        // Set up the API request
-        let mut req_builder = self.client.get(url).header(
-            "User-Agent",
-            "gitcodes-mcp/0.1.0 (https://github.com/d6e/gitcodes-mcp)",
-        );
-
-        // Add authentication token if available
-        if let Some(token) = &self.github_token.as_ref() {
-            req_builder = req_builder.header("Authorization", format!("Bearer {}", token));
-        }
-
-        // Execute API request
-        let response = match req_builder.send().await {
-            Ok(resp) => resp,
-            Err(e) => return Err(format!("Failed to list repository refs: {}", e)),
-        };
-
-        // Check if the request was successful
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = match response.text().await {
-                Ok(text) => text,
-                Err(_) => "Unknown error".to_string(),
-            };
-
-            return Err(format!("GitHub API error {}: {}", status, error_text));
-        }
-
-        // Deserialize the JSON array of GitHub references
-        let github_refs: Vec<GitHubRefObject> = match response.json().await {
-            Ok(refs) => refs,
-            Err(e) => return Err(format!("Failed to parse GitHub response: {}", e)),
-        };
-
-        // Transform into our domain model structure
-        let mut branches = Vec::new();
-        let mut tags = Vec::new();
-
-        for ref_obj in github_refs {
-            // Create a ReferenceInfo object
-            let ref_info = super::ReferenceInfo {
-                // Extract short name from full ref path
-                name: ref_obj
-                    .ref_name
-                    .split('/')
-                    .last()
-                    .unwrap_or(&ref_obj.ref_name)
-                    .to_string(),
-                full_ref: ref_obj.ref_name.clone(),
-                commit_id: ref_obj.object.sha,
-            };
-
-            // Sort into branches and tags based on path
-            if ref_obj.ref_name.starts_with("refs/heads/") {
-                branches.push(ref_info);
-            } else if ref_obj.ref_name.starts_with("refs/tags/") {
-                tags.push(ref_info);
-            }
-            // Ignore other ref types like refs/remotes
-        }
-
-        // Return the common domain model
-        Ok(super::RepositoryRefs { branches, tags })
+        self.octocrab_client.list_repository_refs(repo_info).await
     }
 
-    /// Executes a GitHub API search issues request
-    ///
-    /// Sends the HTTP request to the GitHub API's issues search endpoint and handles the response.
-    /// Returns a structured IssueSearchResults instead of raw JSON.
-    pub async fn execute_search_issues_request(
-        &self,
-        params: &GithubIssueSearchParams,
-    ) -> Result<super::models::IssueSearchResults, String> {
-        let url = Self::construct_issue_search_url(params);
-        // Set up the API request
-        let mut req_builder = self.client.get(url).header(
-            "User-Agent",
-            "gitcodes-mcp/0.1.0 (https://github.com/tacogips/gitcodes-mcp)",
-        );
 
-        // Add authentication token if available
-        if let Some(token) = &self.github_token.as_ref() {
-            req_builder = req_builder.header("Authorization", format!("token {}", token));
-        }
-
-        // Execute API request
-        let response = match req_builder.send().await {
-            Ok(resp) => resp,
-            Err(e) => return Err(format!("Failed to search issues: {}", e)),
-        };
-
-        // Check if the request was successful
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = match response.text().await {
-                Ok(text) => text,
-                Err(_) => "Unknown error".to_string(),
-            };
-
-            return Err(format!("GitHub API error {}: {}", status, error_text));
-        }
-
-        // Deserialize the response into GitHub-specific types
-        let github_response: GitHubIssueSearchResponse = match response.json().await {
-            Ok(response) => response,
-            Err(e) => return Err(format!("Failed to parse GitHub response: {}", e)),
-        };
-
-        // Convert to our common domain model
-        let mut items = Vec::new();
-        for github_item in github_response.items {
-            // Extract repository information from repository_url
-            let repo_parts: Vec<&str> = github_item
-                .repository_url
-                .trim_start_matches("https://api.github.com/repos/")
-                .split('/')
-                .collect();
-
-            let repository = if repo_parts.len() >= 2 {
-                super::IssueRepository {
-                    id: "".to_string(), // Not available in search response
-                    name: repo_parts[1].to_string(),
-                    full_name: format!("{}/{}", repo_parts[0], repo_parts[1]),
-                    owner: super::RepositoryOwner {
-                        login: repo_parts[0].to_string(),
-                        id: "".to_string(), // Not available in search response
-                        type_field: "User".to_string(), // Default, not available in search response
-                    },
-                    private: false, // Not available in search response
-                    html_url: format!("https://github.com/{}/{}", repo_parts[0], repo_parts[1]),
-                    description: None, // Not available in search response
-                }
-            } else {
-                // Fallback if URL parsing fails
-                super::IssueRepository {
-                    id: "".to_string(),
-                    name: "unknown".to_string(),
-                    full_name: "unknown/unknown".to_string(),
-                    owner: super::RepositoryOwner {
-                        login: "unknown".to_string(),
-                        id: "".to_string(),
-                        type_field: "User".to_string(),
-                    },
-                    private: false,
-                    html_url: "".to_string(),
-                    description: None,
-                }
-            };
-
-            items.push(super::IssueItem {
-                id: github_item.id.to_string(),
-                number: github_item.number,
-                title: github_item.title,
-                body: github_item.body,
-                state: github_item.state,
-                user: super::IssueUser {
-                    login: github_item.user.login,
-                    id: github_item.user.id.to_string(),
-                    type_field: github_item.user.type_field,
-                    html_url: github_item.user.html_url,
-                },
-                assignee: github_item.assignee.map(|assignee| super::IssueUser {
-                    login: assignee.login,
-                    id: assignee.id.to_string(),
-                    type_field: assignee.type_field,
-                    html_url: assignee.html_url,
-                }),
-                assignees: github_item
-                    .assignees
-                    .into_iter()
-                    .map(|assignee| super::IssueUser {
-                        login: assignee.login,
-                        id: assignee.id.to_string(),
-                        type_field: assignee.type_field,
-                        html_url: assignee.html_url,
-                    })
-                    .collect(),
-                labels: github_item
-                    .labels
-                    .into_iter()
-                    .map(|label| super::IssueLabel {
-                        id: label.id.to_string(),
-                        name: label.name,
-                        color: label.color,
-                        description: label.description,
-                    })
-                    .collect(),
-                milestone: github_item
-                    .milestone
-                    .map(|milestone| super::IssueMilestone {
-                        id: milestone.id.to_string(),
-                        number: milestone.number,
-                        title: milestone.title,
-                        description: milestone.description,
-                        state: milestone.state,
-                        created_at: milestone.created_at,
-                        updated_at: milestone.updated_at,
-                        due_on: milestone.due_on,
-                        closed_at: milestone.closed_at,
-                    }),
-                comments: github_item.comments,
-                html_url: github_item.html_url,
-                created_at: github_item.created_at,
-                updated_at: github_item.updated_at,
-                closed_at: github_item.closed_at,
-                score: Some(github_item.score),
-                repository,
-            });
-        }
-
-        // Return the common domain model
-        Ok(super::IssueSearchResults {
-            total_count: github_response.total_count,
-            incomplete_results: github_response.incomplete_results,
-            items,
-        })
-    }
 
     /// Search for GitHub issues using the GitHub API
     ///
@@ -1088,12 +806,7 @@ impl GithubClient {
         &self,
         params: GithubIssueSearchParams,
     ) -> Result<super::models::IssueSearchResults, String> {
-        // Check if advanced search is enabled (default: true)
-        if params.advanced_search.unwrap_or(true) {
-            self.execute_graphql_search_issues_request(&params).await
-        } else {
-            self.execute_search_issues_request(&params).await
-        }
+        self.octocrab_client.search_issues(params).await
     }
 
     /// Execute GraphQL search for issues using ISSUE_ADVANCED type
@@ -1249,15 +962,22 @@ impl GithubClient {
         );
 
         // Add authentication header if token is available
-        if let Some(token) = &self.github_token {
-            let auth_value = format!("Bearer {}", token);
-            headers.insert(
-                reqwest::header::AUTHORIZATION,
-                reqwest::header::HeaderValue::from_str(&auth_value)
-                    .map_err(|e| format!("Invalid auth header: {}", e))?,
-            );
-        }
+        // TODO: This method is deprecated and should be removed
+        // if let Some(token) = &self.github_token {
+        //     let auth_value = format!("Bearer {}", token);
+        //     headers.insert(
+        //         reqwest::header::AUTHORIZATION,
+        //         reqwest::header::HeaderValue::from_str(&auth_value)
+        //             .map_err(|e| format!("Invalid auth header: {}", e))?,
+        //     );
+        // }
 
+        // GraphQL method is deprecated - return error for now
+        return Err("GraphQL search method is deprecated. Use octocrab-based search instead.".to_string());
+    }
+
+    // Method body commented out for now
+    /*
         // Send GraphQL request to GitHub's GraphQL API
         let response = self
             .client
@@ -1586,6 +1306,7 @@ impl GithubClient {
             repository,
         })
     }
+    */
 }
 
 /// Parse a GitHub URL to extract the user and repository name
@@ -1714,6 +1435,57 @@ pub(crate) fn parse_github_repository_url_internal(url: &str) -> Result<GithubRe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_normalize_repository_identifier_formats() {
+        // Already normalized format
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("owner/repo"),
+            "owner/repo"
+        );
+
+        // HTTPS URL
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("https://github.com/owner/repo"),
+            "owner/repo"
+        );
+
+        // HTTPS URL with .git suffix
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("https://github.com/owner/repo.git"),
+            "owner/repo"
+        );
+
+        // SSH URL
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("git@github.com:owner/repo.git"),
+            "owner/repo"
+        );
+
+        // SSH URL without .git
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("git@github.com:owner/repo"),
+            "owner/repo"
+        );
+
+        // GitHub shorthand
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("github:owner/repo"),
+            "owner/repo"
+        );
+
+        // Invalid format - should return as-is
+        assert_eq!(
+            GithubClient::normalize_repository_identifier("invalid-format"),
+            "invalid-format"
+        );
+
+        // Empty string - should return as-is
+        assert_eq!(
+            GithubClient::normalize_repository_identifier(""),
+            ""
+        );
+    }
 
     #[test]
     fn test_construct_issue_search_url_basic() {
