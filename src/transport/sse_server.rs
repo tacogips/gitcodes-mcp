@@ -1,4 +1,4 @@
-use crate::tools::GitHubCodeTools;
+use crate::tools::GitDbTools;
 use anyhow::Result;
 use rmcp::transport::sse_server::SseServer;
 use std::net::SocketAddr;
@@ -28,7 +28,7 @@ impl SseServerApp {
         let github_token = self.github_token.clone();
         let repository_cache_dir = self.repository_cache_dir.clone();
         let cancellation_token = sse_server.with_service(move || {
-            GitHubCodeTools::new(github_token.clone(), repository_cache_dir.clone())
+            GitDbTools::new(github_token.clone(), repository_cache_dir.clone())
         });
 
         // Wait for Ctrl+C signal to gracefully shutdown

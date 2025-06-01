@@ -17,15 +17,9 @@ You (the LLM model) must declare that cargo commands will be executed quietly by
 When working with this codebase, refer to the following key documents:
 
 - **CLAUDE.md** (this file): Primary instructions for working with the codebase
-- **spec.md**: Library specifications and implementation details
-- **devlog.md**: Development log with design decisions, implementation details, and roadmap
-- **Rustdoc comments**: In-code documentation accessible via `cargo doc --open`
 - **README.md**: User-facing documentation and usage instructions
-
-For library-specific specifications and implementation details, refer to spec.md.
-To understand the history, architecture decisions, and implementation details of this project, always refer to the devlog.md file.
-For API details and function-level documentation, consult the Rustdoc comments in the source code.
-When making significant changes, update both devlog.md and relevant Rustdoc comments to document your work.
+- **docs/blueprint/**: Contains design-related documentation. This directory includes future development plans and specifications for features to be implemented. When instructed in the prompt, refer to files in this directory and implement features according to the instructions/designs described there.
+- **docs/devlog/**: Contains development history records. Files are named in the format {seq_no}.md where seq_no is incremented sequentially. To understand current implementation details or recent modifications, refer to files in descending order by seq_no (highest numbers first).
 
 ## Build & Run Commands
 
@@ -282,7 +276,7 @@ When working with tests:
 
 The following repositories are available for testing this library. These repositories will not be modified except for testing purposes:
 
-- https://github.com/tacogips/gitcodes-mcp-test-1 (public repository, does not require GitHub token for access)
+- https://github.com/tacogips/gitdb-test-1 (public repository, does not require GitHub token for access)
 
 ### User Communication Guidelines
 

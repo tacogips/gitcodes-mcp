@@ -37,4 +37,4 @@ tasks:
   mcp-inspect:
     desc: Run the MCP inspector on the stdio server
     cmds:
-      - npx @modelcontextprotocol/inspector result/bin/gitcodes-mcp stdio
+      - npx @modelcontextprotocol/inspector result/bin/gitdb stdio

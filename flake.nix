@@ -1,5 +1,5 @@
 {
-  description = "gitcodes-mcp";
+  description = "gitdb";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -92,7 +92,7 @@
 
         # Simple package definition
         packages.default = buildRustPackageCustom {
-          pname = "gitcodes-mcp";
+          pname = "gitdb";
           version = "0.1.0";
           src = ./.;
 
