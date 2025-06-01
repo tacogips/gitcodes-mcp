@@ -1,5 +1,130 @@
 # Development Log
 
+### GitHub Issue and Pull Request Search Pattern
+
+Enhanced GitHub search functionality to support both issues and pull requests in a single search operation, removing legacy API distinctions and simplifying the user interface.
+
+#### Problem Analysis
+
+The original implementation had separate search paths for issues and pull requests, with complex configuration options (`advanced_search`, `legacy`) that exposed internal API details to users. This created confusion and unnecessary complexity.
+
+#### Solution Implementation
+
+1. **Unified Search Method**: Renamed `search_issues` to `search_issues_and_pull_requests` internally, while keeping the public API as `search_issues`
+2. **Automatic Query Enhancement**: Modified query building to include both issues and pull requests by default:
+
+```rust
+fn build_issue_and_pull_request_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
+    let mut query_parts = vec![params.query.clone()];
+    let query_lower = params.query.to_lowercase();
+    
+    // Add both 'is:issue' and 'is:pull-request' if neither is present
+    if !query_lower.contains("is:issue") && !query_lower.contains("is:pull-request") {
+        query_parts.push("(is:issue OR is:pull-request)".to_string());
+    }
+    
+    // ... rest of query building
+    Ok(query_parts.join(" "))
+}
+```
+
+3. **Removed Obsolete Fields**: Eliminated `advanced_search` and `legacy` parameters from all interfaces
+
+#### Pattern Guidelines
+
+When simplifying API interfaces:
+1. **Remove internal implementation details** from public APIs (GraphQL vs REST, advanced vs legacy)
+2. **Provide sensible defaults** that work for most use cases (search both issues and PRs)
+3. **Preserve user control** when they specify explicit qualifiers
+4. **Maintain backward compatibility** at the public API level while simplifying internals
+5. **Use inclusive search patterns** by default rather than restrictive ones
+6. **Document the unified behavior** clearly in tool descriptions
+
+This pattern reduces cognitive load for users while providing more comprehensive search results by default.
+
+4. **Updated MCP Tool Interface**: Renamed the MCP tool method from `search_issues` to `search_issues_and_pull_requests` to better reflect its unified functionality and updated the tool description to clarify that both `is:issue` and `is:pull-request` qualifiers are included by default.
+
+### Octocrab GitHub Client Migration Pattern
+
+Migrated GitHub provider implementation from manual reqwest HTTP calls to octocrab library while maintaining the same public interface and user-facing command behavior. This pattern demonstrates how to replace internal API client implementations without breaking existing functionality.
+
+#### Problem Analysis
+
+The original GitHub provider used manual HTTP requests with reqwest, requiring custom JSON deserializing, error handling, rate limiting, and API endpoint construction. This approach was error-prone and required significant maintenance as GitHub API evolved.
+
+#### Changes Made
+
+1. **Created octocrab wrapper client** (`octocrab_client.rs`):
+   ```rust
+   pub struct OctocrabGithubClient {
+       client: Octocrab,
+   }
+   
+   impl OctocrabGithubClient {
+       pub fn new(github_token: Option<String>) -> Result<Self, String> {
+           let client = if let Some(token) = github_token {
+               Octocrab::builder().personal_token(token).build()?
+           } else {
+               Octocrab::builder().build()?
+           };
+           Ok(Self { client })
+       }
+   }
+   ```
+
+2. **Replaced GithubClient implementation**:
+   ```rust
+   pub struct GithubClient {
+       octocrab_client: OctocrabGithubClient,  // Was: client: Client, github_token: Option<String>
+   }
+   ```
+
+3. **Updated method implementations** to delegate to octocrab:
+   ```rust
+   pub async fn search_repositories(&self, params: GithubSearchParams) -> Result<RepositorySearchResults, String> {
+       self.octocrab_client.search_repositories(params).await
+   }
+   ```
+
+4. **Model conversion** from octocrab types to domain models:
+   ```rust
+   let items = results.items.into_iter().map(|repo| RepositoryItem {
+       id: repo.id.to_string(),
+       full_name: repo.full_name.unwrap_or_default(),
+       // ... convert other fields
+   }).collect();
+   ```
+
+5. **Removed obsolete code**:
+   - Manual HTTP request construction methods
+   - Custom JSON response parsing
+   - GitHub-specific struct definitions that octocrab provides
+   - Complex GraphQL request handling
+
+#### Pattern Application
+
+- **Interface preservation:** Public methods maintain exact same signatures
+- **Dependency injection:** Octocrab client wrapped in adapter pattern
+- **Error handling:** Convert octocrab errors to consistent domain error format
+- **Type conversion:** Map octocrab models to existing domain models
+- **Testing compatibility:** Existing commands work without modification
+
+#### Benefits Achieved
+
+- **Reduced code complexity:** Eliminated ~500 lines of manual HTTP handling
+- **Better error handling:** Octocrab provides robust GitHub API error handling
+- **Automatic retries:** Built-in rate limiting and retry logic
+- **API coverage:** Access to full GitHub API through octocrab's typed interface
+- **Maintenance reduction:** Library handles GitHub API changes automatically
+
+#### Verification Commands
+
+Both repository and issue search work identically after migration:
+```bash
+cargo run --bin gitcodes-cli repository-search "rust web framework" --per-page 3
+cargo run --bin gitcodes-cli issue-search --repository raiden-rs/raiden-dynamo "test" --per-page 5
+```
+
 ### Lumin 0.1.16 Glob Normalization Removal Pattern
 
 Removed unnecessary glob path normalization logic from `LocalRepository` after upgrading to lumin 0.1.16. The lumin library now handles both `include_glob` and `exclude_glob` parameters consistently, both expecting relative paths from the search directory.
@@ -32,6 +157,90 @@ Previously, `LocalRepository` included a `normalize_glob_path` method that conve
 The fix was verified with this test command that now works correctly:
 ```bash
 cargo run --bin gitcodes-cli grep "https://github.com/BurntSushi/ripgrep" "struct WalkParallel|impl WalkParallel" --include "crates/ignore/src/walk.rs"
+```
+
+### GitHub Issue Search Implementation Pattern
+
+Implemented comprehensive GitHub issue search functionality following the established repository search pattern. This pattern demonstrates how to extend the MCP tooling framework with new search capabilities while maintaining consistent architecture and strong type safety.
+
+#### Core Components Added
+
+1. **Issue-specific domain models** in `providers/models.rs`:
+   ```rust
+   pub struct IssueSearchResults {
+       pub total_count: u64,
+       pub incomplete_results: bool,
+       pub items: Vec<IssueItem>,
+   }
+   
+   pub struct IssueItem {
+       pub id: String,
+       pub number: u64,
+       pub title: String,
+       pub body: Option<String>,
+       pub state: String,
+       pub user: IssueUser,
+       // ... additional fields
+   }
+   ```
+
+2. **GitHub-specific issue search parameters** with sort options:
+   ```rust
+   pub enum GithubIssueSortOption {
+       Created,
+       Updated,
+       Comments,
+       BestMatch,
+   }
+   
+   pub struct GithubIssueSearchParams {
+       pub query: String,
+       pub sort_by: Option<GithubIssueSortOption>,
+       pub order: Option<GithubOrderOption>,
+       pub per_page: Option<u8>,
+       pub page: Option<u32>,
+   }
+   ```
+
+3. **Generic issue sort options** in repository manager:
+   ```rust
+   pub enum IssueSortOption {
+       Created,
+       Updated,
+       Comments,
+       BestMatch,
+   }
+   ```
+
+#### Implementation Pattern Application
+
+- **Provider abstraction:** Issue search follows the same provider-agnostic pattern as repository search
+- **Type conversion:** Generic `IssueSortOption` converts to provider-specific `GithubIssueSortOption`
+- **Error handling:** Consistent error patterns with rate limit detection
+- **Response transformation:** GitHub API responses converted to common domain models
+- **MCP tool integration:** New `search_issues` tool with comprehensive parameter documentation
+
+#### API Integration Details
+
+The GitHub Issues Search API implementation includes:
+- URL construction with proper query encoding
+- Support for GitHub's search syntax (`repo:`, `state:`, `label:`, etc.)
+- Pagination with per_page and page parameters
+- Sorting by creation date, update date, comments, or relevance
+- Authentication token support for higher rate limits
+
+#### Pattern Benefits
+
+- **Extensibility:** Easy to add new providers (GitLab, Bitbucket) following the same pattern
+- **Type safety:** Compile-time validation of sort options and parameters
+- **Consistency:** Unified interface across repository and issue search
+- **Testing:** Comprehensive test coverage with parameter validation and query syntax testing
+
+#### Usage Examples
+
+```json
+{"name": "search_issues", "arguments": {"query": "repo:rust-lang/rust state:open label:bug"}}
+{"name": "search_issues", "arguments": {"query": "label:enhancement", "sort_by": "Updated", "per_page": 20}}
 ```
 
 ### Documentation Quality and Rustdoc Compliance Pattern

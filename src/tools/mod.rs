@@ -9,7 +9,9 @@ mod error;
 pub mod responses;
 
 // Re-export SortOption and OrderOption from repository_manager
-pub use crate::gitcodes::repository_manager::{OrderOption, SearchParams, SortOption};
+pub use crate::gitcodes::repository_manager::{
+    IssueSortOption, OrderOption, SearchParams, SortOption,
+};
 
 // Note on Response Types:
 // Previously, the tool methods returned String or Result<String, String> directly,
@@ -120,11 +122,39 @@ impl ServerHandler for GitHubCodeTools {
 
 ## Available Tools
 - `search_repositories`: Search for GitHub repositories
+- `search_issues_and_pull_requests`: Search for GitHub issues and pull requests
 - `grep_repository`: Search code within a GitHub repository (returns compact grouped format)
 - `grep_repository_match_line_number`: Count matching lines only (returns number)
 - `list_repository_refs`: List branches and tags for a repository
 - `show_file_contents`: View file contents in compact format with concatenated lines and enhanced metadata
 - `get_repository_tree`: Get the directory tree structure of a repository
+
+### search_issues_and_pull_requests Examples
+Search for GitHub issues and pull requests with powerful query syntax support:
+
+Basic issue and pull request search:
+```json
+{{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {{\"query\": \"repo:rust-lang/rust state:open label:bug\"}}}}
+```
+
+Search with sorting and pagination:
+```json
+{{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {{\"query\": \"label:enhancement state:open\", \"sort_by\": \"Updated\", \"order\": \"Descending\", \"per_page\": 20}}}}
+```
+
+Advanced filtering:
+```json
+{{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {{\"query\": \"assignee:username author:contributor created:>2023-01-01\"}}}}
+```
+
+Search query syntax supports:
+- `repo:owner/name` - Search within specific repository
+- `state:open` or `state:closed` - Filter by issue state
+- `label:bug` - Filter by label
+- `assignee:username` - Filter by assignee
+- `author:username` - Filter by author
+- `created:2021-01-01..2021-12-31` - Date range filters
+- `updated:>2021-01-01` - Last update filters
 
 ## Response Format Updates
 
@@ -285,6 +315,86 @@ impl GitHubCodeTools {
         page: Option<u32>,
     ) -> Result<CallToolResult, McpError> {
         inner_search_repositories(
+            &self.manager,
+            provider,
+            query,
+            sort_by,
+            order,
+            per_page,
+            page,
+        )
+        .await
+    }
+
+    /// Search for GitHub issues using the GitHub API
+    ///
+    /// This method searches for issues on GitHub based on the provided query.
+    /// It supports sorting, pagination, and uses GitHub's issues search API.
+    ///
+    /// # Authentication
+    ///
+    /// - Uses the `GITCODES_MCP_GITHUB_TOKEN` if available for authentication
+    /// - Without a token, limited to 60 requests/hour
+    /// - With a token, allows 5,000 requests/hour
+    ///
+    /// # Rate Limiting
+    ///
+    /// GitHub API has rate limits that vary based on authentication:
+    /// - Unauthenticated: 60 requests/hour
+    /// - Authenticated: 5,000 requests/hour
+    ///
+    /// # Search Query Syntax
+    ///
+    /// The query parameter supports GitHub's search syntax:
+    /// - `repo:owner/name` - Search within a specific repository
+    /// - `state:open` or `state:closed` - Filter by issue state
+    /// - `label:bug` - Filter by label
+    /// - `assignee:username` - Filter by assignee
+    /// - `author:username` - Filter by author
+    /// - `created:2021-01-01..2021-12-31` - Filter by creation date range
+    /// - `updated:>2021-01-01` - Filter by last update date
+    #[tool(
+        description = "Search GitHub issues and pull requests by query. Automatically includes both 'is:issue' and 'is:pull-request' qualifiers by default unless explicitly specified in the query. Supports sorting and pagination. Example: `{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {\"query\": \"repo:rust-lang/rust state:open label:bug\"}}`. With sorting: `{\"name\": \"search_issues_and_pull_requests\", \"arguments\": {\"query\": \"label:enhancement\", \"sort_by\": \"Updated\"}}`"
+    )]
+    async fn search_issues_and_pull_requests(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Git provider (optional, default 'github'). Currently only 'github' is supported. When omitted, defaults to GitHub. Example: 'github'."
+        )]
+        provider: Option<String>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Search query for issues (required). Supports GitHub search qualifiers like 'repo:owner/name state:open' or 'label:bug'. Max 256 characters. This parameter is required and must be provided for the search to execute."
+        )]
+        query: String,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Sort results by (optional, default 'best-match'). Valid options: 'Created' (sort by creation date), 'Updated' (sort by last update), 'Comments' (sort by comment count), 'BestMatch' (sort by relevance). When omitted, sorts by relevance score."
+        )]
+        sort_by: Option<IssueSortOption>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Sort order (optional, default 'descending'). Valid options: 'Ascending' (oldest to newest), 'Descending' (newest to oldest). When omitted, uses descending order."
+        )]
+        order: Option<OrderOption>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Results per page (optional, default 30, max 100). Must be between 1 and 100. Controls pagination size for search results."
+        )]
+        per_page: Option<u8>,
+
+        #[tool(param)]
+        #[schemars(
+            description = "Page number for pagination (optional, default 1). Must be positive integer. GitHub limits total results to 1000 items, so max effective page depends on per_page value."
+        )]
+        page: Option<u32>,
+    ) -> Result<CallToolResult, McpError> {
+        inner_search_issues_and_pull_requests(
             &self.manager,
             provider,
             query,
@@ -927,6 +1037,62 @@ async fn inner_search_repositories(
             per_page,
             page,
         )
+        .await
+    {
+        Ok(search_results) => {
+            // Serialize the structured result to JSON
+            match serde_json::to_string(&search_results) {
+                Ok(json_result) => success_result(json_result),
+                Err(e) => error_result(format!("Failed to serialize search results: {}", e)),
+            }
+        }
+        Err(err) => error_result(format!("Search failed: {}", err)),
+    }
+}
+
+async fn inner_search_issues_and_pull_requests(
+    repository_manager: &RepositoryManager,
+    provider: Option<String>,
+    query: String,
+    sort_by: Option<IssueSortOption>,
+    order: Option<OrderOption>,
+    per_page: Option<u8>,
+    page: Option<u32>,
+) -> Result<CallToolResult, McpError> {
+    // Parse the provider string or use default (GitHub)
+    let git_provider = match provider.as_deref() {
+        Some(provider_str) => match GitProvider::from_str(provider_str) {
+            Ok(provider) => provider,
+            Err(_) => {
+                return error_result(format!(
+                    "Invalid provider: '{}'. Currently only 'github' is supported.",
+                    provider_str
+                ));
+            }
+        },
+        None => GitProvider::Github, // Default to GitHub if not provided
+    };
+
+    // Create issue search parameters
+    let search_params = crate::gitcodes::repository_manager::IssueSearchParams {
+        query,
+        sort_by,
+        order,
+        per_page,
+        page,
+        repository: None,
+        labels: None,
+        state: None,
+        creator: None,
+        mentioned: None,
+        assignee: None,
+        milestone: None,
+        issue_type: None,
+    };
+
+    // Execute the search against the specified provider using the repository manager
+    match repository_manager
+        .search_issues(git_provider, search_params)
         .await
     {
         Ok(search_results) => {

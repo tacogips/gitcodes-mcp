@@ -7,6 +7,7 @@ pub use git_remote_repository::{GitRemoteRepository, GitRemoteRepositoryInfo};
 pub use github::*;
 // Explicitly import models
 pub use models::{
-    GitProvider, ReferenceInfo, RepositoryItem, RepositoryLicense, RepositoryOwner, RepositoryRefs,
+    GitProvider, IssueItem, IssueLabel, IssueMilestone, IssueRepository, IssueSearchResults,
+    IssueUser, ReferenceInfo, RepositoryItem, RepositoryLicense, RepositoryOwner, RepositoryRefs,
     RepositorySearchResults,
 };
