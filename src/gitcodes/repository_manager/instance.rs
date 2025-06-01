@@ -12,19 +12,6 @@ use super::RepositoryManager;
 /// Global RepositoryManager instance
 static GLOBAL_REPOSITORY_MANAGER: OnceCell<RepositoryManager> = OnceCell::new();
 
-/// Initialize the global RepositoryManager instance with the given parameters
-///
-/// This function should be called once during process startup. If called multiple times,
-/// only the first call will have an effect, and subsequent calls will be ignored.
-///
-/// # Parameters
-///
-/// * `github_token` - Optional GitHub token for authentication
-/// * `repository_cache_dir` - Optional path for storing repositories
-///
-/// # Returns
-///
-/// The global RepositoryManager instance (either newly created or existing)
 pub fn init_repository_manager(
     github_token: Option<String>,
     repository_cache_dir: Option<PathBuf>,
