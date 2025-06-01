@@ -1,5 +1,5 @@
 {
-  description = "gitcodes-mcp-forked";
+  description = "gitcodes-mcp";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
