@@ -1,11 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::ids::{
+    CommentId, IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId, SyncStatusId,
+};
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repository {
-    pub id: i64,
+    pub id: RepositoryId,
     pub owner: String,
     pub name: String,
     pub full_name: String,
@@ -20,9 +23,9 @@ pub struct Repository {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Issue {
-    pub id: i64,
-    pub repository_id: i64,
-    pub number: i64,
+    pub id: IssueId,
+    pub repository_id: RepositoryId,
+    pub number: IssueNumber,
     pub title: String,
     pub body: Option<String>,
     pub state: IssueState,
@@ -37,9 +40,9 @@ pub struct Issue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
-    pub id: i64,
-    pub repository_id: i64,
-    pub number: i64,
+    pub id: PullRequestId,
+    pub repository_id: RepositoryId,
+    pub number: PullRequestNumber,
     pub title: String,
     pub body: Option<String>,
     pub state: PullRequestState,
@@ -61,9 +64,9 @@ pub struct PullRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueComment {
-    pub id: i64,
-    pub issue_id: i64,
-    pub comment_id: i64,
+    pub id: CommentId,
+    pub issue_id: IssueId,
+    pub comment_id: CommentId,
     pub author: String,
     pub body: String,
     pub created_at: DateTime<Utc>,
@@ -72,9 +75,9 @@ pub struct IssueComment {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequestComment {
-    pub id: i64,
-    pub pull_request_id: i64,
-    pub comment_id: i64,
+    pub id: CommentId,
+    pub pull_request_id: PullRequestId,
+    pub comment_id: CommentId,
     pub author: String,
     pub body: String,
     pub created_at: DateTime<Utc>,
@@ -83,8 +86,8 @@ pub struct PullRequestComment {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncStatus {
-    pub id: i64,
-    pub repository_id: i64,
+    pub id: SyncStatusId,
+    pub repository_id: RepositoryId,
     pub resource_type: ResourceType,
     pub last_synced_at: DateTime<Utc>,
     pub status: SyncStatusType,
@@ -96,9 +99,9 @@ pub struct SyncStatus {
 pub struct CrossReference {
     pub source_type: ItemType,
     pub source_id: i64,
-    pub source_repository_id: i64,
+    pub source_repository_id: RepositoryId,
     pub target_type: ItemType,
-    pub target_repository_id: i64,
+    pub target_repository_id: RepositoryId,
     pub target_number: i64,
     pub link_text: String,
     pub created_at: DateTime<Utc>,

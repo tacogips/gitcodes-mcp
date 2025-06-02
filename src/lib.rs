@@ -17,6 +17,7 @@
 //! See the README.md file for more usage examples.
 
 pub mod git;
+pub mod ids;
 pub mod services;
 pub mod storage;
 pub mod tools;

@@ -4,6 +4,7 @@ use octocrab::models::{issues::Issue as OctoIssue, pulls::PullRequest as OctoPul
 use octocrab::{Octocrab, Page};
 use std::sync::Arc;
 
+use crate::ids::{CommentId, IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
 use crate::storage::models::{Issue, IssueComment, PullRequest, PullRequestComment, Repository};
 use crate::types::{IssueState, PullRequestState};
 
@@ -35,7 +36,7 @@ impl GitHubClient {
             .context("Failed to fetch repository")?;
 
         Ok(Repository {
-            id: repo.id.0 as i64,
+            id: RepositoryId::new(repo.id.0 as i64),
             owner: repo
                 .owner
                 .as_ref()
@@ -61,7 +62,7 @@ impl GitHubClient {
         &self,
         owner: &str,
         name: &str,
-        repository_id: i64,
+        repository_id: RepositoryId,
         since: Option<DateTime<Utc>>,
     ) -> Result<Vec<Issue>> {
         let mut page = 1u32;
@@ -100,11 +101,10 @@ impl GitHubClient {
 
             all_issues.extend(issues);
 
-            if issues_page.next.is_none() {
-                break;
+            match issues_page.next {
+                Some(_) => page += 1,
+                None => break,
             }
-
-            page += 1;
         }
 
         Ok(all_issues)
@@ -114,7 +114,7 @@ impl GitHubClient {
         &self,
         owner: &str,
         name: &str,
-        repository_id: i64,
+        repository_id: RepositoryId,
         since: Option<DateTime<Utc>>,
     ) -> Result<Vec<PullRequest>> {
         let mut page = 1u32;
@@ -148,11 +148,10 @@ impl GitHubClient {
 
             all_prs.extend(prs);
 
-            if pulls_page.next.is_none() {
-                break;
+            match pulls_page.next {
+                Some(_) => page += 1,
+                None => break,
             }
-
-            page += 1;
         }
 
         Ok(all_prs)
@@ -163,7 +162,7 @@ impl GitHubClient {
         owner: &str,
         name: &str,
         issue_number: u64,
-        issue_id: i64,
+        issue_id: IssueId,
     ) -> Result<Vec<IssueComment>> {
         let mut page = 1u32;
         let mut all_comments = Vec::new();
@@ -183,9 +182,9 @@ impl GitHubClient {
                 .items
                 .into_iter()
                 .map(|comment| IssueComment {
-                    id: 0, // Will be assigned by database
+                    id: CommentId::new(0), // Will be assigned by database
                     issue_id,
-                    comment_id: comment.id.0 as i64,
+                    comment_id: CommentId::new(comment.id.0 as i64),
                     author: comment.user.login.clone(),
                     body: comment.body.unwrap_or_default(),
                     created_at: comment.created_at,
@@ -195,11 +194,10 @@ impl GitHubClient {
 
             all_comments.extend(comments);
 
-            if comments_page.next.is_none() {
-                break;
+            match comments_page.next {
+                Some(_) => page += 1,
+                None => break,
             }
-
-            page += 1;
         }
 
         Ok(all_comments)
@@ -210,7 +208,7 @@ impl GitHubClient {
         owner: &str,
         name: &str,
         pr_number: u64,
-        pr_id: i64,
+        pr_id: PullRequestId,
     ) -> Result<Vec<PullRequestComment>> {
         let mut page = 1u32;
         let mut all_comments = Vec::new();
@@ -231,9 +229,9 @@ impl GitHubClient {
                 .items
                 .into_iter()
                 .map(|comment| PullRequestComment {
-                    id: 0, // Will be assigned by database
+                    id: CommentId::new(0), // Will be assigned by database
                     pull_request_id: pr_id,
-                    comment_id: comment.id.0 as i64,
+                    comment_id: CommentId::new(comment.id.0 as i64),
                     author: comment.user.login.clone(),
                     body: comment.body.unwrap_or_default(),
                     created_at: comment.created_at,
@@ -243,21 +241,20 @@ impl GitHubClient {
 
             all_comments.extend(comments);
 
-            if comments_page.next.is_none() {
-                break;
+            match comments_page.next {
+                Some(_) => page += 1,
+                None => break,
             }
-
-            page += 1;
         }
 
         Ok(all_comments)
     }
 
-    fn convert_issue(&self, issue: OctoIssue, repository_id: i64) -> Issue {
+    fn convert_issue(&self, issue: OctoIssue, repository_id: RepositoryId) -> Issue {
         Issue {
-            id: issue.id.0 as i64,
+            id: IssueId::new(issue.id.0 as i64),
             repository_id,
-            number: issue.number as i64,
+            number: IssueNumber::new(issue.number as i64),
             title: issue.title,
             body: issue.body,
             state: match issue.state {
@@ -279,12 +276,16 @@ impl GitHubClient {
         }
     }
 
-    fn convert_pull_request(&self, pr: OctoPullRequest, repository_id: i64) -> Result<PullRequest> {
+    fn convert_pull_request(
+        &self,
+        pr: OctoPullRequest,
+        repository_id: RepositoryId,
+    ) -> Result<PullRequest> {
         // For detailed PR info, we need to fetch it separately
         Ok(PullRequest {
-            id: pr.id.0 as i64,
+            id: PullRequestId::new(pr.id.0 as i64),
             repository_id,
-            number: pr.number as i64,
+            number: PullRequestNumber::new(pr.number as i64),
             title: pr.title.clone().unwrap_or_default(),
             body: pr.body.clone(),
             state: if pr.merged_at.is_some() {

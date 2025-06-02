@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
-use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{self, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser)]
 #[command(author, version = "0.1.0", about, long_about = None)]
@@ -141,11 +141,8 @@ async fn run_http_server(
     }
 
     // Create app and run server using the new rust-sdk implementation
-    let app = gitdb::transport::sse_server::SseServerApp::new(
-        addr,
-        github_token,
-        repository_cache_dir,
-    );
+    let app =
+        gitdb::transport::sse_server::SseServerApp::new(addr, github_token, repository_cache_dir);
     app.serve().await?;
 
     Ok(())
