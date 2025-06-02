@@ -18,5 +18,6 @@
 
 pub mod git;
 pub mod services;
+pub mod storage;
 pub mod tools;
 pub mod transport;

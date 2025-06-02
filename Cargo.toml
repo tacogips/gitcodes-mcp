@@ -46,6 +46,19 @@ strum = { version = "0.25", features = ["derive"] }
 uuid = { version = "1.4", features = ["v4"] }
 once_cell = "1.18"
 
+# Database and storage
+sled = "0.34"
+tantivy = "0.22"
+
+# Platform directories
+dirs = "5.0"
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Regular expressions
+regex = "1.10"
+
 [dev-dependencies]
 # Testing utilities
 mockito = "1.2"
