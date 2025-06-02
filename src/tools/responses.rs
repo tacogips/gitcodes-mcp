@@ -1,6 +1,3 @@
-use crate::gitcodes::CodeSearchResult;
-use crate::gitcodes::repository_manager::providers::IssueSearchResults;
-use lumin::view::FileContents;
 use serde::{Deserialize, Serialize};
 
 /// Response for the list_repository_refs tool

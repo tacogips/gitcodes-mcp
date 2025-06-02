@@ -64,4 +64,4 @@ path = "src/bin/gitdb_mcp.rs"
 # CLI binary for terminal use
 [[bin]]
 name = "gitdb-cli"
-path = "src/bin/gitcodes_cli.rs"
+path = "src/bin/gitdb_cli.rs"
