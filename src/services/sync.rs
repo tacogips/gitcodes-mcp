@@ -16,6 +16,20 @@ pub struct SyncService {
 }
 
 impl SyncService {
+    /// Creates a new SyncService instance with the specified database and GitHub token.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Arc reference to the GitDatabase for storing synchronized data
+    /// * `github_token` - Optional GitHub personal access token for API authentication
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the new SyncService instance or an error if initialization fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GitHubClient initialization fails.
     pub fn new(db: Arc<GitDatabase>, github_token: Option<String>) -> Result<Self> {
         let github = GitHubClient::new(github_token)?;
 
@@ -25,6 +39,23 @@ impl SyncService {
         })
     }
 
+    /// Synchronizes a GitHub repository's issues and pull requests to the local database.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo_url` - The GitHub repository URL (supports various formats like https://github.com/owner/repo)
+    /// * `full_sync` - If true, performs a full synchronization ignoring last sync timestamps
+    ///
+    /// # Returns
+    ///
+    /// Returns a SyncResult containing the number of synced items and any errors encountered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The repository URL parsing fails
+    /// - The GitHub API calls fail
+    /// - Database operations fail
     pub async fn sync_repository(&self, repo_url: &str, full_sync: bool) -> Result<SyncResult> {
         let (owner, name) = parse_repo_url(repo_url)?;
         info!("Starting sync for {}/{}", owner, name);
@@ -330,6 +361,26 @@ pub struct SyncResult {
     pub errors: Vec<String>,
 }
 
+/// Parses a GitHub repository URL to extract the owner and repository name.
+///
+/// # Arguments
+///
+/// * `url` - The repository URL to parse
+///
+/// # Returns
+///
+/// Returns a tuple of (owner, repository_name) on success.
+///
+/// # Supported Formats
+///
+/// - `https://github.com/owner/repo`
+/// - `https://github.com/owner/repo.git`
+/// - `git@github.com:owner/repo.git`
+/// - `owner/repo` (simple format)
+///
+/// # Errors
+///
+/// Returns an error if the URL doesn't match any supported format.
 pub fn parse_repo_url(url: &str) -> Result<(String, String)> {
     // Support various GitHub URL formats
     let patterns = [

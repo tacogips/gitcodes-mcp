@@ -10,6 +10,11 @@ pub enum ItemType {
 }
 
 impl ItemType {
+    /// Returns the string representation for unknown item types.
+    ///
+    /// # Returns
+    ///
+    /// A static string slice containing "unknown"
     pub fn unknown_str() -> &'static str {
         "unknown"
     }
@@ -24,6 +29,11 @@ pub enum IssueState {
 }
 
 impl IssueState {
+    /// Returns the string representation for unknown issue states.
+    ///
+    /// # Returns
+    ///
+    /// A static string slice containing "unknown"
     pub fn unknown_str() -> &'static str {
         "unknown"
     }
@@ -39,6 +49,11 @@ pub enum PullRequestState {
 }
 
 impl PullRequestState {
+    /// Returns the string representation for unknown pull request states.
+    ///
+    /// # Returns
+    ///
+    /// A static string slice containing "unknown"
     pub fn unknown_str() -> &'static str {
         "unknown"
     }

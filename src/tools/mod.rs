@@ -48,12 +48,28 @@ impl ServerHandler for GitDbTools {
     }
 }
 
-/// Helper method to create a CallToolResult for successful responses
+/// Helper method to create a CallToolResult for successful responses.
+///
+/// # Arguments
+///
+/// * `json` - The JSON string to include in the successful response
+///
+/// # Returns
+///
+/// Returns a Result containing a successful CallToolResult with the JSON content.
 fn success_result(json: String) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
-/// Helper method to create a CallToolResult for error responses
+/// Helper method to create a CallToolResult for error responses.
+///
+/// # Arguments
+///
+/// * `message` - The error message to include in the response
+///
+/// # Returns
+///
+/// Returns a Result containing an error CallToolResult with the error message.
 fn error_result(message: impl Into<String>) -> Result<CallToolResult, McpError> {
     let error_message = message.into();
     Ok(CallToolResult::error(vec![Content::text(error_message)]))

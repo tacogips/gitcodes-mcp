@@ -13,6 +13,19 @@ pub struct GitHubClient {
 }
 
 impl GitHubClient {
+    /// Creates a new GitHubClient instance with optional authentication.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Optional GitHub personal access token for API authentication
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the new GitHubClient instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Octocrab client building fails.
     pub fn new(token: Option<String>) -> Result<Self> {
         let mut builder = Octocrab::builder();
 
@@ -27,6 +40,20 @@ impl GitHubClient {
         })
     }
 
+    /// Fetches repository information from GitHub.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The repository owner (user or organization)
+    /// * `name` - The repository name
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the Repository metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GitHub API call fails.
     pub async fn get_repository(&self, owner: &str, name: &str) -> Result<Repository> {
         let repo = self
             .client
@@ -58,6 +85,22 @@ impl GitHubClient {
         })
     }
 
+    /// Fetches all issues for a repository from GitHub.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The repository owner (user or organization)
+    /// * `name` - The repository name
+    /// * `repository_id` - The internal repository ID for database storage
+    /// * `since` - Optional DateTime to fetch only issues updated after this time
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a Vec of all issues (excluding pull requests).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GitHub API calls fail.
     pub async fn get_issues(
         &self,
         owner: &str,
@@ -110,6 +153,22 @@ impl GitHubClient {
         Ok(all_issues)
     }
 
+    /// Fetches all pull requests for a repository from GitHub.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The repository owner (user or organization)
+    /// * `name` - The repository name
+    /// * `repository_id` - The internal repository ID for database storage
+    /// * `since` - Optional DateTime to fetch only pull requests updated after this time
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a Vec of all pull requests.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GitHub API calls fail.
     pub async fn get_pull_requests(
         &self,
         owner: &str,
@@ -157,6 +216,22 @@ impl GitHubClient {
         Ok(all_prs)
     }
 
+    /// Fetches all comments for a specific issue from GitHub.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The repository owner (user or organization)
+    /// * `name` - The repository name
+    /// * `issue_number` - The issue number in the repository
+    /// * `issue_id` - The internal issue ID for database storage
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a Vec of all comments for the issue.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GitHub API calls fail.
     pub async fn get_issue_comments(
         &self,
         owner: &str,
@@ -203,6 +278,22 @@ impl GitHubClient {
         Ok(all_comments)
     }
 
+    /// Fetches all comments for a specific pull request from GitHub.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner` - The repository owner (user or organization)
+    /// * `name` - The repository name
+    /// * `pr_number` - The pull request number in the repository
+    /// * `pr_id` - The internal pull request ID for database storage
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing a Vec of all comments for the pull request.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the GitHub API calls fail.
     pub async fn get_pull_request_comments(
         &self,
         owner: &str,

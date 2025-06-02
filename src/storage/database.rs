@@ -21,6 +21,18 @@ pub struct GitDatabase {
 }
 
 impl GitDatabase {
+    /// Creates a new GitDatabase instance with search index and storage.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the initialized GitDatabase.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Storage paths initialization fails
+    /// - Sled database opening fails
+    /// - Tantivy search index creation or opening fails
     pub async fn new() -> Result<Self> {
         let paths = StoragePaths::new()?;
 
@@ -68,6 +80,15 @@ impl GitDatabase {
     }
 
     // Repository operations
+    /// Inserts or updates a repository in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The Repository to insert or update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn upsert_repository(&self, repo: &Repository) -> Result<()> {
         let tree = self.db.open_tree("repositories")?;
 
@@ -80,6 +101,19 @@ impl GitDatabase {
         Ok(())
     }
 
+    /// Retrieves a repository by its full name (owner/repo).
+    ///
+    /// # Arguments
+    ///
+    /// * `full_name` - The full repository name in format "owner/repo"
+    ///
+    /// # Returns
+    ///
+    /// Returns an Option containing the Repository if found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn get_repository_by_full_name(&self, full_name: &str) -> Result<Option<Repository>> {
         let tree = self.db.open_tree("repositories")?;
 
@@ -94,6 +128,15 @@ impl GitDatabase {
         }
     }
 
+    /// Lists all repositories in the database.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Vec of all Repository entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn list_repositories(&self) -> Result<Vec<Repository>> {
         let tree = self.db.open_tree("repositories")?;
 
@@ -108,6 +151,15 @@ impl GitDatabase {
     }
 
     // Issue operations
+    /// Inserts or updates an issue in the database and search index.
+    ///
+    /// # Arguments
+    ///
+    /// * `issue` - The Issue to insert or update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations or search indexing fails.
     pub async fn upsert_issue(&self, issue: &Issue) -> Result<()> {
         let tree = self.db.open_tree("issues")?;
 
@@ -159,6 +211,20 @@ impl GitDatabase {
         Ok(())
     }
 
+    /// Retrieves issues for a specific repository, optionally filtered by update time.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_id` - The ID of the repository
+    /// * `since` - Optional DateTime to filter issues updated after this time
+    ///
+    /// # Returns
+    ///
+    /// Returns a Vec of Issue entries matching the criteria.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn get_issues_by_repository(
         &self,
         repository_id: RepositoryId,
@@ -186,6 +252,15 @@ impl GitDatabase {
     }
 
     // Pull request operations
+    /// Inserts or updates a pull request in the database and search index.
+    ///
+    /// # Arguments
+    ///
+    /// * `pr` - The PullRequest to insert or update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations or search indexing fails.
     pub async fn upsert_pull_request(&self, pr: &PullRequest) -> Result<()> {
         let tree = self.db.open_tree("pull_requests")?;
 
@@ -237,6 +312,20 @@ impl GitDatabase {
         Ok(())
     }
 
+    /// Retrieves pull requests for a specific repository, optionally filtered by update time.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_id` - The ID of the repository
+    /// * `since` - Optional DateTime to filter pull requests updated after this time
+    ///
+    /// # Returns
+    ///
+    /// Returns a Vec of PullRequest entries matching the criteria.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn get_pull_requests_by_repository(
         &self,
         repository_id: RepositoryId,
@@ -264,6 +353,15 @@ impl GitDatabase {
     }
 
     // Comment operations
+    /// Inserts or updates an issue comment in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `comment` - The IssueComment to insert or update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn upsert_issue_comment(&self, comment: &IssueComment) -> Result<()> {
         let tree = self.db.open_tree("issue_comments")?;
 
@@ -276,6 +374,15 @@ impl GitDatabase {
         Ok(())
     }
 
+    /// Inserts or updates a pull request comment in the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `comment` - The PullRequestComment to insert or update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn upsert_pull_request_comment(&self, comment: &PullRequestComment) -> Result<()> {
         let tree = self.db.open_tree("pr_comments")?;
 
@@ -292,6 +399,20 @@ impl GitDatabase {
     }
 
     // Sync status operations
+    /// Retrieves the last successful sync status for a repository and resource type.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_id` - The ID of the repository
+    /// * `resource_type` - The type of resource (Issues or PullRequests)
+    ///
+    /// # Returns
+    ///
+    /// Returns an Option containing the most recent successful SyncStatus.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn get_last_sync_status(
         &self,
         repository_id: RepositoryId,
@@ -321,6 +442,15 @@ impl GitDatabase {
         Ok(latest)
     }
 
+    /// Updates the sync status for a repository and resource type.
+    ///
+    /// # Arguments
+    ///
+    /// * `status` - The SyncStatus to store
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn update_sync_status(&self, status: &SyncStatus) -> Result<()> {
         let tree = self.db.open_tree("sync_status")?;
 
@@ -338,6 +468,15 @@ impl GitDatabase {
     }
 
     // Cross-reference operations
+    /// Adds a cross-reference between issues or pull requests.
+    ///
+    /// # Arguments
+    ///
+    /// * `cross_ref` - The CrossReference to add
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub fn add_cross_reference(&self, cross_ref: &CrossReference) -> Result<()> {
         let tree = self.db.open_tree("cross_references")?;
 
@@ -362,6 +501,21 @@ impl GitDatabase {
         Ok(())
     }
 
+    /// Retrieves cross-references originating from a specific source item.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_id` - The repository ID of the source item
+    /// * `item_type` - The type of the source item (Issue or PullRequest)
+    /// * `item_id` - The ID of the source item
+    ///
+    /// # Returns
+    ///
+    /// Returns a Vec of CrossReference entries from this source.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub fn get_cross_references_by_source(
         &self,
         repository_id: RepositoryId,
@@ -382,6 +536,21 @@ impl GitDatabase {
         Ok(refs)
     }
 
+    /// Retrieves cross-references pointing to a specific target item.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_id` - The repository ID of the target item
+    /// * `item_type` - The type of the target item (Issue or PullRequest)
+    /// * `item_number` - The number of the target item
+    ///
+    /// # Returns
+    ///
+    /// Returns a Vec of CrossReference entries pointing to this target.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub fn get_cross_references_by_target(
         &self,
         repository_id: RepositoryId,
@@ -406,6 +575,21 @@ impl GitDatabase {
     }
 
     // Search operations
+    /// Searches for issues and pull requests using full-text search.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The search query string
+    /// * `repository_id` - Optional repository ID to filter results
+    /// * `limit` - Maximum number of results to return
+    ///
+    /// # Returns
+    ///
+    /// Returns a Vec of SearchResult entries matching the query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if search operations fail.
     pub async fn search(
         &self,
         query: &str,

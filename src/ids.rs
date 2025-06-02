@@ -8,10 +8,20 @@ macro_rules! define_id {
         pub struct $name($inner);
 
         impl $name {
+            /// Creates a new instance of the ID type.
+            ///
+            /// # Arguments
+            ///
+            /// * `value` - The underlying value for the ID
             pub fn new(value: $inner) -> Self {
                 Self(value)
             }
 
+            /// Returns the underlying value of the ID.
+            ///
+            /// # Returns
+            ///
+            /// The inner value of the ID type
             pub fn value(&self) -> $inner {
                 self.0
             }

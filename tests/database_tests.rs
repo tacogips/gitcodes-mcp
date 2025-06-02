@@ -7,14 +7,33 @@ use tempfile::TempDir;
 async fn create_test_db() -> Result<(GitDatabase, TempDir)> {
     let temp_dir = TempDir::new()?;
     
-    // Create a unique data directory for this test
-    let data_dir = temp_dir.path().join(format!("test_{}", uuid::Uuid::new_v4()));
+    // Create unique directories for this test
+    let test_id = uuid::Uuid::new_v4();
+    let data_dir = temp_dir.path().join(format!("data_{}", test_id));
+    let config_dir = temp_dir.path().join(format!("config_{}", test_id));
     std::fs::create_dir_all(&data_dir)?;
+    std::fs::create_dir_all(&config_dir)?;
     
-    unsafe {
-        std::env::set_var("GITDB_DATA_DIR", &data_dir);
-    }
-    let db = GitDatabase::new().await?;
+    // Use static mutex to ensure env vars are set/unset atomically
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+    
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    
+    let db = {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        unsafe {
+            std::env::set_var("GITDB_DATA_DIR", &data_dir);
+            std::env::set_var("GITDB_CONFIG_DIR", &config_dir);
+        }
+        let db = GitDatabase::new().await?;
+        unsafe {
+            std::env::remove_var("GITDB_DATA_DIR");
+            std::env::remove_var("GITDB_CONFIG_DIR");
+        }
+        db
+    };
+    
     Ok((db, temp_dir))
 }
 
