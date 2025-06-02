@@ -284,7 +284,7 @@ impl GitDatabase {
     pub async fn get_last_sync_status(&self, repository_id: i64, resource_type: ResourceType) -> Result<Option<SyncStatus>> {
         let tree = self.db.open_tree("sync_status")?;
         
-        let prefix = format!("sync:{}:{}:", repository_id, resource_type.to_string());
+        let prefix = format!("sync:{}:{}:", repository_id, resource_type);
         let mut latest: Option<SyncStatus> = None;
         
         for item in tree.scan_prefix(prefix.as_bytes()) {
@@ -310,7 +310,7 @@ impl GitDatabase {
         let tree = self.db.open_tree("sync_status")?;
         
         let timestamp = status.last_synced_at.timestamp_millis();
-        let key = format!("sync:{}:{}:{}", status.repository_id, status.resource_type.to_string(), timestamp);
+        let key = format!("sync:{}:{}:{}", status.repository_id, status.resource_type, timestamp);
         let value = serde_json::to_vec(status)?;
         
         tree.insert(key.as_bytes(), value)?;
@@ -326,14 +326,14 @@ impl GitDatabase {
         // Store with source key
         let source_key = format!("xref_source:{}:{}:{}", 
             cross_ref.source_repository_id, 
-            cross_ref.source_type.to_string(), 
+            cross_ref.source_type, 
             cross_ref.source_id
         );
         
         // Store with target key for bidirectional lookup
         let target_key = format!("xref_target:{}:{}:{}", 
             cross_ref.target_repository_id, 
-            cross_ref.target_type.to_string(), 
+            cross_ref.target_type, 
             cross_ref.target_number
         );
         
@@ -349,7 +349,7 @@ impl GitDatabase {
     pub fn get_cross_references_by_source(&self, repository_id: i64, item_type: ItemType, item_id: i64) -> Result<Vec<CrossReference>> {
         let tree = self.db.open_tree("cross_references")?;
         
-        let prefix = format!("xref_source:{}:{}:{}", repository_id, item_type.to_string(), item_id);
+        let prefix = format!("xref_source:{}:{}:{}", repository_id, item_type, item_id);
         let mut refs = Vec::new();
         
         for item in tree.scan_prefix(prefix.as_bytes()) {
@@ -364,7 +364,7 @@ impl GitDatabase {
     pub fn get_cross_references_by_target(&self, repository_id: i64, item_type: ItemType, item_number: i64) -> Result<Vec<CrossReference>> {
         let tree = self.db.open_tree("cross_references")?;
         
-        let prefix = format!("xref_target:{}:{}:{}", repository_id, item_type.to_string(), item_number);
+        let prefix = format!("xref_target:{}:{}:{}", repository_id, item_type, item_number);
         let mut refs = Vec::new();
         
         for item in tree.scan_prefix(prefix.as_bytes()) {
