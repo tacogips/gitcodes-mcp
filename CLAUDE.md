@@ -22,6 +22,7 @@ When working with this codebase, refer to the following key documents:
 - **README.md**: User-facing documentation and usage instructions
 - **docs/blueprint/**: Contains design-related documentation. Files are named in the format {seq_no}.md where seq_no is incremented sequentially. This directory includes future development plans and specifications for features to be implemented. When instructed in the prompt, refer to files in this directory and implement features according to the instructions/designs described there. Higher seq_no values indicate more recent documents, and in case of conflicts between documents, the content from files with higher seq_no should take precedence.
 - **docs/devlog/**: Contains development history records. Files are named in the format {seq_no}.md where seq_no is incremented sequentially. To understand current implementation details or recent modifications, refer to files in descending order by seq_no (highest numbers first).
+- **docs/context/**: Contains information about context of spec, usage of library and so on. For example, the explanation of MCP is stored at `docs/context/about-mcp.md`, the usage and code examples of Rust MCP SDK are stored at `docs/context/mcp-sdk-rust.md`.
 
 ## Build & Run Commands
 
