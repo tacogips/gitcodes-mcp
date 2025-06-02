@@ -330,11 +330,11 @@ pub struct SyncResult {
     pub errors: Vec<String>,
 }
 
-fn parse_repo_url(url: &str) -> Result<(String, String)> {
+pub fn parse_repo_url(url: &str) -> Result<(String, String)> {
     // Support various GitHub URL formats
     let patterns = [
-        Regex::new(r"^https://github\.com/([^/]+)/([^/]+)(?:\.git)?/?$")?,
-        Regex::new(r"^git@github\.com:([^/]+)/([^/]+)(?:\.git)?$")?,
+        Regex::new(r"^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$")?,
+        Regex::new(r"^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$")?,
         Regex::new(r"^([^/]+)/([^/]+)$")?, // Simple owner/repo format
     ];
 

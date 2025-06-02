@@ -8,13 +8,22 @@ pub struct StoragePaths {
 
 impl StoragePaths {
     pub fn new() -> Result<Self> {
-        let config_dir = dirs::config_dir()
-            .context("Failed to get config directory")?
-            .join("gitdb");
+        // Check for environment variable override (useful for testing)
+        let data_dir = if let Ok(override_path) = std::env::var("GITDB_DATA_DIR") {
+            PathBuf::from(override_path)
+        } else {
+            dirs::data_dir()
+                .context("Failed to get data directory")?
+                .join("gitdb")
+        };
 
-        let data_dir = dirs::data_dir()
-            .context("Failed to get data directory")?
-            .join("gitdb");
+        let config_dir = if let Ok(override_path) = std::env::var("GITDB_CONFIG_DIR") {
+            PathBuf::from(override_path)
+        } else {
+            dirs::config_dir()
+                .context("Failed to get config directory")?
+                .join("gitdb")
+        };
 
         // Create directories if they don't exist
         std::fs::create_dir_all(&config_dir)?;
