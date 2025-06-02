@@ -12,6 +12,8 @@ You (the LLM model) must acknowledge that you have read CLAUDE.md and will compl
 
 You (the LLM model) must declare that cargo commands will be executed quietly by using the CARGO_TERM_QUIET=true environment variable.
 
+If the user's instruction is given in English, you (the LLM model) must begin your response with "Your instruction is {corrected English}", where {corrected English} is the grammatically corrected version of the user's instruction. This helps ensure clarity when the user's English may contain errors.
+
 ## Project Documentation
 
 When working with this codebase, refer to the following key documents:
