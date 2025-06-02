@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Repository {
     pub id: i64,
@@ -23,7 +25,7 @@ pub struct Issue {
     pub number: i64,
     pub title: String,
     pub body: Option<String>,
-    pub state: String,
+    pub state: IssueState,
     pub author: String,
     pub assignees: Vec<String>,
     pub labels: Vec<String>,
@@ -40,7 +42,7 @@ pub struct PullRequest {
     pub number: i64,
     pub title: String,
     pub body: Option<String>,
-    pub state: String,
+    pub state: PullRequestState,
     pub author: String,
     pub assignees: Vec<String>,
     pub labels: Vec<String>,
@@ -83,19 +85,19 @@ pub struct PullRequestComment {
 pub struct SyncStatus {
     pub id: i64,
     pub repository_id: i64,
-    pub resource_type: String,
+    pub resource_type: ResourceType,
     pub last_synced_at: DateTime<Utc>,
-    pub status: String,
+    pub status: SyncStatusType,
     pub error_message: Option<String>,
     pub items_synced: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrossReference {
-    pub source_type: String,
+    pub source_type: ItemType,
     pub source_id: i64,
     pub source_repository_id: i64,
-    pub target_type: String,
+    pub target_type: ItemType,
     pub target_repository_id: i64,
     pub target_number: i64,
     pub link_text: String,

@@ -21,3 +21,4 @@ pub mod services;
 pub mod storage;
 pub mod tools;
 pub mod transport;
+pub mod types;

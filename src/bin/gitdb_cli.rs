@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use gitdb::services::SyncService;
 use gitdb::storage::GitDatabase;
+use gitdb::types::ItemType;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -270,12 +271,12 @@ async fn main() -> Result<()> {
                     anyhow::anyhow!("Invalid number")
                 })?;
                 
-                (parts[0].to_string(), "unknown", number)
+                (parts[0].to_string(), None, number)
             } else if let Some(repo_name) = repo {
                 if let Some(issue_num) = issue {
-                    (repo_name, "issue", issue_num)
+                    (repo_name, Some(ItemType::Issue), issue_num)
                 } else if let Some(pr_num) = pr {
-                    (repo_name, "pull_request", pr_num)
+                    (repo_name, Some(ItemType::PullRequest), pr_num)
                 } else {
                     eprintln!("Must specify either --issue or --pr");
                     return Ok(());
@@ -295,16 +296,16 @@ async fn main() -> Result<()> {
             };
             
             // Find the specific issue or PR and determine its actual type
-            let (source_title, source_body, actual_item_type) = if item_type == "issue" || item_type == "unknown" {
+            let (source_title, source_body, actual_item_type) = if item_type.is_none() || item_type == Some(ItemType::Issue) {
                 // Try to find as issue first
                 let issues = db.get_issues_by_repository(repository.id, None).await?;
                 if let Some(issue) = issues.iter().find(|i| i.number == item_number as i64) {
-                    (issue.title.clone(), issue.body.clone().unwrap_or_default(), "issue")
-                } else if item_type == "unknown" {
+                    (issue.title.clone(), issue.body.clone().unwrap_or_default(), ItemType::Issue)
+                } else if item_type.is_none() {
                     // Try as PR
                     let prs = db.get_pull_requests_by_repository(repository.id, None).await?;
                     if let Some(pr) = prs.iter().find(|p| p.number == item_number as i64) {
-                        (pr.title.clone(), pr.body.clone().unwrap_or_default(), "pull_request")
+                        (pr.title.clone(), pr.body.clone().unwrap_or_default(), ItemType::PullRequest)
                     } else {
                         eprintln!("Issue or PR #{} not found in {}", item_number, repo_name);
                         return Ok(());
@@ -317,7 +318,7 @@ async fn main() -> Result<()> {
                 // Find as PR
                 let prs = db.get_pull_requests_by_repository(repository.id, None).await?;
                 if let Some(pr) = prs.iter().find(|p| p.number == item_number as i64) {
-                    (pr.title.clone(), pr.body.clone().unwrap_or_default(), "pull_request")
+                    (pr.title.clone(), pr.body.clone().unwrap_or_default(), ItemType::PullRequest)
                 } else {
                     eprintln!("Pull request #{} not found in {}", item_number, repo_name);
                     return Ok(());
@@ -359,7 +360,7 @@ async fn main() -> Result<()> {
                     println!("=== Incoming References (referenced by) ===");
                     for xref in &incoming_refs {
                         // Find the source item to display
-                        let source_desc = if xref.source_type == "issue" {
+                        let source_desc = if xref.source_type == ItemType::Issue {
                             let issues = db.get_issues_by_repository(xref.source_repository_id, None).await?;
                             issues.iter()
                                 .find(|i| i.id == xref.source_id)
@@ -388,7 +389,7 @@ async fn main() -> Result<()> {
                 // Filter out the source item itself
                 let filtered_results: Vec<_> = semantic_results.into_iter()
                     .filter(|r| {
-                        !(r.result_type == actual_item_type && r.id == item_number as i64)
+                        !(r.result_type == actual_item_type.to_string() && r.id == item_number as i64)
                     })
                     .take(limit)
                     .collect();

@@ -9,6 +9,7 @@ use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
 
 use crate::storage::models::*;
 use crate::storage::paths::StoragePaths;
+use crate::types::{ItemType, ResourceType, SyncStatusType};
 
 pub struct GitDatabase {
     db: Db,
@@ -138,11 +139,11 @@ impl GitDatabase {
         
         let mut doc = doc!(
             id_field => issue.id.to_string(),
-            type_field => "issue",
+            type_field => ItemType::Issue.to_string(),
             repository_id_field => issue.repository_id.to_string(),
             title_field => issue.title.clone(),
             author_field => issue.author.clone(),
-            state_field => issue.state.clone(),
+            state_field => issue.state.to_string(),
             labels_field => issue.labels.join(" "),
             assignees_field => issue.assignees.join(" ")
         );
@@ -212,11 +213,11 @@ impl GitDatabase {
         
         let mut doc = doc!(
             id_field => pr.id.to_string(),
-            type_field => "pull_request",
+            type_field => ItemType::PullRequest.to_string(),
             repository_id_field => pr.repository_id.to_string(),
             title_field => pr.title.clone(),
             author_field => pr.author.clone(),
-            state_field => pr.state.clone(),
+            state_field => pr.state.to_string(),
             labels_field => pr.labels.join(" "),
             assignees_field => pr.assignees.join(" ")
         );
@@ -280,17 +281,17 @@ impl GitDatabase {
     }
     
     // Sync status operations
-    pub async fn get_last_sync_status(&self, repository_id: i64, resource_type: &str) -> Result<Option<SyncStatus>> {
+    pub async fn get_last_sync_status(&self, repository_id: i64, resource_type: ResourceType) -> Result<Option<SyncStatus>> {
         let tree = self.db.open_tree("sync_status")?;
         
-        let prefix = format!("sync:{}:{}:", repository_id, resource_type);
+        let prefix = format!("sync:{}:{}:", repository_id, resource_type.to_string());
         let mut latest: Option<SyncStatus> = None;
         
         for item in tree.scan_prefix(prefix.as_bytes()) {
             let (_, value) = item?;
             let status: SyncStatus = serde_json::from_slice(&value)?;
             
-            if status.status == "success" {
+            if status.status == SyncStatusType::Success {
                 match &latest {
                     None => latest = Some(status),
                     Some(current) => {
@@ -309,7 +310,7 @@ impl GitDatabase {
         let tree = self.db.open_tree("sync_status")?;
         
         let timestamp = status.last_synced_at.timestamp_millis();
-        let key = format!("sync:{}:{}:{}", status.repository_id, status.resource_type, timestamp);
+        let key = format!("sync:{}:{}:{}", status.repository_id, status.resource_type.to_string(), timestamp);
         let value = serde_json::to_vec(status)?;
         
         tree.insert(key.as_bytes(), value)?;
@@ -325,14 +326,14 @@ impl GitDatabase {
         // Store with source key
         let source_key = format!("xref_source:{}:{}:{}", 
             cross_ref.source_repository_id, 
-            cross_ref.source_type, 
+            cross_ref.source_type.to_string(), 
             cross_ref.source_id
         );
         
         // Store with target key for bidirectional lookup
         let target_key = format!("xref_target:{}:{}:{}", 
             cross_ref.target_repository_id, 
-            cross_ref.target_type, 
+            cross_ref.target_type.to_string(), 
             cross_ref.target_number
         );
         
@@ -345,10 +346,10 @@ impl GitDatabase {
         Ok(())
     }
     
-    pub fn get_cross_references_by_source(&self, repository_id: i64, item_type: &str, item_id: i64) -> Result<Vec<CrossReference>> {
+    pub fn get_cross_references_by_source(&self, repository_id: i64, item_type: ItemType, item_id: i64) -> Result<Vec<CrossReference>> {
         let tree = self.db.open_tree("cross_references")?;
         
-        let prefix = format!("xref_source:{}:{}:{}", repository_id, item_type, item_id);
+        let prefix = format!("xref_source:{}:{}:{}", repository_id, item_type.to_string(), item_id);
         let mut refs = Vec::new();
         
         for item in tree.scan_prefix(prefix.as_bytes()) {
@@ -360,10 +361,10 @@ impl GitDatabase {
         Ok(refs)
     }
     
-    pub fn get_cross_references_by_target(&self, repository_id: i64, item_type: &str, item_number: i64) -> Result<Vec<CrossReference>> {
+    pub fn get_cross_references_by_target(&self, repository_id: i64, item_type: ItemType, item_number: i64) -> Result<Vec<CrossReference>> {
         let tree = self.db.open_tree("cross_references")?;
         
-        let prefix = format!("xref_target:{}:{}:{}", repository_id, item_type, item_number);
+        let prefix = format!("xref_target:{}:{}:{}", repository_id, item_type.to_string(), item_number);
         let mut refs = Vec::new();
         
         for item in tree.scan_prefix(prefix.as_bytes()) {

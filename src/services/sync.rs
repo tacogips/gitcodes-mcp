@@ -7,6 +7,7 @@ use tracing::{debug, error, info};
 
 use crate::git::GitHubClient;
 use crate::storage::{CrossReference, GitDatabase, SyncStatus};
+use crate::types::{ItemType, ResourceType, SyncStatusType};
 
 pub struct SyncService {
     db: Arc<GitDatabase>,
@@ -35,13 +36,13 @@ impl SyncService {
         
         // Get last sync status
         let last_issue_sync = if !full_sync {
-            self.db.get_last_sync_status(repo.id, "issues").await?
+            self.db.get_last_sync_status(repo.id, ResourceType::Issues).await?
         } else {
             None
         };
         
         let last_pr_sync = if !full_sync {
-            self.db.get_last_sync_status(repo.id, "pull_requests").await?
+            self.db.get_last_sync_status(repo.id, ResourceType::PullRequests).await?
         } else {
             None
         };
@@ -51,12 +52,12 @@ impl SyncService {
         match self.sync_issues(&owner, &name, repo.id, issue_since).await {
             Ok(count) => {
                 result.issues_synced = count;
-                self.update_sync_status(repo.id, "issues", "success", None, count).await?;
+                self.update_sync_status(repo.id, ResourceType::Issues, SyncStatusType::Success, None, count).await?;
             }
             Err(e) => {
                 error!("Failed to sync issues: {}", e);
                 result.errors.push(format!("Issues sync failed: {}", e));
-                self.update_sync_status(repo.id, "issues", "failed", Some(&e.to_string()), 0).await?;
+                self.update_sync_status(repo.id, ResourceType::Issues, SyncStatusType::Failed, Some(&e.to_string()), 0).await?;
             }
         }
         
@@ -65,12 +66,12 @@ impl SyncService {
         match self.sync_pull_requests(&owner, &name, repo.id, pr_since).await {
             Ok(count) => {
                 result.pull_requests_synced = count;
-                self.update_sync_status(repo.id, "pull_requests", "success", None, count).await?;
+                self.update_sync_status(repo.id, ResourceType::PullRequests, SyncStatusType::Success, None, count).await?;
             }
             Err(e) => {
                 error!("Failed to sync pull requests: {}", e);
                 result.errors.push(format!("Pull requests sync failed: {}", e));
-                self.update_sync_status(repo.id, "pull_requests", "failed", Some(&e.to_string()), 0).await?;
+                self.update_sync_status(repo.id, ResourceType::PullRequests, SyncStatusType::Failed, Some(&e.to_string()), 0).await?;
             }
         }
         
@@ -98,11 +99,11 @@ impl SyncService {
             
             // Parse cross-references in issue body and comments
             if let Some(body) = &issue.body {
-                self.parse_and_store_references(body, repository_id, "issue", issue.id).await?;
+                self.parse_and_store_references(body, repository_id, ItemType::Issue, issue.id).await?;
             }
             
             for comment in &comments {
-                self.parse_and_store_references(&comment.body, repository_id, "issue", issue.id).await?;
+                self.parse_and_store_references(&comment.body, repository_id, ItemType::Issue, issue.id).await?;
             }
         }
         
@@ -127,18 +128,18 @@ impl SyncService {
             
             // Parse cross-references in PR body and comments
             if let Some(body) = &pr.body {
-                self.parse_and_store_references(body, repository_id, "pull_request", pr.id).await?;
+                self.parse_and_store_references(body, repository_id, ItemType::PullRequest, pr.id).await?;
             }
             
             for comment in &comments {
-                self.parse_and_store_references(&comment.body, repository_id, "pull_request", pr.id).await?;
+                self.parse_and_store_references(&comment.body, repository_id, ItemType::PullRequest, pr.id).await?;
             }
         }
         
         Ok(count)
     }
     
-    async fn parse_and_store_references(&self, text: &str, source_repo_id: i64, source_type: &str, source_id: i64) -> Result<()> {
+    async fn parse_and_store_references(&self, text: &str, source_repo_id: i64, source_type: ItemType, source_id: i64) -> Result<()> {
         // Regex patterns for GitHub references
         let url_pattern = Regex::new(r"https://github\.com/([^/]+)/([^/]+)/(issues|pull)/(\d+)")
             .context("Failed to compile URL regex")?;
@@ -151,10 +152,10 @@ impl SyncService {
         for cap in url_pattern.captures_iter(text) {
             let owner = &cap[1];
             let repo = &cap[2];
-            let ref_type = if &cap[3] == "issues" { "issue" } else { "pull_request" };
+            let ref_type = if &cap[3] == "issues" { ItemType::Issue } else { ItemType::PullRequest };
             let number: i64 = cap[4].parse()?;
             
-            found_refs.insert((owner.to_string(), repo.to_string(), ref_type.to_string(), number));
+            found_refs.insert((owner.to_string(), repo.to_string(), ref_type, number));
         }
         
         // Find short references
@@ -164,8 +165,8 @@ impl SyncService {
             let number: i64 = cap[3].parse()?;
             
             // We don't know if it's an issue or PR from short form, so we'll check both
-            found_refs.insert((owner.to_string(), repo.to_string(), "issue".to_string(), number));
-            found_refs.insert((owner.to_string(), repo.to_string(), "pull_request".to_string(), number));
+            found_refs.insert((owner.to_string(), repo.to_string(), ItemType::Issue, number));
+            found_refs.insert((owner.to_string(), repo.to_string(), ItemType::PullRequest, number));
         }
         
         // Store cross-references for registered repositories
@@ -175,7 +176,7 @@ impl SyncService {
             // Check if target repository is registered
             if let Some(target_repo) = self.db.get_repository_by_full_name(&full_name).await? {
                 let cross_ref = CrossReference {
-                    source_type: source_type.to_string(),
+                    source_type,
                     source_id,
                     source_repository_id: source_repo_id,
                     target_type: ref_type,
@@ -192,13 +193,13 @@ impl SyncService {
         Ok(())
     }
     
-    async fn update_sync_status(&self, repository_id: i64, resource_type: &str, status: &str, error_message: Option<&str>, items_synced: usize) -> Result<()> {
+    async fn update_sync_status(&self, repository_id: i64, resource_type: ResourceType, status: SyncStatusType, error_message: Option<&str>, items_synced: usize) -> Result<()> {
         let sync_status = SyncStatus {
             id: 0, // Will be assigned by database
             repository_id,
-            resource_type: resource_type.to_string(),
+            resource_type,
             last_synced_at: Utc::now(),
-            status: status.to_string(),
+            status,
             error_message: error_message.map(|s| s.to_string()),
             items_synced: items_synced as i64,
         };
