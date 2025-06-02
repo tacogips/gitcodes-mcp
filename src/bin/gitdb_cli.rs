@@ -70,6 +70,37 @@ enum Commands {
         #[arg(long, default_value = "30")]
         limit: usize,
     },
+    
+    /// Find related issues and pull requests
+    Related {
+        /// Repository and issue/PR number (e.g., owner/repo#123)
+        #[arg(value_name = "REFERENCE", conflicts_with_all = ["repo", "issue", "pr"])]
+        reference: Option<String>,
+        
+        /// Repository (owner/repo)
+        #[arg(long, requires = "issue_or_pr")]
+        repo: Option<String>,
+        
+        /// Issue number
+        #[arg(long, group = "issue_or_pr", conflicts_with = "pr")]
+        issue: Option<u64>,
+        
+        /// Pull request number
+        #[arg(long, group = "issue_or_pr", conflicts_with = "issue")]
+        pr: Option<u64>,
+        
+        /// Maximum number of results
+        #[arg(long, default_value = "10")]
+        limit: usize,
+        
+        /// Only show link relationships (no semantic search)
+        #[arg(long, conflicts_with = "semantic_only")]
+        links_only: bool,
+        
+        /// Only show semantic relationships
+        #[arg(long, conflicts_with = "links_only")]
+        semantic_only: bool,
+    },
 }
 
 #[tokio::main]
@@ -221,6 +252,168 @@ async fn main() -> Result<()> {
                         println!("{}", preview);
                     }
                 }
+            }
+        }
+        
+        Commands::Related { reference, repo, issue, pr, limit, links_only, semantic_only } => {
+            // Parse the reference or use repo/issue/pr
+            let (repo_name, item_type, item_number) = if let Some(ref_str) = reference {
+                // Parse owner/repo#123 format
+                let parts: Vec<&str> = ref_str.split('#').collect();
+                if parts.len() != 2 {
+                    eprintln!("Invalid reference format. Use owner/repo#123");
+                    return Ok(());
+                }
+                
+                let number = parts[1].parse::<u64>().map_err(|_| {
+                    eprintln!("Invalid issue/PR number");
+                    anyhow::anyhow!("Invalid number")
+                })?;
+                
+                (parts[0].to_string(), "unknown", number)
+            } else if let Some(repo_name) = repo {
+                if let Some(issue_num) = issue {
+                    (repo_name, "issue", issue_num)
+                } else if let Some(pr_num) = pr {
+                    (repo_name, "pull_request", pr_num)
+                } else {
+                    eprintln!("Must specify either --issue or --pr");
+                    return Ok(());
+                }
+            } else {
+                eprintln!("Must specify either a reference (owner/repo#123) or --repo with --issue/--pr");
+                return Ok(());
+            };
+            
+            // Get repository
+            let repository = match db.get_repository_by_full_name(&repo_name).await? {
+                Some(repo) => repo,
+                None => {
+                    eprintln!("Repository {} not found", repo_name);
+                    return Ok(());
+                }
+            };
+            
+            // Find the specific issue or PR and determine its actual type
+            let (source_title, source_body, actual_item_type) = if item_type == "issue" || item_type == "unknown" {
+                // Try to find as issue first
+                let issues = db.get_issues_by_repository(repository.id, None).await?;
+                if let Some(issue) = issues.iter().find(|i| i.number == item_number as i64) {
+                    (issue.title.clone(), issue.body.clone().unwrap_or_default(), "issue")
+                } else if item_type == "unknown" {
+                    // Try as PR
+                    let prs = db.get_pull_requests_by_repository(repository.id, None).await?;
+                    if let Some(pr) = prs.iter().find(|p| p.number == item_number as i64) {
+                        (pr.title.clone(), pr.body.clone().unwrap_or_default(), "pull_request")
+                    } else {
+                        eprintln!("Issue or PR #{} not found in {}", item_number, repo_name);
+                        return Ok(());
+                    }
+                } else {
+                    eprintln!("Issue #{} not found in {}", item_number, repo_name);
+                    return Ok(());
+                }
+            } else {
+                // Find as PR
+                let prs = db.get_pull_requests_by_repository(repository.id, None).await?;
+                if let Some(pr) = prs.iter().find(|p| p.number == item_number as i64) {
+                    (pr.title.clone(), pr.body.clone().unwrap_or_default(), "pull_request")
+                } else {
+                    eprintln!("Pull request #{} not found in {}", item_number, repo_name);
+                    return Ok(());
+                }
+            };
+            
+            println!("Finding items related to: {} #{} - {}", repo_name, item_number, source_title);
+            println!();
+            
+            let mut all_results = Vec::new();
+            
+            // 1. Find items referenced by this issue/PR (outgoing)
+            if !semantic_only {
+                let outgoing_refs = db.get_cross_references_by_source(
+                    repository.id, 
+                    actual_item_type, 
+                    item_number as i64
+                )?;
+                
+                if !outgoing_refs.is_empty() {
+                    println!("=== Outgoing References (this item references) ===");
+                    for xref in &outgoing_refs {
+                        println!("  → {} ({})", xref.link_text, xref.target_type);
+                        all_results.push(format!("[OUT] {} ({})", xref.link_text, xref.target_type));
+                    }
+                    println!();
+                }
+            }
+            
+            // 2. Find items that reference this issue/PR (incoming)
+            if !semantic_only {
+                let incoming_refs = db.get_cross_references_by_target(
+                    repository.id,
+                    actual_item_type,
+                    item_number as i64
+                )?;
+                
+                if !incoming_refs.is_empty() {
+                    println!("=== Incoming References (referenced by) ===");
+                    for xref in &incoming_refs {
+                        // Find the source item to display
+                        let source_desc = if xref.source_type == "issue" {
+                            let issues = db.get_issues_by_repository(xref.source_repository_id, None).await?;
+                            issues.iter()
+                                .find(|i| i.id == xref.source_id)
+                                .map(|i| format!("Issue #{}: {}", i.number, i.title))
+                                .unwrap_or_else(|| format!("Issue #{}", xref.source_id))
+                        } else {
+                            let prs = db.get_pull_requests_by_repository(xref.source_repository_id, None).await?;
+                            prs.iter()
+                                .find(|p| p.id == xref.source_id)
+                                .map(|p| format!("PR #{}: {}", p.number, p.title))
+                                .unwrap_or_else(|| format!("PR #{}", xref.source_id))
+                        };
+                        
+                        println!("  ← {}", source_desc);
+                        all_results.push(format!("[IN] {}", source_desc));
+                    }
+                    println!();
+                }
+            }
+            
+            // 3. Find semantically similar items
+            if !links_only {
+                let search_query = format!("{} {}", source_title, source_body);
+                let semantic_results = db.search(&search_query, Some(repository.id), limit * 2).await?;
+                
+                // Filter out the source item itself
+                let filtered_results: Vec<_> = semantic_results.into_iter()
+                    .filter(|r| {
+                        !(r.result_type == actual_item_type && r.id == item_number as i64)
+                    })
+                    .take(limit)
+                    .collect();
+                
+                if !filtered_results.is_empty() {
+                    println!("=== Semantically Similar Items ===");
+                    for (idx, result) in filtered_results.iter().enumerate() {
+                        println!("  {}. [{}] {}", idx + 1, result.result_type, result.title);
+                        if let Some(body) = &result.body {
+                            let preview = if body.len() > 100 {
+                                format!("     {}...", &body[..100])
+                            } else {
+                                format!("     {}", body)
+                            };
+                            println!("{}", preview);
+                        }
+                        all_results.push(format!("[SEM] [{}] {}", result.result_type, result.title));
+                    }
+                }
+            }
+            
+            if all_results.is_empty() {
+                println!("No related items found");
+            } else {
+                println!("\nTotal related items found: {}", all_results.len());
             }
         }
     }
