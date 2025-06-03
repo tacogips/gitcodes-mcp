@@ -1,4 +1,4 @@
-use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber};
+use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
 use crate::services::SyncService;
 use crate::storage::GitDatabase;
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType};
@@ -204,19 +204,19 @@ impl GitDbTools {
                 for repo in repos {
                     // Get counts for issues and PRs
                     let issues_count = db
-                        .get_issues_by_repository(repo.id, None)
+                        .list_issues_by_repository(&repo.id)
                         .await
                         .map(|issues| issues.len() as i64)
                         .ok();
                     let prs_count = db
-                        .get_pull_requests_by_repository(repo.id, None)
+                        .list_pull_requests_by_repository(&repo.id)
                         .await
                         .map(|prs| prs.len() as i64)
                         .ok();
 
                     // Get last sync time
                     let last_synced = db
-                        .get_last_sync_status(repo.id, ResourceType::Issues)
+                        .get_sync_status(&repo.id, ResourceType::Issues)
                         .await
                         .ok()
                         .and_then(|status| status)
@@ -365,7 +365,7 @@ impl GitDbTools {
         };
 
         // Get repository ID if filtering by repo
-        let repo_id = if let Some(repo_name) = &repo {
+        let filter_repo_id = if let Some(repo_name) = &repo {
             match db.get_repository_by_full_name(repo_name).await {
                 Ok(Some(repo)) => Some(repo.id),
                 Ok(None) => return error_result(format!("Repository {} not found", repo_name)),
@@ -377,17 +377,30 @@ impl GitDbTools {
 
         let limit = limit.unwrap_or(30).min(100);
 
-        match db.search(&query, repo_id, limit).await {
+        match db.search(&query, limit).await {
             Ok(results) => {
                 let mut search_results = Vec::new();
 
                 for result in results {
+                    // Parse repository ID
+                    let repo_id = match result.repository_id.parse::<i64>() {
+                        Ok(id) => RepositoryId::new(id),
+                        Err(_) => continue,
+                    };
+                    
+                    // Filter by repository if specified
+                    if let Some(filter_id) = &filter_repo_id {
+                        if repo_id != *filter_id {
+                            continue;
+                        }
+                    }
+                    
                     // Get repository name
                     let repo_name = if let Some(repo_name) = &repo {
                         repo_name.clone()
                     } else {
                         // Look up repository name
-                        match db.get_repository_by_id(result.repository_id).await {
+                        match db.get_repository(&repo_id).await {
                             Ok(Some(repo)) => repo.full_name,
                             _ => continue,
                         }
@@ -395,15 +408,15 @@ impl GitDbTools {
 
                     // Filter by state if specified
                     if let Some(filter_state) = &state {
-                        let matches_filter = if result.result_type == "issue" {
+                        let matches_filter = if result.item_type == "issue" {
                             // Get issue to check state
                             match db
-                                .get_issues_by_repository(result.repository_id, None)
+                                .list_issues_by_repository(&repo_id)
                                 .await
                             {
                                 Ok(issues) => issues
                                     .iter()
-                                    .find(|i| i.number.value() == result.id)
+                                    .find(|i| i.number.value().to_string() == result.id)
                                     .map(|i| match filter_state {
                                         StateFilter::Open => i.state == IssueState::Open,
                                         StateFilter::Closed => i.state == IssueState::Closed,
@@ -414,12 +427,12 @@ impl GitDbTools {
                         } else {
                             // Get PR to check state
                             match db
-                                .get_pull_requests_by_repository(result.repository_id, None)
+                                .list_pull_requests_by_repository(&repo_id)
                                 .await
                             {
                                 Ok(prs) => prs
                                     .iter()
-                                    .find(|p| p.number.value() == result.id)
+                                    .find(|p| p.number.value().to_string() == result.id)
                                     .map(|p| match filter_state {
                                         StateFilter::Open => p.state == PullRequestState::Open,
                                         StateFilter::Closed => matches!(p.state, PullRequestState::Closed | PullRequestState::Merged),
@@ -435,16 +448,16 @@ impl GitDbTools {
                     }
 
                     // Get full item details
-                    let (author, labels, created_at, updated_at, state) = if result.result_type
+                    let (author, labels, created_at, updated_at, state) = if result.item_type
                         == "issue"
                     {
                         match db
-                            .get_issues_by_repository(result.repository_id, None)
+                            .list_issues_by_repository(&repo_id)
                             .await
                         {
                             Ok(issues) => {
                                 if let Some(issue) =
-                                    issues.iter().find(|i| i.number.value() == result.id)
+                                    issues.iter().find(|i| i.number.value().to_string() == result.id)
                                 {
                                     (
                                         issue.author.clone(),
@@ -461,11 +474,11 @@ impl GitDbTools {
                         }
                     } else {
                         match db
-                            .get_pull_requests_by_repository(result.repository_id, None)
+                            .list_pull_requests_by_repository(&repo_id)
                             .await
                         {
                             Ok(prs) => {
-                                if let Some(pr) = prs.iter().find(|p| p.number.value() == result.id)
+                                if let Some(pr) = prs.iter().find(|p| p.number.value().to_string() == result.id)
                                 {
                                     (
                                         pr.author.clone(),
@@ -492,7 +505,7 @@ impl GitDbTools {
                     let url = format!(
                         "https://github.com/{}/{}/{}",
                         repo_name,
-                        if result.result_type == "issue" {
+                        if result.item_type == "issue" {
                             "issues"
                         } else {
                             "pull"
@@ -502,8 +515,8 @@ impl GitDbTools {
 
                     search_results.push(SearchResult {
                         repository: repo_name,
-                        item_type: result.result_type,
-                        number: result.id,
+                        item_type: result.item_type,
+                        number: result.id.parse::<i64>().unwrap_or(0),
                         title: result.title,
                         body: result.body,
                         state,
@@ -588,7 +601,7 @@ impl GitDbTools {
 
             // Get item details
             match item_type {
-                ItemType::Issue => match db.get_issues_by_repository(repository.id, None).await {
+                ItemType::Issue => match db.list_issues_by_repository(&repository.id).await {
                     Ok(issues) => {
                         if let Some(issue) = issues
                             .iter()
@@ -610,7 +623,7 @@ impl GitDbTools {
                 },
                 ItemType::PullRequest => {
                     match db
-                        .get_pull_requests_by_repository(repository.id, None)
+                        .list_pull_requests_by_repository(&repository.id)
                         .await
                     {
                         Ok(prs) => {
@@ -638,7 +651,7 @@ impl GitDbTools {
             }
         } else {
             // Auto-detect type
-            let issues = match db.get_issues_by_repository(repository.id, None).await {
+            let issues = match db.list_issues_by_repository(&repository.id).await {
                 Ok(issues) => issues,
                 Err(e) => return error_result(format!("Failed to get issues: {}", e)),
             };
@@ -655,7 +668,7 @@ impl GitDbTools {
             } else {
                 // Try as PR
                 let prs = match db
-                    .get_pull_requests_by_repository(repository.id, None)
+                    .list_pull_requests_by_repository(&repository.id)
                     .await
                 {
                     Ok(prs) => prs,
@@ -707,16 +720,14 @@ impl GitDbTools {
         // Get cross-references unless semantic_only
         if !semantic_only {
             // Outgoing references
-            match db.get_cross_references_by_source(
-                repository.id,
-                actual_item_type,
-                number as i64,
-            ) {
+            match db.list_cross_references_from(
+                &repository.id,
+            ).await {
                 Ok(refs) => {
-                    for xref in refs {
+                    for xref in refs.into_iter().filter(|x| x.source_type == actual_item_type && x.source_id == number as i64) {
                         // Get target repository name
                         if let Ok(Some(target_repo)) =
-                            db.get_repository_by_id(xref.target_repository_id).await
+                            db.get_repository(&xref.target_repository_id).await
                         {
                             let _target_url = format!(
                                 "https://github.com/{}/{}/{}",
@@ -731,7 +742,7 @@ impl GitDbTools {
 
                             // Get target title
                             let target_title = if xref.target_type == ItemType::Issue {
-                                db.get_issues_by_repository(xref.target_repository_id, None)
+                                db.list_issues_by_repository(&xref.target_repository_id)
                                     .await
                                     .ok()
                                     .and_then(|issues| {
@@ -742,7 +753,7 @@ impl GitDbTools {
                                     })
                                     .unwrap_or_else(|| format!("Issue #{}", xref.target_number))
                             } else {
-                                db.get_pull_requests_by_repository(xref.target_repository_id, None)
+                                db.list_pull_requests_by_repository(&xref.target_repository_id)
                                     .await
                                     .ok()
                                     .and_then(|prs| {
@@ -768,20 +779,18 @@ impl GitDbTools {
             }
 
             // Incoming references
-            match db.get_cross_references_by_target(
-                repository.id,
-                actual_item_type,
-                number as i64,
-            ) {
+            match db.list_cross_references_to(
+                &repository.id,
+            ).await {
                 Ok(refs) => {
-                    for xref in refs {
+                    for xref in refs.into_iter().filter(|x| x.target_type == actual_item_type && x.target_number == number as i64) {
                         // Get source repository name
                         if let Ok(Some(source_repo)) =
-                            db.get_repository_by_id(xref.source_repository_id).await
+                            db.get_repository(&xref.source_repository_id).await
                         {
                             // Get source title
                             let source_title = if xref.source_type == ItemType::Issue {
-                                db.get_issues_by_repository(xref.source_repository_id, None)
+                                db.list_issues_by_repository(&xref.source_repository_id)
                                     .await
                                     .ok()
                                     .and_then(|issues| {
@@ -792,7 +801,7 @@ impl GitDbTools {
                                     })
                                     .unwrap_or_else(|| format!("Issue"))
                             } else {
-                                db.get_pull_requests_by_repository(xref.source_repository_id, None)
+                                db.list_pull_requests_by_repository(&xref.source_repository_id)
                                     .await
                                     .ok()
                                     .and_then(|prs| {
@@ -805,7 +814,7 @@ impl GitDbTools {
 
                             // Get source number
                             let source_number = if xref.source_type == ItemType::Issue {
-                                db.get_issues_by_repository(xref.source_repository_id, None)
+                                db.list_issues_by_repository(&xref.source_repository_id)
                                     .await
                                     .ok()
                                     .and_then(|issues| {
@@ -816,7 +825,7 @@ impl GitDbTools {
                                     })
                                     .unwrap_or(0)
                             } else {
-                                db.get_pull_requests_by_repository(xref.source_repository_id, None)
+                                db.list_pull_requests_by_repository(&xref.source_repository_id)
                                     .await
                                     .ok()
                                     .and_then(|prs| {
@@ -845,27 +854,33 @@ impl GitDbTools {
         // Get semantically similar items unless links_only
         if !links_only {
             match db
-                .search(&source_title, Some(repository.id), limit * 2)
+                .search(&source_title, limit * 2)
                 .await
             {
                 Ok(results) => {
                     for result in results {
                         // Skip the source item itself
-                        if result.result_type == actual_item_type.to_string()
-                            && result.id == number as i64
+                        if result.item_type == actual_item_type.to_string()
+                            && result.id == number.to_string()
                         {
                             continue;
                         }
+                        
+                        // Parse repository ID
+                        let repo_id = match result.repository_id.parse::<i64>() {
+                            Ok(id) => RepositoryId::new(id),
+                            Err(_) => continue,
+                        };
 
                         // Get full details
-                        let (title, state) = if result.result_type == "issue" {
+                        let (title, state) = if result.item_type == "issue" {
                             match db
-                                .get_issues_by_repository(result.repository_id, None)
+                                .list_issues_by_repository(&repo_id)
                                 .await
                             {
                                 Ok(issues) => {
                                     if let Some(issue) =
-                                        issues.iter().find(|i| i.number.value() == result.id)
+                                        issues.iter().find(|i| i.number.value().to_string() == result.id)
                                     {
                                         (issue.title.clone(), issue.state.to_string())
                                     } else {
@@ -876,12 +891,12 @@ impl GitDbTools {
                             }
                         } else {
                             match db
-                                .get_pull_requests_by_repository(result.repository_id, None)
+                                .list_pull_requests_by_repository(&repo_id)
                                 .await
                             {
                                 Ok(prs) => {
                                     if let Some(pr) =
-                                        prs.iter().find(|p| p.number.value() == result.id)
+                                        prs.iter().find(|p| p.number.value().to_string() == result.id)
                                     {
                                         (pr.title.clone(), pr.state.to_string())
                                     } else {
@@ -895,7 +910,7 @@ impl GitDbTools {
                         let url = format!(
                             "https://github.com/{}/{}/{}",
                             repo,
-                            if result.result_type == "issue" {
+                            if result.item_type == "issue" {
                                 "issues"
                             } else {
                                 "pull"
@@ -905,8 +920,8 @@ impl GitDbTools {
 
                         semantically_similar.push(ItemInfo {
                             repository: repo.clone(),
-                            item_type: result.result_type,
-                            number: result.id,
+                            item_type: result.item_type,
+                            number: result.id.parse::<i64>().unwrap_or(0),
                             title,
                             state,
                             url,

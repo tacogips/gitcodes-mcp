@@ -51,13 +51,13 @@ impl StoragePaths {
         })
     }
 
-    /// Returns the path to the Lance database file.
+    /// Returns the path to the native_db database directory.
     ///
     /// # Returns
     ///
-    /// PathBuf pointing to `{data_dir}/gitdb.lance`
+    /// PathBuf pointing to `{data_dir}/gitdb.db`
     pub fn database_path(&self) -> PathBuf {
-        self.data_dir.join("gitdb.lance")
+        self.data_dir.join("gitdb.db")
     }
 
     /// Returns the path to the repositories metadata JSON file.
@@ -67,6 +67,15 @@ impl StoragePaths {
     /// PathBuf pointing to `{data_dir}/repositories.json`
     pub fn repositories_path(&self) -> PathBuf {
         self.data_dir.join("repositories.json")
+    }
+
+    /// Returns the path to the search index directory.
+    ///
+    /// # Returns
+    ///
+    /// PathBuf pointing to `{data_dir}/search_index`
+    pub fn search_index_path(&self) -> PathBuf {
+        self.data_dir.join("search_index")
     }
 
     /// Returns the path to the embeddings directory.

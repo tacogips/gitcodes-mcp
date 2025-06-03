@@ -1,3 +1,4 @@
+use native_db::ToKey;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -36,6 +37,16 @@ macro_rules! define_id {
         impl From<$inner> for $name {
             fn from(value: $inner) -> Self {
                 Self(value)
+            }
+        }
+
+        impl ToKey for $name {
+            fn to_key(&self) -> native_db::Key {
+                self.0.to_key()
+            }
+
+            fn key_names() -> Vec<String> {
+                <$inner as ToKey>::key_names()
             }
         }
     };

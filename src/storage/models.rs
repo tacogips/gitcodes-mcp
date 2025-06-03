@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+use native_db::*;
+use native_model::{native_model, Model};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{
@@ -6,11 +8,15 @@ use crate::ids::{
 };
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 1, version = 1)]
+#[native_db]
 pub struct Repository {
+    #[primary_key]
     pub id: RepositoryId,
     pub owner: String,
     pub name: String,
+    #[secondary_key(unique)]
     pub full_name: String,
     pub description: Option<String>,
     pub stars: i64,
@@ -21,9 +27,13 @@ pub struct Repository {
     pub indexed_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 2, version = 1)]
+#[native_db]
 pub struct Issue {
+    #[primary_key]
     pub id: IssueId,
+    #[secondary_key]
     pub repository_id: RepositoryId,
     pub number: IssueNumber,
     pub title: String,
@@ -38,9 +48,13 @@ pub struct Issue {
     pub comments_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 3, version = 1)]
+#[native_db]
 pub struct PullRequest {
+    #[primary_key]
     pub id: PullRequestId,
+    #[secondary_key]
     pub repository_id: RepositoryId,
     pub number: PullRequestNumber,
     pub title: String,
@@ -62,9 +76,13 @@ pub struct PullRequest {
     pub changed_files: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 4, version = 1)]
+#[native_db]
 pub struct IssueComment {
+    #[primary_key]
     pub id: CommentId,
+    #[secondary_key]
     pub issue_id: IssueId,
     pub comment_id: CommentId,
     pub author: String,
@@ -73,9 +91,13 @@ pub struct IssueComment {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 5, version = 1)]
+#[native_db]
 pub struct PullRequestComment {
+    #[primary_key]
     pub id: CommentId,
+    #[secondary_key]
     pub pull_request_id: PullRequestId,
     pub comment_id: CommentId,
     pub author: String,
@@ -84,9 +106,13 @@ pub struct PullRequestComment {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 6, version = 1)]
+#[native_db]
 pub struct SyncStatus {
+    #[primary_key]
     pub id: SyncStatusId,
+    #[secondary_key]
     pub repository_id: RepositoryId,
     pub resource_type: ResourceType,
     pub last_synced_at: DateTime<Utc>,
@@ -95,12 +121,17 @@ pub struct SyncStatus {
     pub items_synced: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 7, version = 1)]
+#[native_db]
 pub struct CrossReference {
     pub source_type: ItemType,
+    #[primary_key]
     pub source_id: i64,
+    #[secondary_key]
     pub source_repository_id: RepositoryId,
     pub target_type: ItemType,
+    #[secondary_key]
     pub target_repository_id: RepositoryId,
     pub target_number: i64,
     pub link_text: String,

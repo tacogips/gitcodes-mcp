@@ -1,19 +1,31 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
-use sled::Db;
+use native_db::*;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, doc};
 
-use crate::ids::RepositoryId;
+use crate::ids::{IssueId, PullRequestId, RepositoryId};
 use crate::storage::models::*;
 use crate::storage::paths::StoragePaths;
-use crate::types::{ItemType, ResourceType, SyncStatusType};
+use crate::types::ResourceType;
+
+static MODELS: Lazy<Models> = Lazy::new(|| {
+    let mut models = Models::new();
+    models.define::<Repository>().unwrap();
+    models.define::<Issue>().unwrap();
+    models.define::<PullRequest>().unwrap();
+    models.define::<IssueComment>().unwrap();
+    models.define::<PullRequestComment>().unwrap();
+    models.define::<SyncStatus>().unwrap();
+    models.define::<CrossReference>().unwrap();
+    models
+});
 
 pub struct GitDatabase {
-    db: Db,
+    db: Database<'static>,
     search_index: Index,
     index_writer: Arc<std::sync::Mutex<IndexWriter>>,
     index_reader: IndexReader,
@@ -31,13 +43,15 @@ impl GitDatabase {
     ///
     /// Returns an error if:
     /// - Storage paths initialization fails
-    /// - Sled database opening fails
+    /// - Native_db database opening fails
     /// - Tantivy search index creation or opening fails
     pub async fn new() -> Result<Self> {
         let paths = StoragePaths::new()?;
 
-        // Open sled database
-        let db = sled::open(&paths.database_path()).context("Failed to open sled database")?;
+        // Open native_db database
+        let db = Builder::new()
+            .create(&*MODELS, &paths.database_path())
+            .context("Failed to open native_db database")?;
 
         // Create tantivy search index
         let mut schema_builder = Schema::builder();
@@ -49,640 +63,396 @@ impl GitDatabase {
         schema_builder.add_text_field("title", TEXT | STORED);
         schema_builder.add_text_field("body", TEXT | STORED);
         schema_builder.add_text_field("author", TEXT | STORED);
-        schema_builder.add_text_field("state", STRING | STORED);
         schema_builder.add_text_field("labels", TEXT | STORED);
         schema_builder.add_text_field("assignees", TEXT | STORED);
 
         let schema = schema_builder.build();
 
-        let index_path = paths.data_dir.join("search_index");
-        std::fs::create_dir_all(&index_path)?;
-
-        let index = if index_path.exists() && index_path.read_dir()?.next().is_some() {
-            Index::open_in_dir(&index_path)?
+        // Open or create search index
+        let search_index = if paths.search_index_path().exists() {
+            Index::open_in_dir(&paths.search_index_path())
+                .context("Failed to open search index")?
         } else {
-            Index::create_in_dir(&index_path, schema)?
+            std::fs::create_dir_all(&paths.search_index_path())?;
+            Index::create_in_dir(&paths.search_index_path(), schema.clone())
+                .context("Failed to create search index")?
         };
 
-        let index_writer = Arc::new(std::sync::Mutex::new(index.writer(50_000_000)?));
-        let index_reader = index
+        let index_writer = Arc::new(std::sync::Mutex::new(
+            search_index
+                .writer(50_000_000)
+                .context("Failed to create index writer")?,
+        ));
+
+        let index_reader = search_index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()?;
+            .try_into()
+            .context("Failed to create index reader")?;
 
         Ok(Self {
             db,
-            search_index: index,
+            search_index,
             index_writer,
             index_reader,
             paths,
         })
     }
 
+    /// Get the storage paths
+    pub fn paths(&self) -> &StoragePaths {
+        &self.paths
+    }
+
     // Repository operations
-    /// Inserts or updates a repository in the database.
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The Repository to insert or update
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn upsert_repository(&self, repo: &Repository) -> Result<()> {
-        let tree = self.db.open_tree("repositories")?;
+    pub async fn save_repository(&self, repo: &Repository) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(repo.clone())?;
+        rw.commit()?;
 
-        let key = format!("repo:{}", repo.full_name);
-        let value = serde_json::to_vec(repo)?;
-
-        tree.insert(key, value)?;
-        tree.flush()?;
-
+        // Index for search
+        self.index_repository(repo).await?;
         Ok(())
     }
 
-    /// Retrieves a repository by its full name (owner/repo).
-    ///
-    /// # Arguments
-    ///
-    /// * `full_name` - The full repository name in format "owner/repo"
-    ///
-    /// # Returns
-    ///
-    /// Returns an Option containing the Repository if found.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
+    pub async fn get_repository(&self, id: &RepositoryId) -> Result<Option<Repository>> {
+        let r = self.db.r_transaction()?;
+        Ok(r.get().primary(id.clone())?)
+    }
+
     pub async fn get_repository_by_full_name(&self, full_name: &str) -> Result<Option<Repository>> {
-        let tree = self.db.open_tree("repositories")?;
-
-        let key = format!("repo:{}", full_name);
-
-        match tree.get(key)? {
-            Some(value) => {
-                let repo: Repository = serde_json::from_slice(&value)?;
-                Ok(Some(repo))
-            }
-            None => Ok(None),
-        }
+        let r = self.db.r_transaction()?;
+        Ok(r.get()
+            .secondary(RepositoryKey::full_name, full_name)?)
     }
 
-    /// Retrieves a repository by its ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The repository ID
-    ///
-    /// # Returns
-    ///
-    /// Returns an Option containing the Repository if found.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn get_repository_by_id(&self, id: RepositoryId) -> Result<Option<Repository>> {
-        let tree = self.db.open_tree("repositories")?;
-
-        // We need to iterate through all repositories to find by ID
-        // In a production system, we might want to maintain a separate ID index
-        for item in tree.iter() {
-            let (_, value) = item?;
-            let repo: Repository = serde_json::from_slice(&value)?;
-            if repo.id == id {
-                return Ok(Some(repo));
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Lists all repositories in the database.
-    ///
-    /// # Returns
-    ///
-    /// Returns a Vec of all Repository entries.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
     pub async fn list_repositories(&self) -> Result<Vec<Repository>> {
-        let tree = self.db.open_tree("repositories")?;
-
-        let mut repos = Vec::new();
-        for item in tree.iter() {
-            let (_, value) = item?;
-            let repo: Repository = serde_json::from_slice(&value)?;
-            repos.push(repo);
-        }
-
+        let r = self.db.r_transaction()?;
+        let repos: Vec<Repository> = r.scan().primary::<Repository>()?.all()?
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(repos)
     }
 
+    pub async fn delete_repository(&self, id: &RepositoryId) -> Result<()> {
+        let r = self.db.r_transaction()?;
+        if let Some(repo) = r.get().primary::<Repository>(id.clone())? {
+            let rw = self.db.rw_transaction()?;
+            rw.remove(repo)?;
+            
+            // Delete all related data
+            // Delete issues
+            let issues: Vec<Issue> = r.scan()
+                .secondary(IssueKey::repository_id)?
+                .start_with(*id)?
+                .collect::<Result<Vec<_>, _>>()?;
+            for issue in issues {
+                rw.remove(issue)?;
+            }
+            
+            // Delete pull requests
+            let prs: Vec<PullRequest> = r.scan()
+                .secondary(PullRequestKey::repository_id)?
+                .start_with(*id)?
+                .collect::<Result<Vec<_>, _>>()?;
+            for pr in prs {
+                rw.remove(pr)?;
+            }
+            
+            // Delete sync status
+            let statuses: Vec<SyncStatus> = r.scan()
+                .secondary(SyncStatusKey::repository_id)?
+                .start_with(*id)?
+                .collect::<Result<Vec<_>, _>>()?;
+            for status in statuses {
+                rw.remove(status)?;
+            }
+            
+            rw.commit()?;
+        }
+        Ok(())
+    }
+
     // Issue operations
-    /// Inserts or updates an issue in the database and search index.
-    ///
-    /// # Arguments
-    ///
-    /// * `issue` - The Issue to insert or update
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations or search indexing fails.
-    pub async fn upsert_issue(&self, issue: &Issue) -> Result<()> {
-        let tree = self.db.open_tree("issues")?;
-
-        let key = format!("issue:{}:{}", issue.repository_id, issue.number);
-        let value = serde_json::to_vec(issue)?;
-
-        tree.insert(key.as_bytes(), value)?;
+    pub async fn save_issue(&self, issue: &Issue) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(issue.clone())?;
+        rw.commit()?;
 
         // Index for search
-        self.index_issue_for_search(issue).await?;
-
-        tree.flush()?;
-
+        self.index_issue(issue).await?;
         Ok(())
     }
 
-    async fn index_issue_for_search(&self, issue: &Issue) -> Result<()> {
-        let schema = self.search_index.schema();
-
-        let id_field = schema.get_field("id").unwrap();
-        let type_field = schema.get_field("type").unwrap();
-        let repository_id_field = schema.get_field("repository_id").unwrap();
-        let title_field = schema.get_field("title").unwrap();
-        let body_field = schema.get_field("body").unwrap();
-        let author_field = schema.get_field("author").unwrap();
-        let state_field = schema.get_field("state").unwrap();
-        let labels_field = schema.get_field("labels").unwrap();
-        let assignees_field = schema.get_field("assignees").unwrap();
-
-        let mut doc = doc!(
-            id_field => issue.id.to_string(),
-            type_field => ItemType::Issue.to_string(),
-            repository_id_field => issue.repository_id.to_string(),
-            title_field => issue.title.clone(),
-            author_field => issue.author.clone(),
-            state_field => issue.state.to_string(),
-            labels_field => issue.labels.join(" "),
-            assignees_field => issue.assignees.join(" ")
-        );
-
-        if let Some(body) = &issue.body {
-            doc.add_text(body_field, body);
-        }
-
-        let mut writer = self.index_writer.lock().unwrap();
-        writer.add_document(doc)?;
-        writer.commit()?;
-
-        Ok(())
+    pub async fn get_issue(&self, id: &IssueId) -> Result<Option<Issue>> {
+        let r = self.db.r_transaction()?;
+        Ok(r.get().primary(id.clone())?)
     }
 
-    /// Retrieves issues for a specific repository, optionally filtered by update time.
-    ///
-    /// # Arguments
-    ///
-    /// * `repository_id` - The ID of the repository
-    /// * `since` - Optional DateTime to filter issues updated after this time
-    ///
-    /// # Returns
-    ///
-    /// Returns a Vec of Issue entries matching the criteria.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn get_issues_by_repository(
-        &self,
-        repository_id: RepositoryId,
-        since: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Issue>> {
-        let tree = self.db.open_tree("issues")?;
-
-        let prefix = format!("issue:{}:", repository_id);
-        let mut issues = Vec::new();
-
-        for item in tree.scan_prefix(prefix.as_bytes()) {
-            let (_, value) = item?;
-            let issue: Issue = serde_json::from_slice(&value)?;
-
-            if let Some(since_date) = since {
-                if issue.updated_at > since_date {
-                    issues.push(issue);
-                }
-            } else {
-                issues.push(issue);
-            }
-        }
-
+    pub async fn list_issues_by_repository(&self, repo_id: &RepositoryId) -> Result<Vec<Issue>> {
+        let r = self.db.r_transaction()?;
+        let issues: Vec<Issue> = r.scan()
+            .secondary(IssueKey::repository_id)?
+            .start_with(*repo_id)?
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(issues)
     }
 
-    // Pull request operations
-    /// Inserts or updates a pull request in the database and search index.
-    ///
-    /// # Arguments
-    ///
-    /// * `pr` - The PullRequest to insert or update
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations or search indexing fails.
-    pub async fn upsert_pull_request(&self, pr: &PullRequest) -> Result<()> {
-        let tree = self.db.open_tree("pull_requests")?;
-
-        let key = format!("pr:{}:{}", pr.repository_id, pr.number);
-        let value = serde_json::to_vec(pr)?;
-
-        tree.insert(key.as_bytes(), value)?;
+    // Pull Request operations
+    pub async fn save_pull_request(&self, pr: &PullRequest) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(pr.clone())?;
+        rw.commit()?;
 
         // Index for search
-        self.index_pull_request_for_search(pr).await?;
-
-        tree.flush()?;
-
+        self.index_pull_request(pr).await?;
         Ok(())
     }
 
-    async fn index_pull_request_for_search(&self, pr: &PullRequest) -> Result<()> {
-        let schema = self.search_index.schema();
-
-        let id_field = schema.get_field("id").unwrap();
-        let type_field = schema.get_field("type").unwrap();
-        let repository_id_field = schema.get_field("repository_id").unwrap();
-        let title_field = schema.get_field("title").unwrap();
-        let body_field = schema.get_field("body").unwrap();
-        let author_field = schema.get_field("author").unwrap();
-        let state_field = schema.get_field("state").unwrap();
-        let labels_field = schema.get_field("labels").unwrap();
-        let assignees_field = schema.get_field("assignees").unwrap();
-
-        let mut doc = doc!(
-            id_field => pr.id.to_string(),
-            type_field => ItemType::PullRequest.to_string(),
-            repository_id_field => pr.repository_id.to_string(),
-            title_field => pr.title.clone(),
-            author_field => pr.author.clone(),
-            state_field => pr.state.to_string(),
-            labels_field => pr.labels.join(" "),
-            assignees_field => pr.assignees.join(" ")
-        );
-
-        if let Some(body) = &pr.body {
-            doc.add_text(body_field, body);
-        }
-
-        let mut writer = self.index_writer.lock().unwrap();
-        writer.add_document(doc)?;
-        writer.commit()?;
-
-        Ok(())
+    pub async fn get_pull_request(&self, id: &PullRequestId) -> Result<Option<PullRequest>> {
+        let r = self.db.r_transaction()?;
+        Ok(r.get().primary(id.clone())?)
     }
 
-    /// Retrieves pull requests for a specific repository, optionally filtered by update time.
-    ///
-    /// # Arguments
-    ///
-    /// * `repository_id` - The ID of the repository
-    /// * `since` - Optional DateTime to filter pull requests updated after this time
-    ///
-    /// # Returns
-    ///
-    /// Returns a Vec of PullRequest entries matching the criteria.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn get_pull_requests_by_repository(
+    pub async fn list_pull_requests_by_repository(
         &self,
-        repository_id: RepositoryId,
-        since: Option<DateTime<Utc>>,
+        repo_id: &RepositoryId,
     ) -> Result<Vec<PullRequest>> {
-        let tree = self.db.open_tree("pull_requests")?;
-
-        let prefix = format!("pr:{}:", repository_id);
-        let mut prs = Vec::new();
-
-        for item in tree.scan_prefix(prefix.as_bytes()) {
-            let (_, value) = item?;
-            let pr: PullRequest = serde_json::from_slice(&value)?;
-
-            if let Some(since_date) = since {
-                if pr.updated_at > since_date {
-                    prs.push(pr);
-                }
-            } else {
-                prs.push(pr);
-            }
-        }
-
+        let r = self.db.r_transaction()?;
+        let prs: Vec<PullRequest> = r.scan()
+            .secondary(PullRequestKey::repository_id)?
+            .start_with(*repo_id)?
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(prs)
     }
 
     // Comment operations
-    /// Inserts or updates an issue comment in the database.
-    ///
-    /// # Arguments
-    ///
-    /// * `comment` - The IssueComment to insert or update
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn upsert_issue_comment(&self, comment: &IssueComment) -> Result<()> {
-        let tree = self.db.open_tree("issue_comments")?;
-
-        let key = format!("issue_comment:{}:{}", comment.issue_id, comment.comment_id);
-        let value = serde_json::to_vec(comment)?;
-
-        tree.insert(key.as_bytes(), value)?;
-        tree.flush()?;
-
+    pub async fn save_issue_comment(&self, comment: &IssueComment) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(comment.clone())?;
+        rw.commit()?;
         Ok(())
     }
 
-    /// Inserts or updates a pull request comment in the database.
-    ///
-    /// # Arguments
-    ///
-    /// * `comment` - The PullRequestComment to insert or update
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn upsert_pull_request_comment(&self, comment: &PullRequestComment) -> Result<()> {
-        let tree = self.db.open_tree("pr_comments")?;
+    pub async fn list_issue_comments(&self, issue_id: &IssueId) -> Result<Vec<IssueComment>> {
+        let r = self.db.r_transaction()?;
+        let comments: Vec<IssueComment> = r.scan()
+            .secondary(IssueCommentKey::issue_id)?
+            .start_with(*issue_id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(comments)
+    }
 
-        let key = format!(
-            "pr_comment:{}:{}",
-            comment.pull_request_id, comment.comment_id
-        );
-        let value = serde_json::to_vec(comment)?;
-
-        tree.insert(key.as_bytes(), value)?;
-        tree.flush()?;
-
+    pub async fn save_pull_request_comment(&self, comment: &PullRequestComment) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(comment.clone())?;
+        rw.commit()?;
         Ok(())
+    }
+
+    pub async fn list_pull_request_comments(
+        &self,
+        pr_id: &PullRequestId,
+    ) -> Result<Vec<PullRequestComment>> {
+        let r = self.db.r_transaction()?;
+        let comments: Vec<PullRequestComment> = r.scan()
+            .secondary(PullRequestCommentKey::pull_request_id)?
+            .start_with(*pr_id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(comments)
     }
 
     // Sync status operations
-    /// Retrieves the last successful sync status for a repository and resource type.
-    ///
-    /// # Arguments
-    ///
-    /// * `repository_id` - The ID of the repository
-    /// * `resource_type` - The type of resource (Issues or PullRequests)
-    ///
-    /// # Returns
-    ///
-    /// Returns an Option containing the most recent successful SyncStatus.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn get_last_sync_status(
-        &self,
-        repository_id: RepositoryId,
-        resource_type: ResourceType,
-    ) -> Result<Option<SyncStatus>> {
-        let tree = self.db.open_tree("sync_status")?;
-
-        let prefix = format!("sync:{}:{}:", repository_id, resource_type);
-        let mut latest: Option<SyncStatus> = None;
-
-        for item in tree.scan_prefix(prefix.as_bytes()) {
-            let (_, value) = item?;
-            let status: SyncStatus = serde_json::from_slice(&value)?;
-
-            if status.status == SyncStatusType::Success {
-                match &latest {
-                    None => latest = Some(status),
-                    Some(current) => {
-                        if status.last_synced_at > current.last_synced_at {
-                            latest = Some(status);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(latest)
+    pub async fn save_sync_status(&self, status: &SyncStatus) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(status.clone())?;
+        rw.commit()?;
+        Ok(())
     }
 
-    /// Updates the sync status for a repository and resource type.
-    ///
-    /// # Arguments
-    ///
-    /// * `status` - The SyncStatus to store
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub async fn update_sync_status(&self, status: &SyncStatus) -> Result<()> {
-        let tree = self.db.open_tree("sync_status")?;
-
-        let timestamp = status.last_synced_at.timestamp_millis();
-        let key = format!(
-            "sync:{}:{}:{}",
-            status.repository_id, status.resource_type, timestamp
-        );
-        let value = serde_json::to_vec(status)?;
-
-        tree.insert(key.as_bytes(), value)?;
-        tree.flush()?;
-
-        Ok(())
+    pub async fn get_sync_status(
+        &self,
+        repo_id: &RepositoryId,
+        resource_type: ResourceType,
+    ) -> Result<Option<SyncStatus>> {
+        let r = self.db.r_transaction()?;
+        let statuses: Vec<SyncStatus> = r.scan()
+            .secondary(SyncStatusKey::repository_id)?
+            .start_with(*repo_id)?
+            .filter_map(|s: Result<SyncStatus, _>| match s {
+                Ok(status) if status.resource_type == resource_type => Some(Ok(status)),
+                Ok(_) => None,
+                Err(e) => Some(Err(e)),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(statuses.into_iter().next())
     }
 
     // Cross-reference operations
-    /// Adds a cross-reference between issues or pull requests.
-    ///
-    /// # Arguments
-    ///
-    /// * `cross_ref` - The CrossReference to add
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub fn add_cross_reference(&self, cross_ref: &CrossReference) -> Result<()> {
-        let tree = self.db.open_tree("cross_references")?;
-
-        // Store with source key
-        let source_key = format!(
-            "xref_source:{}:{}:{}",
-            cross_ref.source_repository_id, cross_ref.source_type, cross_ref.source_id
-        );
-
-        // Store with target key for bidirectional lookup
-        let target_key = format!(
-            "xref_target:{}:{}:{}",
-            cross_ref.target_repository_id, cross_ref.target_type, cross_ref.target_number
-        );
-
-        let value = serde_json::to_vec(cross_ref)?;
-
-        tree.insert(source_key.as_bytes(), value.clone())?;
-        tree.insert(target_key.as_bytes(), value)?;
-        tree.flush()?;
-
+    pub async fn save_cross_reference(&self, xref: &CrossReference) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(xref.clone())?;
+        rw.commit()?;
         Ok(())
     }
 
-    /// Retrieves cross-references originating from a specific source item.
-    ///
-    /// # Arguments
-    ///
-    /// * `repository_id` - The repository ID of the source item
-    /// * `item_type` - The type of the source item (Issue or PullRequest)
-    /// * `item_id` - The ID of the source item
-    ///
-    /// # Returns
-    ///
-    /// Returns a Vec of CrossReference entries from this source.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub fn get_cross_references_by_source(
+    pub async fn list_cross_references_from(
         &self,
-        repository_id: RepositoryId,
-        item_type: ItemType,
-        item_id: i64,
+        source_repo_id: &RepositoryId,
     ) -> Result<Vec<CrossReference>> {
-        let tree = self.db.open_tree("cross_references")?;
-
-        let prefix = format!("xref_source:{}:{}:{}", repository_id, item_type, item_id);
-        let mut refs = Vec::new();
-
-        for item in tree.scan_prefix(prefix.as_bytes()) {
-            let (_, value) = item?;
-            let cross_ref: CrossReference = serde_json::from_slice(&value)?;
-            refs.push(cross_ref);
-        }
-
-        Ok(refs)
+        let r = self.db.r_transaction()?;
+        let xrefs: Vec<CrossReference> = r.scan()
+            .secondary(CrossReferenceKey::source_repository_id)?
+            .start_with(*source_repo_id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(xrefs)
     }
 
-    /// Retrieves cross-references pointing to a specific target item.
-    ///
-    /// # Arguments
-    ///
-    /// * `repository_id` - The repository ID of the target item
-    /// * `item_type` - The type of the target item (Issue or PullRequest)
-    /// * `item_number` - The number of the target item
-    ///
-    /// # Returns
-    ///
-    /// Returns a Vec of CrossReference entries pointing to this target.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations fail.
-    pub fn get_cross_references_by_target(
+    pub async fn list_cross_references_to(
         &self,
-        repository_id: RepositoryId,
-        item_type: ItemType,
-        item_number: i64,
+        target_repo_id: &RepositoryId,
     ) -> Result<Vec<CrossReference>> {
-        let tree = self.db.open_tree("cross_references")?;
-
-        let prefix = format!(
-            "xref_target:{}:{}:{}",
-            repository_id, item_type, item_number
-        );
-        let mut refs = Vec::new();
-
-        for item in tree.scan_prefix(prefix.as_bytes()) {
-            let (_, value) = item?;
-            let cross_ref: CrossReference = serde_json::from_slice(&value)?;
-            refs.push(cross_ref);
-        }
-
-        Ok(refs)
+        let r = self.db.r_transaction()?;
+        let xrefs: Vec<CrossReference> = r.scan()
+            .secondary(CrossReferenceKey::target_repository_id)?
+            .start_with(*target_repo_id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(xrefs)
     }
 
     // Search operations
-    /// Searches for issues and pull requests using full-text search.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The search query string
-    /// * `repository_id` - Optional repository ID to filter results
-    /// * `limit` - Maximum number of results to return
-    ///
-    /// # Returns
-    ///
-    /// Returns a Vec of SearchResult entries matching the query.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if search operations fail.
-    pub async fn search(
-        &self,
-        query: &str,
-        repository_id: Option<RepositoryId>,
-        limit: usize,
-    ) -> Result<Vec<SearchResult>> {
+    async fn index_repository(&self, repo: &Repository) -> Result<()> {
+        let mut writer = self.index_writer.lock().unwrap();
+        let schema = self.search_index.schema();
+
+        let id_field = schema.get_field("id").unwrap();
+        let type_field = schema.get_field("type").unwrap();
+        let repository_id_field = schema.get_field("repository_id").unwrap();
+        let title_field = schema.get_field("title").unwrap();
+        let body_field = schema.get_field("body").unwrap();
+        let author_field = schema.get_field("author").unwrap();
+
+        let mut doc = doc!();
+        doc.add_text(id_field, &repo.id.to_string());
+        doc.add_text(type_field, "repository");
+        doc.add_text(repository_id_field, &repo.id.to_string());
+        doc.add_text(title_field, &repo.full_name);
+        if let Some(desc) = &repo.description {
+            doc.add_text(body_field, desc);
+        }
+        doc.add_text(author_field, &repo.owner);
+
+        writer.add_document(doc)?;
+        writer.commit()?;
+        Ok(())
+    }
+
+    async fn index_issue(&self, issue: &Issue) -> Result<()> {
+        let mut writer = self.index_writer.lock().unwrap();
+        let schema = self.search_index.schema();
+
+        let id_field = schema.get_field("id").unwrap();
+        let type_field = schema.get_field("type").unwrap();
+        let repository_id_field = schema.get_field("repository_id").unwrap();
+        let title_field = schema.get_field("title").unwrap();
+        let body_field = schema.get_field("body").unwrap();
+        let author_field = schema.get_field("author").unwrap();
+        let labels_field = schema.get_field("labels").unwrap();
+        let assignees_field = schema.get_field("assignees").unwrap();
+
+        let mut doc = doc!();
+        doc.add_text(id_field, &issue.id.to_string());
+        doc.add_text(type_field, "issue");
+        doc.add_text(repository_id_field, &issue.repository_id.to_string());
+        doc.add_text(title_field, &issue.title);
+        if let Some(body) = &issue.body {
+            doc.add_text(body_field, body);
+        }
+        doc.add_text(author_field, &issue.author);
+        doc.add_text(labels_field, &issue.labels.join(" "));
+        doc.add_text(assignees_field, &issue.assignees.join(" "));
+
+        writer.add_document(doc)?;
+        writer.commit()?;
+        Ok(())
+    }
+
+    async fn index_pull_request(&self, pr: &PullRequest) -> Result<()> {
+        let mut writer = self.index_writer.lock().unwrap();
+        let schema = self.search_index.schema();
+
+        let id_field = schema.get_field("id").unwrap();
+        let type_field = schema.get_field("type").unwrap();
+        let repository_id_field = schema.get_field("repository_id").unwrap();
+        let title_field = schema.get_field("title").unwrap();
+        let body_field = schema.get_field("body").unwrap();
+        let author_field = schema.get_field("author").unwrap();
+        let labels_field = schema.get_field("labels").unwrap();
+        let assignees_field = schema.get_field("assignees").unwrap();
+
+        let mut doc = doc!();
+        doc.add_text(id_field, &pr.id.to_string());
+        doc.add_text(type_field, "pull_request");
+        doc.add_text(repository_id_field, &pr.repository_id.to_string());
+        doc.add_text(title_field, &pr.title);
+        if let Some(body) = &pr.body {
+            doc.add_text(body_field, body);
+        }
+        doc.add_text(author_field, &pr.author);
+        doc.add_text(labels_field, &pr.labels.join(" "));
+        doc.add_text(assignees_field, &pr.assignees.join(" "));
+
+        writer.add_document(doc)?;
+        writer.commit()?;
+        Ok(())
+    }
+
+    pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let searcher = self.index_reader.searcher();
         let schema = self.search_index.schema();
 
         let title_field = schema.get_field("title").unwrap();
         let body_field = schema.get_field("body").unwrap();
+        let author_field = schema.get_field("author").unwrap();
+        let labels_field = schema.get_field("labels").unwrap();
+        let assignees_field = schema.get_field("assignees").unwrap();
 
-        let query_parser =
-            QueryParser::for_index(&self.search_index, vec![title_field, body_field]);
+        let query_parser = QueryParser::for_index(
+            &self.search_index,
+            vec![title_field, body_field, author_field, labels_field, assignees_field],
+        );
+
         let query = query_parser.parse_query(query)?;
-
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
         let mut results = Vec::new();
-
         for (_score, doc_address) in top_docs {
-            let retrieved_doc = searcher.doc::<tantivy::TantivyDocument>(doc_address)?;
-
-            let doc_type = retrieved_doc
+            let retrieved_doc: tantivy::TantivyDocument = searcher.doc(doc_address)?;
+            let id = retrieved_doc
+                .get_first(schema.get_field("id").unwrap())
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let item_type = retrieved_doc
                 .get_first(schema.get_field("type").unwrap())
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
-
-            let doc_id = retrieved_doc
-                .get_first(schema.get_field("id").unwrap())
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(0);
-
-            let repo_id = retrieved_doc
+            let repository_id = retrieved_doc
                 .get_first(schema.get_field("repository_id").unwrap())
                 .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<i64>().ok())
-                .map(RepositoryId::new)
-                .unwrap_or_else(|| RepositoryId::new(0));
-
-            // Filter by repository if specified
-            if let Some(filter_repo_id) = repository_id {
-                if repo_id != filter_repo_id {
-                    continue;
-                }
-            }
-
+                .unwrap_or_default();
             let title = retrieved_doc
                 .get_first(schema.get_field("title").unwrap())
                 .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-
+                .unwrap_or_default();
             let body = retrieved_doc
                 .get_first(schema.get_field("body").unwrap())
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
             results.push(SearchResult {
-                id: doc_id,
-                result_type: doc_type.to_string(),
-                repository_id: repo_id,
-                title,
+                id: id.to_string(),
+                item_type: item_type.to_string(),
+                repository_id: repository_id.to_string(),
+                title: title.to_string(),
                 body,
             });
         }
@@ -693,9 +463,9 @@ impl GitDatabase {
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
-    pub id: i64,
-    pub result_type: String,
-    pub repository_id: RepositoryId,
+    pub id: String,
+    pub item_type: String,
+    pub repository_id: String,
     pub title: String,
     pub body: Option<String>,
 }

@@ -246,7 +246,16 @@ async fn main() -> Result<()> {
             };
 
             // Perform search
-            let results = db.search(&query, repo_id, limit).await?;
+            let results = db.search(&query, limit).await?;
+            
+            // Filter by repository if specified
+            let results: Vec<_> = if let Some(repo_id) = repo_id {
+                results.into_iter()
+                    .filter(|r| r.repository_id == repo_id.to_string())
+                    .collect()
+            } else {
+                results
+            };
 
             if results.is_empty() {
                 println!("No results found");
@@ -260,7 +269,7 @@ async fn main() -> Result<()> {
                         // For now, skip this filter
                     }
 
-                    println!("\n[{}] {}", result.result_type, result.title);
+                    println!("\n[{}] {}", result.item_type, result.title);
                     if let Some(body) = &result.body {
                         // Show first 200 chars of body
                         let preview = if body.len() > 200 {
@@ -327,7 +336,7 @@ async fn main() -> Result<()> {
             let (source_title, source_body, actual_item_type) =
                 if item_type.is_none() || item_type == Some(ItemType::Issue) {
                     // Try to find as issue first
-                    let issues = db.get_issues_by_repository(repository.id, None).await?;
+                    let issues = db.list_issues_by_repository(&repository.id).await?;
                     if let Some(issue) = issues
                         .iter()
                         .find(|i| i.number == IssueNumber::new(item_number as i64))
@@ -340,7 +349,7 @@ async fn main() -> Result<()> {
                     } else if item_type.is_none() {
                         // Try as PR
                         let prs = db
-                            .get_pull_requests_by_repository(repository.id, None)
+                            .list_pull_requests_by_repository(&repository.id)
                             .await?;
                         if let Some(pr) = prs
                             .iter()
@@ -362,7 +371,7 @@ async fn main() -> Result<()> {
                 } else {
                     // Find as PR
                     let prs = db
-                        .get_pull_requests_by_repository(repository.id, None)
+                        .list_pull_requests_by_repository(&repository.id)
                         .await?;
                     if let Some(pr) = prs
                         .iter()
@@ -389,11 +398,10 @@ async fn main() -> Result<()> {
 
             // 1. Find items referenced by this issue/PR (outgoing)
             if !semantic_only {
-                let outgoing_refs = db.get_cross_references_by_source(
-                    repository.id,
-                    actual_item_type,
-                    item_number as i64,
-                )?;
+                let all_refs = db.list_cross_references_from(&repository.id).await?;
+                let outgoing_refs: Vec<_> = all_refs.into_iter()
+                    .filter(|xref| xref.source_type == actual_item_type && xref.source_id == item_number as i64)
+                    .collect();
 
                 if !outgoing_refs.is_empty() {
                     println!("=== Outgoing References (this item references) ===");
@@ -408,11 +416,10 @@ async fn main() -> Result<()> {
 
             // 2. Find items that reference this issue/PR (incoming)
             if !semantic_only {
-                let incoming_refs = db.get_cross_references_by_target(
-                    repository.id,
-                    actual_item_type,
-                    item_number as i64,
-                )?;
+                let all_refs = db.list_cross_references_to(&repository.id).await?;
+                let incoming_refs: Vec<_> = all_refs.into_iter()
+                    .filter(|xref| xref.target_type == actual_item_type && xref.target_number == item_number as i64)
+                    .collect();
 
                 if !incoming_refs.is_empty() {
                     println!("=== Incoming References (referenced by) ===");
@@ -420,7 +427,7 @@ async fn main() -> Result<()> {
                         // Find the source item to display
                         let source_desc = if xref.source_type == ItemType::Issue {
                             let issues = db
-                                .get_issues_by_repository(xref.source_repository_id, None)
+                                .list_issues_by_repository(&xref.source_repository_id)
                                 .await?;
                             issues
                                 .iter()
@@ -429,7 +436,7 @@ async fn main() -> Result<()> {
                                 .unwrap_or_else(|| format!("Issue #{}", xref.source_id))
                         } else {
                             let prs = db
-                                .get_pull_requests_by_repository(xref.source_repository_id, None)
+                                .list_pull_requests_by_repository(&xref.source_repository_id)
                                 .await?;
                             prs.iter()
                                 .find(|p| p.id == PullRequestId::new(xref.source_id))
@@ -448,15 +455,20 @@ async fn main() -> Result<()> {
             if !links_only {
                 let search_query = format!("{} {}", source_title, source_body);
                 let semantic_results = db
-                    .search(&search_query, Some(repository.id), limit * 2)
+                    .search(&search_query, limit * 2)
                     .await?;
+                
+                // Filter by repository
+                let semantic_results: Vec<_> = semantic_results.into_iter()
+                    .filter(|r| r.repository_id == repository.id.to_string())
+                    .collect();
 
                 // Filter out the source item itself
                 let filtered_results: Vec<_> = semantic_results
                     .into_iter()
                     .filter(|r| {
-                        !(r.result_type == actual_item_type.to_string()
-                            && r.id == item_number as i64)
+                        !(r.item_type == actual_item_type.to_string()
+                            && r.id == item_number.to_string())
                     })
                     .take(limit)
                     .collect();
@@ -464,7 +476,7 @@ async fn main() -> Result<()> {
                 if !filtered_results.is_empty() {
                     println!("=== Semantically Similar Items ===");
                     for (idx, result) in filtered_results.iter().enumerate() {
-                        println!("  {}. [{}] {}", idx + 1, result.result_type, result.title);
+                        println!("  {}. [{}] {}", idx + 1, result.item_type, result.title);
                         if let Some(body) = &result.body {
                             let preview = if body.len() > 100 {
                                 format!("     {}...", &body[..100])
@@ -474,7 +486,7 @@ async fn main() -> Result<()> {
                             println!("{}", preview);
                         }
                         all_results
-                            .push(format!("[SEM] [{}] {}", result.result_type, result.title));
+                            .push(format!("[SEM] [{}] {}", result.item_type, result.title));
                     }
                 }
             }

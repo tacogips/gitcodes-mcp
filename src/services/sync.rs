@@ -62,14 +62,14 @@ impl SyncService {
 
         // Fetch repository info
         let repo = self.github.get_repository(&owner, &name).await?;
-        self.db.upsert_repository(&repo).await?;
+        self.db.save_repository(&repo).await?;
 
         let mut result = SyncResult::default();
 
         // Get last sync status
         let last_issue_sync = if !full_sync {
             self.db
-                .get_last_sync_status(repo.id, ResourceType::Issues)
+                .get_sync_status(&repo.id, ResourceType::Issues)
                 .await?
         } else {
             None
@@ -77,7 +77,7 @@ impl SyncService {
 
         let last_pr_sync = if !full_sync {
             self.db
-                .get_last_sync_status(repo.id, ResourceType::PullRequests)
+                .get_sync_status(&repo.id, ResourceType::PullRequests)
                 .await?
         } else {
             None
@@ -169,7 +169,7 @@ impl SyncService {
 
         for issue in &issues {
             // Save issue
-            self.db.upsert_issue(issue).await?;
+            self.db.save_issue(issue).await?;
 
             // Sync comments
             let comments = self
@@ -177,7 +177,7 @@ impl SyncService {
                 .get_issue_comments(owner, name, issue.number.value() as u64, issue.id)
                 .await?;
             for comment in &comments {
-                self.db.upsert_issue_comment(comment).await?;
+                self.db.save_issue_comment(comment).await?;
             }
 
             // Parse cross-references in issue body and comments
@@ -225,7 +225,7 @@ impl SyncService {
 
         for pr in &prs {
             // Save pull request
-            self.db.upsert_pull_request(pr).await?;
+            self.db.save_pull_request(pr).await?;
 
             // Sync comments
             let comments = self
@@ -233,7 +233,7 @@ impl SyncService {
                 .get_pull_request_comments(owner, name, pr.number.value() as u64, pr.id)
                 .await?;
             for comment in &comments {
-                self.db.upsert_pull_request_comment(comment).await?;
+                self.db.save_pull_request_comment(comment).await?;
             }
 
             // Parse cross-references in PR body and comments
@@ -323,7 +323,7 @@ impl SyncService {
                     created_at: Utc::now(),
                 };
 
-                self.db.add_cross_reference(&cross_ref)?;
+                self.db.save_cross_reference(&cross_ref).await?;
             }
         }
 
@@ -348,7 +348,7 @@ impl SyncService {
             items_synced: items_synced as i64,
         };
 
-        self.db.update_sync_status(&sync_status).await?;
+        self.db.save_sync_status(&sync_status).await?;
 
         Ok(())
     }

@@ -55,8 +55,8 @@ async fn test_repository_operations() -> Result<()> {
         indexed_at: chrono::Utc::now(),
     };
 
-    // Test upsert
-    db.upsert_repository(&repo).await?;
+    // Test save
+    db.save_repository(&repo).await?;
 
     // Test get by full name
     let retrieved = db.get_repository_by_full_name("test/repo").await?;
@@ -93,12 +93,12 @@ async fn test_issue_operations() -> Result<()> {
         comments_count: 0,
     };
 
-    // Test upsert
-    db.upsert_issue(&issue).await?;
+    // Test save
+    db.save_issue(&issue).await?;
 
     // Test get by repository
     let issues = db
-        .get_issues_by_repository(RepositoryId::new(1), None)
+        .list_issues_by_repository(&RepositoryId::new(1))
         .await?;
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].title, "Test Issue");
@@ -134,12 +134,12 @@ async fn test_pull_request_operations() -> Result<()> {
         changed_files: 5,
     };
 
-    // Test upsert
-    db.upsert_pull_request(&pr).await?;
+    // Test save
+    db.save_pull_request(&pr).await?;
 
     // Test get by repository
     let prs = db
-        .get_pull_requests_by_repository(RepositoryId::new(1), None)
+        .list_pull_requests_by_repository(&RepositoryId::new(1))
         .await?;
     assert_eq!(prs.len(), 1);
     assert_eq!(prs[0].title, "Test PR");
@@ -162,12 +162,12 @@ async fn test_sync_status_operations() -> Result<()> {
         items_synced: 10,
     };
 
-    // Test update
-    db.update_sync_status(&status).await?;
+    // Test save
+    db.save_sync_status(&status).await?;
 
-    // Test get last sync status
+    // Test get sync status
     let last_status = db
-        .get_last_sync_status(RepositoryId::new(1), ResourceType::Issues)
+        .get_sync_status(&RepositoryId::new(1), ResourceType::Issues)
         .await?;
     assert!(last_status.is_some());
     let last_status = last_status.unwrap();
@@ -192,25 +192,27 @@ async fn test_cross_reference_operations() -> Result<()> {
         created_at: chrono::Utc::now(),
     };
 
-    // Test add
-    db.add_cross_reference(&cross_ref)?;
+    // Test save
+    db.save_cross_reference(&cross_ref).await?;
 
-    // Test get by source
-    let refs_by_source = db.get_cross_references_by_source(
-        RepositoryId::new(1),
-        ItemType::Issue,
-        1,
-    )?;
+    // Test list by source repository
+    let refs_by_source = db.list_cross_references_from(
+        &RepositoryId::new(1),
+    ).await?;
+    let refs_by_source: Vec<_> = refs_by_source.into_iter()
+        .filter(|xref| xref.source_type == ItemType::Issue && xref.source_id == 1)
+        .collect();
     assert_eq!(refs_by_source.len(), 1);
     assert_eq!(refs_by_source[0].target_type, ItemType::PullRequest);
     assert_eq!(refs_by_source[0].target_number, 456);
 
-    // Test get by target
-    let refs_by_target = db.get_cross_references_by_target(
-        RepositoryId::new(1),
-        ItemType::PullRequest,
-        456,
-    )?;
+    // Test list by target repository
+    let refs_by_target = db.list_cross_references_to(
+        &RepositoryId::new(1),
+    ).await?;
+    let refs_by_target: Vec<_> = refs_by_target.into_iter()
+        .filter(|xref| xref.target_type == ItemType::PullRequest && xref.target_number == 456)
+        .collect();
     assert_eq!(refs_by_target.len(), 1);
     assert_eq!(refs_by_target[0].source_type, ItemType::Issue);
     assert_eq!(refs_by_target[0].source_id, 1);
@@ -255,18 +257,18 @@ async fn test_search_functionality() -> Result<()> {
         comments_count: 0,
     };
 
-    db.upsert_issue(&issue1).await?;
-    db.upsert_issue(&issue2).await?;
+    db.save_issue(&issue1).await?;
+    db.save_issue(&issue2).await?;
 
     // Wait for search index to update (OnCommitWithDelay requires some time)
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Test search
-    let results = db.search("password", Some(RepositoryId::new(1)), 10).await?;
+    let results = db.search("password", 10).await?;
     assert_eq!(results.len(), 2);
 
     // Test search with specific terms
-    let results = db.search("authentication", Some(RepositoryId::new(1)), 10).await?;
+    let results = db.search("authentication", 10).await?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].title, "Bug in authentication module");
 
