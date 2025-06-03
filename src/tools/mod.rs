@@ -2,7 +2,6 @@ use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber};
 use crate::services::SyncService;
 use crate::storage::GitDatabase;
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType};
-use rmcp::handler::server::tool::Parameters;
 use rmcp::{Error as McpError, ServerHandler, model::*, tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -69,91 +68,10 @@ impl GitDbTools {
     }
 }
 
-/// Parameters for registering a repository
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RegisterRepositoryParams {
-    #[schemars(
-        description = "Repository URL (required). Formats: 'https://github.com/owner/repo', 'git@github.com:owner/repo.git', 'owner/repo'. Examples: 'rust-lang/rust', 'https://github.com/tokio-rs/tokio'"
-    )]
-    pub url: String,
-}
+// Parameter structs are no longer needed since we use flat parameters in tool methods
 
-/// Parameters for syncing repositories
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SyncParams {
-    #[schemars(
-        description = "Repository to sync (optional). Format: 'owner/repo'. Omit to sync all. Examples: 'rust-lang/rust', 'tokio-rs/tokio'"
-    )]
-    pub repo: Option<String>,
 
-    #[schemars(
-        description = "Full sync (optional, default false). true: fetch all data from beginning. false: incremental updates only"
-    )]
-    pub full: Option<bool>,
-}
 
-/// Parameters for searching issues and pull requests
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchParams {
-    #[schemars(
-        description = "Search query (required). Searches titles, bodies, comments. Examples: 'memory leak', 'async bug', 'performance issue'"
-    )]
-    pub query: String,
-
-    #[schemars(
-        description = "Repository filter (optional). Format: 'owner/repo'. Omit to search all. Example: 'tokio-rs/tokio'"
-    )]
-    pub repo: Option<String>,
-
-    #[schemars(
-        description = "State filter (optional). Values: 'open', 'closed'. Omit for any state"
-    )]
-    pub state: Option<StateFilter>,
-
-    #[schemars(
-        description = "Label filter (optional). Exact match, case-sensitive. Examples: 'bug', 'enhancement', 'documentation'"
-    )]
-    pub label: Option<String>,
-
-    #[schemars(
-        description = "Result limit (optional, default 30, max 100). Examples: 10, 50, 100"
-    )]
-    pub limit: Option<usize>,
-}
-
-/// Parameters for finding related items
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RelatedItemsParams {
-    #[schemars(
-        description = "Repository (required). Format: 'owner/repo'. Examples: 'rust-lang/rust', 'tokio-rs/tokio'"
-    )]
-    pub repo: String,
-
-    #[schemars(
-        description = "Issue/PR number (required). Examples: 12345, 567, 89"
-    )]
-    pub number: u64,
-
-    #[schemars(
-        description = "Item type (optional). Values: 'issue', 'pr'. Omit for auto-detect"
-    )]
-    pub item_type: Option<ItemTypeParam>,
-
-    #[schemars(
-        description = "Result limit (optional, default 10). Examples: 5, 20, 50"
-    )]
-    pub limit: Option<usize>,
-
-    #[schemars(
-        description = "Links only (optional, default false). true: only cross-references, no semantic matches"
-    )]
-    pub links_only: Option<bool>,
-
-    #[schemars(
-        description = "Semantic only (optional, default false). true: only similar content, no explicit links"
-    )]
-    pub semantic_only: Option<bool>,
-}
 
 /// Response for listing repositories
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -240,7 +158,11 @@ impl GitDbTools {
     )]
     async fn register_repository(
         &self,
-        Parameters(params): Parameters<RegisterRepositoryParams>,
+        #[tool(param)]
+        #[schemars(
+            description = "Repository URL (required). Formats: 'https://github.com/owner/repo', 'git@github.com:owner/repo.git', 'owner/repo'. Examples: 'rust-lang/rust', 'https://github.com/tokio-rs/tokio'"
+        )]
+        url: String,
     ) -> Result<CallToolResult, McpError> {
         let db = match self.get_db().await {
             Ok(db) => db,
@@ -252,11 +174,11 @@ impl GitDbTools {
             Err(e) => return error_result(format!("Failed to create sync service: {}", e)),
         };
 
-        match sync_service.sync_repository(&params.url, false).await {
+        match sync_service.sync_repository(&url, false).await {
             Ok(result) => {
                 let response = serde_json::json!({
                     "status": "success",
-                    "repository": params.url,
+                    "repository": url,
                     "issues_synced": result.issues_synced,
                     "pull_requests_synced": result.pull_requests_synced,
                     "errors": result.errors
@@ -326,7 +248,16 @@ impl GitDbTools {
     )]
     async fn sync_repositories(
         &self,
-        Parameters(params): Parameters<SyncParams>,
+        #[tool(param)]
+        #[schemars(
+            description = "Repository to sync (optional). Format: 'owner/repo'. Omit to sync all. Examples: 'rust-lang/rust', 'tokio-rs/tokio'"
+        )]
+        repo: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Full sync (optional, default false). true: fetch all data from beginning. false: incremental updates only"
+        )]
+        full: Option<bool>,
     ) -> Result<CallToolResult, McpError> {
         let db = match self.get_db().await {
             Ok(db) => db,
@@ -338,7 +269,7 @@ impl GitDbTools {
             Err(e) => return error_result(format!("Failed to create sync service: {}", e)),
         };
 
-        let full_sync = params.full.unwrap_or(false);
+        let full_sync = full.unwrap_or(false);
 
         let mut response = SyncResponse {
             repositories_synced: 0,
@@ -347,7 +278,7 @@ impl GitDbTools {
             errors: Vec::new(),
         };
 
-        if let Some(repo_name) = params.repo {
+        if let Some(repo_name) = repo {
             // Sync specific repository
             match sync_service.sync_repository(&repo_name, full_sync).await {
                 Ok(result) => {
@@ -402,7 +333,31 @@ impl GitDbTools {
     )]
     async fn search_items(
         &self,
-        Parameters(params): Parameters<SearchParams>,
+        #[tool(param)]
+        #[schemars(
+            description = "Search query (required). Searches titles, bodies, comments. Examples: 'memory leak', 'async bug', 'performance issue'"
+        )]
+        query: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Repository filter (optional). Format: 'owner/repo'. Omit to search all. Example: 'tokio-rs/tokio'"
+        )]
+        repo: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "State filter (optional). Values: 'open', 'closed'. Omit for any state"
+        )]
+        state: Option<StateFilter>,
+        #[tool(param)]
+        #[schemars(
+            description = "Label filter (optional). Exact match, case-sensitive. Examples: 'bug', 'enhancement', 'documentation'"
+        )]
+        label: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Result limit (optional, default 30, max 100). Examples: 10, 50, 100"
+        )]
+        limit: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
         let db = match self.get_db().await {
             Ok(db) => db,
@@ -410,7 +365,7 @@ impl GitDbTools {
         };
 
         // Get repository ID if filtering by repo
-        let repo_id = if let Some(repo_name) = &params.repo {
+        let repo_id = if let Some(repo_name) = &repo {
             match db.get_repository_by_full_name(repo_name).await {
                 Ok(Some(repo)) => Some(repo.id),
                 Ok(None) => return error_result(format!("Repository {} not found", repo_name)),
@@ -420,15 +375,15 @@ impl GitDbTools {
             None
         };
 
-        let limit = params.limit.unwrap_or(30).min(100);
+        let limit = limit.unwrap_or(30).min(100);
 
-        match db.search(&params.query, repo_id, limit).await {
+        match db.search(&query, repo_id, limit).await {
             Ok(results) => {
                 let mut search_results = Vec::new();
 
                 for result in results {
                     // Get repository name
-                    let repo_name = if let Some(repo_name) = &params.repo {
+                    let repo_name = if let Some(repo_name) = &repo {
                         repo_name.clone()
                     } else {
                         // Look up repository name
@@ -439,7 +394,7 @@ impl GitDbTools {
                     };
 
                     // Filter by state if specified
-                    if let Some(filter_state) = &params.state {
+                    if let Some(filter_state) = &state {
                         let matches_filter = if result.result_type == "issue" {
                             // Get issue to check state
                             match db
@@ -528,7 +483,7 @@ impl GitDbTools {
                     };
 
                     // Filter by label if specified
-                    if let Some(filter_label) = &params.label {
+                    if let Some(filter_label) = &label {
                         if !labels.contains(filter_label) {
                             continue;
                         }
@@ -575,7 +530,36 @@ impl GitDbTools {
     )]
     async fn find_related_items(
         &self,
-        Parameters(params): Parameters<RelatedItemsParams>,
+        #[tool(param)]
+        #[schemars(
+            description = "Repository (required). Format: 'owner/repo'. Examples: 'rust-lang/rust', 'tokio-rs/tokio'"
+        )]
+        repo: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Issue/PR number (required). Examples: 12345, 567, 89"
+        )]
+        number: u64,
+        #[tool(param)]
+        #[schemars(
+            description = "Item type (optional). Values: 'issue', 'pr'. Omit for auto-detect"
+        )]
+        item_type: Option<ItemTypeParam>,
+        #[tool(param)]
+        #[schemars(
+            description = "Result limit (optional, default 10). Examples: 5, 20, 50"
+        )]
+        limit: Option<usize>,
+        #[tool(param)]
+        #[schemars(
+            description = "Links only (optional, default false). true: only cross-references, no semantic matches"
+        )]
+        links_only: Option<bool>,
+        #[tool(param)]
+        #[schemars(
+            description = "Semantic only (optional, default false). true: only similar content, no explicit links"
+        )]
+        semantic_only: Option<bool>,
     ) -> Result<CallToolResult, McpError> {
         let db = match self.get_db().await {
             Ok(db) => db,
@@ -583,19 +567,19 @@ impl GitDbTools {
         };
 
         // Get repository
-        let repository = match db.get_repository_by_full_name(&params.repo).await {
+        let repository = match db.get_repository_by_full_name(&repo).await {
             Ok(Some(repo)) => repo,
-            Ok(None) => return error_result(format!("Repository {} not found", params.repo)),
+            Ok(None) => return error_result(format!("Repository {} not found", repo)),
             Err(e) => return error_result(format!("Failed to get repository: {}", e)),
         };
 
-        let limit = params.limit.unwrap_or(10);
-        let links_only = params.links_only.unwrap_or(false);
-        let semantic_only = params.semantic_only.unwrap_or(false);
+        let limit = limit.unwrap_or(10);
+        let links_only = links_only.unwrap_or(false);
+        let semantic_only = semantic_only.unwrap_or(false);
 
         // Determine item type
         let (actual_item_type, source_title, source_state) = if let Some(item_type_param) =
-            &params.item_type
+            &item_type
         {
             let item_type = match item_type_param {
                 ItemTypeParam::Issue => ItemType::Issue,
@@ -608,7 +592,7 @@ impl GitDbTools {
                     Ok(issues) => {
                         if let Some(issue) = issues
                             .iter()
-                            .find(|i| i.number == IssueNumber::new(params.number as i64))
+                            .find(|i| i.number == IssueNumber::new(number as i64))
                         {
                             (
                                 ItemType::Issue,
@@ -618,7 +602,7 @@ impl GitDbTools {
                         } else {
                             return error_result(format!(
                                 "Issue #{} not found in {}",
-                                params.number, params.repo
+                                number, repo
                             ));
                         }
                     }
@@ -632,7 +616,7 @@ impl GitDbTools {
                         Ok(prs) => {
                             if let Some(pr) = prs
                                 .iter()
-                                .find(|p| p.number == PullRequestNumber::new(params.number as i64))
+                                .find(|p| p.number == PullRequestNumber::new(number as i64))
                             {
                                 (
                                     ItemType::PullRequest,
@@ -642,7 +626,7 @@ impl GitDbTools {
                             } else {
                                 return error_result(format!(
                                     "Pull request #{} not found in {}",
-                                    params.number, params.repo
+                                    number, repo
                                 ));
                             }
                         }
@@ -661,7 +645,7 @@ impl GitDbTools {
 
             if let Some(issue) = issues
                 .iter()
-                .find(|i| i.number == IssueNumber::new(params.number as i64))
+                .find(|i| i.number == IssueNumber::new(number as i64))
             {
                 (
                     ItemType::Issue,
@@ -680,7 +664,7 @@ impl GitDbTools {
 
                 if let Some(pr) = prs
                     .iter()
-                    .find(|p| p.number == PullRequestNumber::new(params.number as i64))
+                    .find(|p| p.number == PullRequestNumber::new(number as i64))
                 {
                     (
                         ItemType::PullRequest,
@@ -690,7 +674,7 @@ impl GitDbTools {
                 } else {
                     return error_result(format!(
                         "Item #{} not found in {}",
-                        params.number, params.repo
+                        number, repo
                     ));
                 }
             }
@@ -698,19 +682,19 @@ impl GitDbTools {
 
         let source_url = format!(
             "https://github.com/{}/{}/{}",
-            params.repo,
+            repo,
             if actual_item_type == ItemType::Issue {
                 "issues"
             } else {
                 "pull"
             },
-            params.number
+            number
         );
 
         let source_item = ItemInfo {
-            repository: params.repo.clone(),
+            repository: repo.clone(),
             item_type: actual_item_type.to_string(),
-            number: params.number as i64,
+            number: number as i64,
             title: source_title.clone(),
             state: source_state,
             url: source_url,
@@ -726,7 +710,7 @@ impl GitDbTools {
             match db.get_cross_references_by_source(
                 repository.id,
                 actual_item_type,
-                params.number as i64,
+                number as i64,
             ) {
                 Ok(refs) => {
                     for xref in refs {
@@ -787,7 +771,7 @@ impl GitDbTools {
             match db.get_cross_references_by_target(
                 repository.id,
                 actual_item_type,
-                params.number as i64,
+                number as i64,
             ) {
                 Ok(refs) => {
                     for xref in refs {
@@ -868,7 +852,7 @@ impl GitDbTools {
                     for result in results {
                         // Skip the source item itself
                         if result.result_type == actual_item_type.to_string()
-                            && result.id == params.number as i64
+                            && result.id == number as i64
                         {
                             continue;
                         }
@@ -910,7 +894,7 @@ impl GitDbTools {
 
                         let url = format!(
                             "https://github.com/{}/{}/{}",
-                            params.repo,
+                            repo,
                             if result.result_type == "issue" {
                                 "issues"
                             } else {
@@ -920,7 +904,7 @@ impl GitDbTools {
                         );
 
                         semantically_similar.push(ItemInfo {
-                            repository: params.repo.clone(),
+                            repository: repo.clone(),
                             item_type: result.result_type,
                             number: result.id,
                             title,
