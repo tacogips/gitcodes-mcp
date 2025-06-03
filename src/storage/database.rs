@@ -128,6 +128,35 @@ impl GitDatabase {
         }
     }
 
+    /// Retrieves a repository by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The repository ID
+    ///
+    /// # Returns
+    ///
+    /// Returns an Option containing the Repository if found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    pub async fn get_repository_by_id(&self, id: RepositoryId) -> Result<Option<Repository>> {
+        let tree = self.db.open_tree("repositories")?;
+
+        // We need to iterate through all repositories to find by ID
+        // In a production system, we might want to maintain a separate ID index
+        for item in tree.iter() {
+            let (_, value) = item?;
+            let repo: Repository = serde_json::from_slice(&value)?;
+            if repo.id == id {
+                return Ok(Some(repo));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Lists all repositories in the database.
     ///
     /// # Returns
