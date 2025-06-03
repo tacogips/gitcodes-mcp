@@ -112,9 +112,31 @@ impl EnhancedSearch {
     pub fn search(&self, query_builder: SearchQueryBuilder, limit: usize) -> Result<Vec<SearchResult>> {
         let searcher = self.reader.searcher();
         
-        // Build query parser with all indexed fields
-        let indexed_fields: Vec<Field> = self.field_mapping.values().copied().collect();
-        let query_parser = QueryParser::for_index(&self.index, indexed_fields);
+        // Build query parser with text fields only
+        let mut text_fields = Vec::new();
+        for (field_name, &field) in &self.field_mapping {
+            let field_entry = self.schema.get_field_entry(field);
+            if field_entry.field_type().is_indexed() {
+                // Only include text fields in query parser
+                if let FieldType::Str(_) = field_entry.field_type() {
+                    text_fields.push(field);
+                }
+            }
+        }
+        
+        // If specific fields are requested, filter to only those
+        let query_fields = if !query_builder.fields.is_empty() {
+            text_fields.into_iter()
+                .filter(|&field| {
+                    let field_entry = self.schema.get_field_entry(field);
+                    query_builder.fields.iter().any(|f| f == field_entry.name())
+                })
+                .collect()
+        } else {
+            text_fields
+        };
+        
+        let query_parser = QueryParser::for_index(&self.index, query_fields);
         
         // Parse the query
         let query = query_parser

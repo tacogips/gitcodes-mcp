@@ -70,6 +70,7 @@ regex = "1.10"
 mockito = "1.2"
 tempfile = "3.8"
 tokio-test = "0.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
 
 [features]
 default = []
@@ -87,3 +88,7 @@ path = "src/bin/gitdb_mcp.rs"
 [[bin]]
 name = "gitdb-cli"
 path = "src/bin/gitdb_cli.rs"
+
+[[bench]]
+name = "search_benchmarks"
+harness = false
