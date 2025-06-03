@@ -154,7 +154,7 @@ pub struct CrossReferenceInfo {
 #[tool(tool_box)]
 impl GitDbTools {
     #[tool(
-        description = "Register a GitHub repository for syncing. Downloads all issues/PRs for local search. Returns sync stats (issues_synced, pull_requests_synced). Examples: `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"https://github.com/rust-lang/rust\"}}`, `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"tokio-rs/tokio\"}}`, `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"git@github.com:owner/repo.git\"}}`"
+        description = "Register a GitHub repository for syncing. Downloads all issues/PRs for local search. Returns sync stats (issues_synced, pull_requests_synced). Examples: `{\"url\": \"https://github.com/rust-lang/rust\"}`, `{\"url\": \"tokio-rs/tokio\"}`, `{\"url\": \"git@github.com:owner/repo.git\"}`"
     )]
     async fn register_repository(
         &self,
@@ -190,7 +190,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "List all registered repositories with sync status. Returns array with full_name, stars, forks, issues_count, prs_count, last_synced. Example: `{\"name\": \"list_repositories\", \"arguments\": {}}`"
+        description = "List all registered repositories with sync status. Returns array with full_name, stars, forks, issues_count, prs_count, last_synced. Example: `{}` (no parameters)"
     )]
     async fn list_repositories(&self) -> Result<CallToolResult, McpError> {
         let db = match self.get_db().await {
@@ -244,7 +244,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Sync repository data from GitHub. Updates issues/PRs/comments. Returns repositories_synced, total_issues_synced, total_pull_requests_synced. Examples: `{\"name\": \"sync_repositories\", \"arguments\": {}}` (all repos), `{\"name\": \"sync_repositories\", \"arguments\": {\"repo\": \"rust-lang/rust\"}}`, `{\"name\": \"sync_repositories\", \"arguments\": {\"repo\": \"tokio-rs/tokio\", \"full\": true}}`"
+        description = "Sync repository data from GitHub. Updates issues/PRs/comments. Returns repositories_synced, total_issues_synced, total_pull_requests_synced. Examples: `{}` (all repos), `{\"repo\": \"rust-lang/rust\"}`, `{\"repo\": \"tokio-rs/tokio\", \"full\": true}`"
     )]
     async fn sync_repositories(
         &self,
@@ -329,7 +329,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Search issues/PRs across titles, bodies, comments. Returns array with repository, item_type, number, title, state, url. Examples: `{\"name\": \"search_items\", \"arguments\": {\"query\": \"memory leak\"}}`, `{\"name\": \"search_items\", \"arguments\": {\"query\": \"async bug\", \"state\": \"open\"}}`, `{\"name\": \"search_items\", \"arguments\": {\"query\": \"performance\", \"repo\": \"tokio-rs/tokio\", \"label\": \"bug\", \"limit\": 20}}`"
+        description = "Search issues/PRs across titles, bodies, comments. Returns array with repository, item_type, number, title, state, url. Examples: `{\"query\": \"memory leak\"}`, `{\"query\": \"async bug\", \"state\": \"open\"}`, `{\"query\": \"performance\", \"repo\": \"tokio-rs/tokio\", \"label\": \"bug\", \"limit\": 20}`"
     )]
     async fn search_items(
         &self,
@@ -526,7 +526,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Find related issues/PRs by cross-references and semantic similarity. Returns outgoing_references, incoming_references, semantically_similar arrays. Examples: `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"rust-lang/rust\", \"number\": 12345}}`, `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"tokio-rs/tokio\", \"number\": 4567, \"item_type\": \"issue\"}}`, `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"serde-rs/serde\", \"number\": 2000, \"links_only\": true, \"limit\": 5}}`"
+        description = "Find related issues/PRs by cross-references and semantic similarity. Returns outgoing_references, incoming_references, semantically_similar arrays. Examples: `{\"repo\": \"rust-lang/rust\", \"number\": 12345}`, `{\"repo\": \"tokio-rs/tokio\", \"number\": 4567, \"item_type\": \"issue\"}`, `{\"repo\": \"serde-rs/serde\", \"number\": 2000, \"links_only\": true, \"limit\": 5}`"
     )]
     async fn find_related_items(
         &self,
