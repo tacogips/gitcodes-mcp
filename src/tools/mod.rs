@@ -1,19 +1,39 @@
 use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber};
 use crate::services::SyncService;
 use crate::storage::GitDatabase;
-use crate::types::{ItemType, ResourceType};
+use crate::types::{IssueState, ItemType, PullRequestState, ResourceType};
 use rmcp::handler::server::tool::Parameters;
 use rmcp::{Error as McpError, ServerHandler, model::*, tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
+use strum::{Display, EnumString};
 use tokio::sync::Mutex;
 
 pub mod error;
 pub mod responses;
 
 use error::ToolError;
+
+/// State filter for searching items (issues and pull requests)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Display, EnumString)]
+#[strum(serialize_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum StateFilter {
+    Open,
+    Closed,
+}
+
+/// Item type specification for related items
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Display, EnumString)]
+#[serde(rename_all = "snake_case")]
+pub enum ItemTypeParam {
+    Issue,
+    #[serde(alias = "pr", alias = "pull_request")]
+    #[strum(serialize = "pr", serialize = "pull_request")]
+    PullRequest,
+}
 
 /// Wrapper for GitHub code tools exposed through the MCP protocol
 #[derive(Clone)]
@@ -53,7 +73,7 @@ impl GitDbTools {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RegisterRepositoryParams {
     #[schemars(
-        description = "Repository URL or identifier (required). Supports formats: 'https://github.com/owner/repo', 'git@github.com:owner/repo.git', or 'owner/repo'. The repository will be registered and synced to download issues and pull requests for local search. This parameter is required and must be provided."
+        description = "Repository URL (required). Formats: 'https://github.com/owner/repo', 'git@github.com:owner/repo.git', 'owner/repo'. Examples: 'rust-lang/rust', 'https://github.com/tokio-rs/tokio'"
     )]
     pub url: String,
 }
@@ -62,12 +82,12 @@ pub struct RegisterRepositoryParams {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SyncParams {
     #[schemars(
-        description = "Specific repository to sync (optional). Format: 'owner/repo'. When omitted, syncs all registered repositories. Use this to update a single repository's issues and pull requests."
+        description = "Repository to sync (optional). Format: 'owner/repo'. Omit to sync all. Examples: 'rust-lang/rust', 'tokio-rs/tokio'"
     )]
     pub repo: Option<String>,
 
     #[schemars(
-        description = "Force full sync ignoring timestamps (optional, default false). When true, fetches all issues and pull requests from the beginning, replacing existing data. When false or omitted, only fetches updates since last sync."
+        description = "Full sync (optional, default false). true: fetch all data from beginning. false: incremental updates only"
     )]
     pub full: Option<bool>,
 }
@@ -76,27 +96,27 @@ pub struct SyncParams {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchParams {
     #[schemars(
-        description = "Search query (required). Searches across issue/PR titles, bodies, and comments using full-text search. Supports natural language queries and keywords. This parameter is required and must be provided."
+        description = "Search query (required). Searches titles, bodies, comments. Examples: 'memory leak', 'async bug', 'performance issue'"
     )]
     pub query: String,
 
     #[schemars(
-        description = "Search in specific repository (optional). Format: 'owner/repo'. When omitted, searches across all registered repositories. Use to limit search scope to a single repository."
+        description = "Repository filter (optional). Format: 'owner/repo'. Omit to search all. Example: 'tokio-rs/tokio'"
     )]
     pub repo: Option<String>,
 
     #[schemars(
-        description = "Filter by state (optional). Valid values: 'open', 'closed'. When omitted, returns items in any state. Use to find only active or resolved items."
+        description = "State filter (optional). Values: 'open', 'closed'. Omit for any state"
     )]
-    pub state: Option<String>,
+    pub state: Option<StateFilter>,
 
     #[schemars(
-        description = "Filter by label (optional). Exact label name to filter by. When specified, only returns issues/PRs with this label. Case-sensitive."
+        description = "Label filter (optional). Exact match, case-sensitive. Examples: 'bug', 'enhancement', 'documentation'"
     )]
     pub label: Option<String>,
 
     #[schemars(
-        description = "Maximum number of results (optional, default 30, max 100). Controls how many search results to return. Higher values provide more results but may be slower."
+        description = "Result limit (optional, default 30, max 100). Examples: 10, 50, 100"
     )]
     pub limit: Option<usize>,
 }
@@ -105,32 +125,32 @@ pub struct SearchParams {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RelatedItemsParams {
     #[schemars(
-        description = "Repository name (required). Format: 'owner/repo'. Specifies which repository contains the issue or pull request. This parameter is required and must be provided."
+        description = "Repository (required). Format: 'owner/repo'. Examples: 'rust-lang/rust', 'tokio-rs/tokio'"
     )]
     pub repo: String,
 
     #[schemars(
-        description = "Issue or pull request number (required). The number of the issue or PR to find related items for. Must be a positive integer. This parameter is required and must be provided."
+        description = "Issue/PR number (required). Examples: 12345, 567, 89"
     )]
     pub number: u64,
 
     #[schemars(
-        description = "Item type (optional). Valid values: 'issue' or 'pr'. When omitted, automatically detects whether the number refers to an issue or pull request. Use to explicitly specify the type."
+        description = "Item type (optional). Values: 'issue', 'pr'. Omit for auto-detect"
     )]
-    pub item_type: Option<String>,
+    pub item_type: Option<ItemTypeParam>,
 
     #[schemars(
-        description = "Maximum number of results (optional, default 10). Controls how many related items to return. Includes both linked items and semantically similar items."
+        description = "Result limit (optional, default 10). Examples: 5, 20, 50"
     )]
     pub limit: Option<usize>,
 
     #[schemars(
-        description = "Only show link relationships (optional, default false). When true, only returns items that have explicit cross-references (URLs or #123 references). Excludes semantic similarity results."
+        description = "Links only (optional, default false). true: only cross-references, no semantic matches"
     )]
     pub links_only: Option<bool>,
 
     #[schemars(
-        description = "Only show semantic relationships (optional, default false). When true, only returns items found through semantic similarity. Excludes explicit cross-references."
+        description = "Semantic only (optional, default false). true: only similar content, no explicit links"
     )]
     pub semantic_only: Option<bool>,
 }
@@ -216,7 +236,7 @@ pub struct CrossReferenceInfo {
 #[tool(tool_box)]
 impl GitDbTools {
     #[tool(
-        description = "Register a GitHub repository for syncing and searching. This tool registers a repository and performs an initial sync to download all issues and pull requests. The data is stored locally for fast searching. Example: `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"https://github.com/rust-lang/rust\"}}`. Alternative format: `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"tokio-rs/tokio\"}}`"
+        description = "Register a GitHub repository for syncing. Downloads all issues/PRs for local search. Returns sync stats (issues_synced, pull_requests_synced). Examples: `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"https://github.com/rust-lang/rust\"}}`, `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"tokio-rs/tokio\"}}`, `{\"name\": \"register_repository\", \"arguments\": {\"url\": \"git@github.com:owner/repo.git\"}}`"
     )]
     async fn register_repository(
         &self,
@@ -248,7 +268,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "List all registered repositories with their sync status. Shows repository details including stars, forks, and last sync time. No parameters required. Example: `{\"name\": \"list_repositories\", \"arguments\": {}}`"
+        description = "List all registered repositories with sync status. Returns array with full_name, stars, forks, issues_count, prs_count, last_synced. Example: `{\"name\": \"list_repositories\", \"arguments\": {}}`"
     )]
     async fn list_repositories(&self) -> Result<CallToolResult, McpError> {
         let db = match self.get_db().await {
@@ -302,7 +322,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Sync repository data from GitHub. Updates issues, pull requests, and comments for registered repositories. By default performs incremental sync (only new updates). Example for all repos: `{\"name\": \"sync_repositories\", \"arguments\": {}}`. For specific repo: `{\"name\": \"sync_repositories\", \"arguments\": {\"repo\": \"rust-lang/rust\"}}`. For full sync: `{\"name\": \"sync_repositories\", \"arguments\": {\"repo\": \"tokio-rs/tokio\", \"full\": true}}`"
+        description = "Sync repository data from GitHub. Updates issues/PRs/comments. Returns repositories_synced, total_issues_synced, total_pull_requests_synced. Examples: `{\"name\": \"sync_repositories\", \"arguments\": {}}` (all repos), `{\"name\": \"sync_repositories\", \"arguments\": {\"repo\": \"rust-lang/rust\"}}`, `{\"name\": \"sync_repositories\", \"arguments\": {\"repo\": \"tokio-rs/tokio\", \"full\": true}}`"
     )]
     async fn sync_repositories(
         &self,
@@ -378,7 +398,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Search for issues and pull requests in synced repositories. Performs full-text search across titles, bodies, and comments. Returns both issues and PRs matching the query. Example: `{\"name\": \"search_items\", \"arguments\": {\"query\": \"memory leak\"}}`. With filters: `{\"name\": \"search_items\", \"arguments\": {\"query\": \"authentication\", \"repo\": \"tokio-rs/tokio\", \"state\": \"open\", \"limit\": 50}}`"
+        description = "Search issues/PRs across titles, bodies, comments. Returns array with repository, item_type, number, title, state, url. Examples: `{\"name\": \"search_items\", \"arguments\": {\"query\": \"memory leak\"}}`, `{\"name\": \"search_items\", \"arguments\": {\"query\": \"async bug\", \"state\": \"open\"}}`, `{\"name\": \"search_items\", \"arguments\": {\"query\": \"performance\", \"repo\": \"tokio-rs/tokio\", \"label\": \"bug\", \"limit\": 20}}`"
     )]
     async fn search_items(
         &self,
@@ -420,7 +440,7 @@ impl GitDbTools {
 
                     // Filter by state if specified
                     if let Some(filter_state) = &params.state {
-                        let item_state = if result.result_type == "issue" {
+                        let matches_filter = if result.result_type == "issue" {
                             // Get issue to check state
                             match db
                                 .get_issues_by_repository(result.repository_id, None)
@@ -429,8 +449,12 @@ impl GitDbTools {
                                 Ok(issues) => issues
                                     .iter()
                                     .find(|i| i.number.value() == result.id)
-                                    .map(|i| i.state.to_string()),
-                                Err(_) => None,
+                                    .map(|i| match filter_state {
+                                        StateFilter::Open => i.state == IssueState::Open,
+                                        StateFilter::Closed => i.state == IssueState::Closed,
+                                    })
+                                    .unwrap_or(false),
+                                Err(_) => false,
                             }
                         } else {
                             // Get PR to check state
@@ -441,15 +465,17 @@ impl GitDbTools {
                                 Ok(prs) => prs
                                     .iter()
                                     .find(|p| p.number.value() == result.id)
-                                    .map(|p| p.state.to_string()),
-                                Err(_) => None,
+                                    .map(|p| match filter_state {
+                                        StateFilter::Open => p.state == PullRequestState::Open,
+                                        StateFilter::Closed => matches!(p.state, PullRequestState::Closed | PullRequestState::Merged),
+                                    })
+                                    .unwrap_or(false),
+                                Err(_) => false,
                             }
                         };
 
-                        if let Some(state) = item_state {
-                            if state.to_lowercase() != filter_state.to_lowercase() {
-                                continue;
-                            }
+                        if !matches_filter {
+                            continue;
                         }
                     }
 
@@ -545,7 +571,7 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Find issues and pull requests related to a specific item. Returns items that reference or are referenced by the specified issue/PR, as well as semantically similar items. Example: `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"rust-lang/rust\", \"number\": 12345}}`. With options: `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"tokio-rs/tokio\", \"number\": 4567, \"item_type\": \"pr\", \"links_only\": true}}`"
+        description = "Find related issues/PRs by cross-references and semantic similarity. Returns outgoing_references, incoming_references, semantically_similar arrays. Examples: `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"rust-lang/rust\", \"number\": 12345}}`, `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"tokio-rs/tokio\", \"number\": 4567, \"item_type\": \"issue\"}}`, `{\"name\": \"find_related_items\", \"arguments\": {\"repo\": \"serde-rs/serde\", \"number\": 2000, \"links_only\": true, \"limit\": 5}}`"
     )]
     async fn find_related_items(
         &self,
@@ -568,13 +594,12 @@ impl GitDbTools {
         let semantic_only = params.semantic_only.unwrap_or(false);
 
         // Determine item type
-        let (actual_item_type, source_title, source_state) = if let Some(item_type_str) =
+        let (actual_item_type, source_title, source_state) = if let Some(item_type_param) =
             &params.item_type
         {
-            let item_type = match item_type_str.as_str() {
-                "issue" => ItemType::Issue,
-                "pr" | "pull_request" => ItemType::PullRequest,
-                _ => return error_result("Invalid item_type. Use 'issue' or 'pr'"),
+            let item_type = match item_type_param {
+                ItemTypeParam::Issue => ItemType::Issue,
+                ItemTypeParam::PullRequest => ItemType::PullRequest,
             };
 
             // Get item details
