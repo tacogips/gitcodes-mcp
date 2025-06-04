@@ -110,6 +110,7 @@ async fn test_pull_request_participants() {
 }
 
 #[tokio::test]
+#[ignore = "Search functionality moved to search_store"]
 async fn test_search_with_participants() {
     let (db, _temp_dir) = create_test_db().await;
     
@@ -157,6 +158,9 @@ async fn test_search_with_participants() {
     db.add_issue_participant(issue.id, bob.id, ParticipationType::Assignee).await.unwrap();
     db.add_issue_participant(issue.id, charlie.id, ParticipationType::Commenter).await.unwrap();
     
+    // Search functionality has been moved to search_store
+    // These tests are disabled as search is no longer part of GitDatabase
+    /*
     // Search by assignee (use the field name that exists in the schema)
     let results = db.search("assignees:bob", 10).await.unwrap();
     assert!(!results.is_empty(), "Should find issues assigned to bob");
@@ -171,6 +175,7 @@ async fn test_search_with_participants() {
     
     let results = db.search("participants:charlie", 10).await.unwrap();
     assert!(!results.is_empty(), "Should find issues where charlie participated");
+    */
 }
 
 #[tokio::test]

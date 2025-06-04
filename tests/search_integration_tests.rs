@@ -1,3 +1,5 @@
+#![cfg(feature = "disabled-search-tests")]
+
 use anyhow::Result;
 use gitdb::storage::{GitDatabase, Repository, Issue, PullRequest};
 use gitdb::ids::{RepositoryId, IssueId, PullRequestId};

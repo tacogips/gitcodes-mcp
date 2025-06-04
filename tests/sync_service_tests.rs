@@ -30,7 +30,8 @@ async fn test_sync_public_repository() -> Result<()> {
     assert!(result.errors.is_empty());
 
     // Verify repository was saved
-    let repo = db.get_repository_by_full_name("tacogips/gitdb-test-1").await?;
+    let repo_name = "tacogips/gitdb-test-1".parse().unwrap();
+    let repo = db.get_repository_by_full_name(&repo_name).await?;
     assert!(repo.is_some());
 
     Ok(())

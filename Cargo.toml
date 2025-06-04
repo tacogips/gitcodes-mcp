@@ -74,8 +74,8 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 
 [features]
 default = []
-# Enable LanceDB backend (requires protoc)
-lancedb-backend = ["lancedb", "arrow", "arrow-array", "arrow-schema"]
+# Enable search backend (requires protoc)
+search-backend = ["lancedb", "arrow", "arrow-array", "arrow-schema"]
 # Features used for testing
 this_test_is_disabled = []
 

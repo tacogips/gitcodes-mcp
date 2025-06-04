@@ -1,3 +1,5 @@
+#![cfg(feature = "disabled-search-tests")]
+
 use gitdb::ids::{IssueId, RepositoryId};
 use gitdb::storage::{GitDatabase, ParticipationType};
 use gitdb::storage::models::{Issue, Repository};

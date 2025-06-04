@@ -252,42 +252,10 @@ async fn main() -> Result<()> {
                 None
             };
 
-            // Perform search
-            let results = db.search(&query, limit).await?;
-            
-            // Filter by repository if specified
-            let results: Vec<_> = if let Some(repo_id) = repo_id {
-                results.into_iter()
-                    .filter(|r| r.repository_id == repo_id.to_string())
-                    .collect()
-            } else {
-                results
-            };
-
-            if results.is_empty() {
-                println!("No results found");
-            } else {
-                println!("Found {} results:", results.len());
-
-                for result in results {
-                    // Apply additional filters if needed
-                    if let Some(_filter_state) = &state {
-                        // We'd need to load the full issue/PR to filter by state
-                        // For now, skip this filter
-                    }
-
-                    println!("\n[{}] {}", result.item_type, result.title);
-                    if let Some(body) = &result.body {
-                        // Show first 200 chars of body
-                        let preview = if body.len() > 200 {
-                            format!("{}...", &body[..200])
-                        } else {
-                            body.clone()
-                        };
-                        println!("{}", preview);
-                    }
-                }
-            }
+            // Search functionality has been removed from GitDatabase
+            eprintln!("Error: Search functionality is not currently available.");
+            eprintln!("The search backend has been removed from the database module.");
+            return Ok(());
         }
 
         Commands::Related {
@@ -467,42 +435,8 @@ async fn main() -> Result<()> {
 
             // 3. Find semantically similar items
             if !links_only {
-                let search_query = format!("{} {}", source_title, source_body);
-                let semantic_results = db
-                    .search(&search_query, limit * 2)
-                    .await?;
-                
-                // Filter by repository
-                let semantic_results: Vec<_> = semantic_results.into_iter()
-                    .filter(|r| r.repository_id == repository.id.to_string())
-                    .collect();
-
-                // Filter out the source item itself
-                let filtered_results: Vec<_> = semantic_results
-                    .into_iter()
-                    .filter(|r| {
-                        !(r.item_type == actual_item_type.to_string()
-                            && r.id == item_number.to_string())
-                    })
-                    .take(limit)
-                    .collect();
-
-                if !filtered_results.is_empty() {
-                    println!("=== Semantically Similar Items ===");
-                    for (idx, result) in filtered_results.iter().enumerate() {
-                        println!("  {}. [{}] {}", idx + 1, result.item_type, result.title);
-                        if let Some(body) = &result.body {
-                            let preview = if body.len() > 100 {
-                                format!("     {}...", &body[..100])
-                            } else {
-                                format!("     {}", body)
-                            };
-                            println!("{}", preview);
-                        }
-                        all_results
-                            .push(format!("[SEM] [{}] {}", result.item_type, result.title));
-                    }
-                }
+                // Search functionality has been removed from GitDatabase
+                // Skip semantic similarity search
             }
 
             if all_results.is_empty() {

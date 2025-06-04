@@ -113,4 +113,19 @@ impl StoragePaths {
     pub fn cross_references_db_path(&self) -> PathBuf {
         self.data_dir.join("cross_references.db")
     }
+
+    /// Returns the path to the LanceDB search store directory.
+    ///
+    /// # Returns
+    ///
+    /// PathBuf pointing to `{data_dir}/lancedb`
+    pub fn lancedb_dir(&self) -> PathBuf {
+        self.data_dir.join("lancedb")
+    }
+}
+
+/// Get the search store directory path
+pub fn get_search_dir() -> Result<PathBuf> {
+    let paths = StoragePaths::new()?;
+    Ok(paths.lancedb_dir())
 }

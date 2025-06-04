@@ -1,7 +1,7 @@
-#![cfg(feature = "lancedb-backend")]
+#![cfg(feature = "search-backend")]
 
 use anyhow::Result;
-use gitdb::storage::{LanceDbStore, SearchResult};
+use gitdb::storage::{SearchStore, SearchResult};
 use gitdb::types::{GitHubRepository, GitHubIssue, GitHubPullRequest, GitHubUser};
 use gitdb::ids::FullId;
 use tempfile::TempDir;
@@ -70,9 +70,9 @@ fn create_test_github_issue(id: u64, repo_id: FullId, number: i32) -> GitHubIssu
 }
 
 #[tokio::test]
-async fn test_lancedb_store_creation() -> Result<()> {
+async fn test_search_store_creation() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     // Store should be created successfully
     assert!(temp_dir.path().exists());
@@ -83,7 +83,7 @@ async fn test_lancedb_store_creation() -> Result<()> {
 #[tokio::test]
 async fn test_save_and_retrieve_repository() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     let repo = create_test_github_repository(1, "test", "repo1");
     store.save_repository(&repo).await?;
@@ -103,7 +103,7 @@ async fn test_save_and_retrieve_repository() -> Result<()> {
 #[tokio::test]
 async fn test_search_repositories() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     // Add multiple repositories
     let repo1 = create_test_github_repository(1, "rust-lang", "rust");
@@ -130,7 +130,7 @@ async fn test_search_repositories() -> Result<()> {
 #[tokio::test]
 async fn test_save_and_search_issues() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     // Create a repository first
     let repo = create_test_github_repository(1, "test", "repo");
@@ -185,7 +185,7 @@ async fn test_save_and_search_issues() -> Result<()> {
 #[tokio::test]
 async fn test_search_all() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     // Add repository
     let repo = create_test_github_repository(1, "async-rs", "async-std");
@@ -215,7 +215,7 @@ async fn test_search_all() -> Result<()> {
 #[tokio::test]
 async fn test_full_text_search_features() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     // Create repositories with various content
     let mut repo1 = create_test_github_repository(1, "test", "optimization-tools");
@@ -246,7 +246,7 @@ async fn test_full_text_search_features() -> Result<()> {
 #[tokio::test]
 async fn test_search_with_special_characters() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let store = LanceDbStore::new(temp_dir.path().to_path_buf()).await?;
+    let store = SearchStore::new(temp_dir.path().to_path_buf()).await?;
     
     // Create repository with special characters
     let mut repo = create_test_github_repository(1, "test-org", "test-repo");
@@ -268,7 +268,7 @@ async fn test_concurrent_operations() -> Result<()> {
     use std::sync::Arc;
     
     let temp_dir = TempDir::new()?;
-    let store = Arc::new(LanceDbStore::new(temp_dir.path().to_path_buf()).await?);
+    let store = Arc::new(SearchStore::new(temp_dir.path().to_path_buf()).await?);
     
     // Add some data
     for i in 1..=5 {

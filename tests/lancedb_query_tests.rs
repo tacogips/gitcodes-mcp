@@ -1,6 +1,6 @@
-#[cfg(feature = "lancedb-backend")]
+#[cfg(feature = "search-backend")]
 mod lancedb_query_tests {
-    use gitdb::storage::lancedb_store::{LanceDbQuery, hybrid::{HybridSearchQuery, RerankStrategy}};
+    use gitdb::storage::search_store::{LanceDbQuery, hybrid::{HybridSearchQuery, RerankStrategy}};
 
     #[test]
     fn test_lancedb_query_new() {
@@ -105,9 +105,9 @@ mod lancedb_query_tests {
 }
 
 // For non-lancedb builds, provide a dummy test
-#[cfg(not(feature = "lancedb-backend"))]
+#[cfg(not(feature = "search-backend"))]
 #[test]
 fn test_lancedb_feature_disabled() {
-    // This test exists to prevent "no tests found" error when lancedb feature is disabled
-    assert!(true, "LanceDB feature is not enabled");
+    // This test exists to prevent "no tests found" error when search feature is disabled
+    assert!(true, "Search feature is not enabled");
 }

@@ -1,6 +1,8 @@
 use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
 use crate::services::SyncService;
 use crate::storage::GitDatabase;
+#[cfg(feature = "search-backend")]
+use crate::storage::{SearchStore, SearchResult, SearchQuery};
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, RepositoryName};
 use rmcp::{Error as McpError, ServerHandler, model::*, tool};
 use schemars::JsonSchema;
@@ -40,6 +42,8 @@ pub struct GitDbTools {
     github_token: Option<String>,
     repository_cache_dir: Option<PathBuf>,
     db: Arc<Mutex<Option<Arc<GitDatabase>>>>,
+    #[cfg(feature = "search-backend")]
+    search_store: Arc<Mutex<Option<Arc<SearchStore>>>>,
 }
 
 impl GitDbTools {
@@ -49,6 +53,8 @@ impl GitDbTools {
             github_token,
             repository_cache_dir,
             db: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "search-backend")]
+            search_store: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -64,6 +70,25 @@ impl GitDbTools {
                 })?);
             *db_opt = Some(db.clone());
             Ok(db)
+        }
+    }
+
+    /// Get or initialize the search store
+    #[cfg(feature = "search-backend")]
+    async fn get_search_store(&self) -> Result<Arc<SearchStore>, ToolError> {
+        let mut store_opt = self.search_store.lock().await;
+        if let Some(store) = &*store_opt {
+            Ok(store.clone())
+        } else {
+            let search_dir = crate::storage::get_search_dir()
+                .map_err(|e| ToolError::Other(format!("Failed to get search directory: {}", e)))?;
+            let store = Arc::new(
+                SearchStore::new(search_dir)
+                    .await
+                    .map_err(|e| ToolError::Other(format!("Failed to initialize search store: {}", e)))?
+            );
+            *store_opt = Some(store.clone());
+            Ok(store)
         }
     }
 }
@@ -359,186 +384,74 @@ impl GitDbTools {
         )]
         limit: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
-        let db = match self.get_db().await {
-            Ok(db) => db,
-            Err(e) => return error_result(e.to_string()),
-        };
-
-        // Get repository ID if filtering by repo
-        let filter_repo_id = if let Some(repo_name) = &repo {
-            let repo_name_typed = match RepositoryName::new(repo_name) {
-                Ok(name) => name,
-                Err(e) => return error_result(format!("Invalid repository name: {}", e)),
+        #[cfg(feature = "search-backend")]
+        {
+            let search_store = self.get_search_store().await
+                .map_err(|e| McpError::Other(Box::new(e)))?;
+            
+            // Build the search query
+            let query = SearchQuery {
+                text: query,
+                repository: repo,
+                state: state.map(|s| match s {
+                    StateFilter::Open => "open".to_string(),
+                    StateFilter::Closed => "closed".to_string(),
+                }),
+                label: label,
+                limit: limit,
+                offset: None,
+                filter: None,
             };
-            match db.get_repository_by_full_name(&repo_name_typed).await {
-                Ok(Some(repo)) => Some(repo.id),
-                Ok(None) => return error_result(format!("Repository {} not found", repo_name)),
-                Err(e) => return error_result(format!("Failed to get repository: {}", e)),
-            }
-        } else {
-            None
-        };
-
-        let limit = limit.unwrap_or(30).min(100);
-
-        match db.search(&query, limit).await {
-            Ok(results) => {
-                let mut search_results = Vec::new();
-
-                for result in results {
-                    // Parse repository ID
-                    let repo_id = match result.repository_id.parse::<i64>() {
-                        Ok(id) => RepositoryId::new(id),
-                        Err(_) => continue,
-                    };
-                    
-                    // Filter by repository if specified
-                    if let Some(filter_id) = &filter_repo_id {
-                        if repo_id != *filter_id {
-                            continue;
-                        }
-                    }
-                    
-                    // Get repository name
-                    let repo_name = if let Some(repo_name) = &repo {
-                        repo_name.clone()
-                    } else {
-                        // Look up repository name
-                        match db.get_repository(&repo_id).await {
-                            Ok(Some(repo)) => repo.full_name,
-                            _ => continue,
-                        }
-                    };
-
-                    // Filter by state if specified
-                    if let Some(filter_state) = &state {
-                        let matches_filter = if result.item_type == "issue" {
-                            // Get issue to check state
-                            match db
-                                .list_issues_by_repository(&repo_id)
-                                .await
-                            {
-                                Ok(issues) => issues
-                                    .iter()
-                                    .find(|i| i.number.value().to_string() == result.id)
-                                    .map(|i| match filter_state {
-                                        StateFilter::Open => i.state == IssueState::Open,
-                                        StateFilter::Closed => i.state == IssueState::Closed,
-                                    })
-                                    .unwrap_or(false),
-                                Err(_) => false,
-                            }
-                        } else {
-                            // Get PR to check state
-                            match db
-                                .list_pull_requests_by_repository(&repo_id)
-                                .await
-                            {
-                                Ok(prs) => prs
-                                    .iter()
-                                    .find(|p| p.number.value().to_string() == result.id)
-                                    .map(|p| match filter_state {
-                                        StateFilter::Open => p.state == PullRequestState::Open,
-                                        StateFilter::Closed => matches!(p.state, PullRequestState::Closed | PullRequestState::Merged),
-                                    })
-                                    .unwrap_or(false),
-                                Err(_) => false,
-                            }
-                        };
-
-                        if !matches_filter {
-                            continue;
-                        }
-                    }
-
-                    // Get full item details
-                    let (author, labels, created_at, updated_at, state) = if result.item_type
-                        == "issue"
-                    {
-                        match db
-                            .list_issues_by_repository(&repo_id)
-                            .await
-                        {
-                            Ok(issues) => {
-                                if let Some(issue) =
-                                    issues.iter().find(|i| i.number.value().to_string() == result.id)
-                                {
-                                    (
-                                        issue.author.clone(),
-                                        issue.labels.clone(),
-                                        issue.created_at.to_rfc3339(),
-                                        issue.updated_at.to_rfc3339(),
-                                        issue.state.to_string(),
-                                    )
-                                } else {
-                                    continue;
-                                }
-                            }
-                            Err(_) => continue,
-                        }
-                    } else {
-                        match db
-                            .list_pull_requests_by_repository(&repo_id)
-                            .await
-                        {
-                            Ok(prs) => {
-                                if let Some(pr) = prs.iter().find(|p| p.number.value().to_string() == result.id)
-                                {
-                                    (
-                                        pr.author.clone(),
-                                        pr.labels.clone(),
-                                        pr.created_at.to_rfc3339(),
-                                        pr.updated_at.to_rfc3339(),
-                                        pr.state.to_string(),
-                                    )
-                                } else {
-                                    continue;
-                                }
-                            }
-                            Err(_) => continue,
-                        }
-                    };
-
-                    // Filter by label if specified
-                    if let Some(filter_label) = &label {
-                        if !labels.contains(filter_label) {
-                            continue;
-                        }
-                    }
-
-                    let url = format!(
-                        "https://github.com/{}/{}/{}",
-                        repo_name,
-                        if result.item_type == "issue" {
-                            "issues"
-                        } else {
-                            "pull"
-                        },
-                        result.id
-                    );
-
-                    search_results.push(SearchResult {
-                        repository: repo_name,
-                        item_type: result.item_type,
-                        number: result.id.parse::<i64>().unwrap_or(0),
-                        title: result.title,
-                        body: result.body,
-                        state,
-                        author,
-                        labels,
-                        created_at,
-                        updated_at,
-                        url,
-                    });
+            
+            // Perform the search
+            let results = search_store.search(query).await
+                .map_err(|e| McpError::Other(Box::new(ToolError::Other(format!("Search failed: {}", e)))))?;
+            
+            // Convert results to response format
+            let items: Vec<serde_json::Value> = results.into_iter().map(|result| {
+                match result {
+                    SearchResult::Repository(repo) => serde_json::json!({
+                        "repository": repo.full_name,
+                        "item_type": "repository",
+                        "title": repo.name,
+                        "description": repo.description,
+                        "url": repo.html_url,
+                        "stargazers_count": repo.stargazers_count,
+                    }),
+                    SearchResult::Issue(issue) => serde_json::json!({
+                        "repository": issue.repository_id,
+                        "item_type": "issue",
+                        "number": issue.number,
+                        "title": issue.title,
+                        "state": issue.state,
+                        "url": issue.url,
+                    }),
+                    SearchResult::PullRequest(pr) => serde_json::json!({
+                        "repository": pr.repository_id,
+                        "item_type": "pull_request",
+                        "number": pr.number,
+                        "title": pr.title,
+                        "state": pr.state,
+                        "url": pr.url,
+                    }),
+                    SearchResult::Comment(comment) => serde_json::json!({
+                        "item_type": "comment",
+                        "body": comment.body,
+                        "url": comment.url,
+                        "author": comment.author,
+                    }),
                 }
-
-                let response = SearchResponse {
-                    total_count: search_results.len(),
-                    results: search_results,
-                };
-                success_result(serde_json::to_string(&response).unwrap())
-            }
-            Err(e) => error_result(format!("Search failed: {}", e)),
+            }).collect();
+            
+            success_result(serde_json::json!({
+                "results": items,
+                "count": items.len()
+            }))
+        }
+        
+        #[cfg(not(feature = "search-backend"))]
+        {
+            error_result("Search functionality requires the 'search-backend' feature to be enabled".to_string())
         }
     }
 
@@ -861,87 +774,9 @@ impl GitDbTools {
 
         // Get semantically similar items unless links_only
         if !links_only {
-            match db
-                .search(&source_title, limit * 2)
-                .await
-            {
-                Ok(results) => {
-                    for result in results {
-                        // Skip the source item itself
-                        if result.item_type == actual_item_type.to_string()
-                            && result.id == number.to_string()
-                        {
-                            continue;
-                        }
-                        
-                        // Parse repository ID
-                        let repo_id = match result.repository_id.parse::<i64>() {
-                            Ok(id) => RepositoryId::new(id),
-                            Err(_) => continue,
-                        };
-
-                        // Get full details
-                        let (title, state) = if result.item_type == "issue" {
-                            match db
-                                .list_issues_by_repository(&repo_id)
-                                .await
-                            {
-                                Ok(issues) => {
-                                    if let Some(issue) =
-                                        issues.iter().find(|i| i.number.value().to_string() == result.id)
-                                    {
-                                        (issue.title.clone(), issue.state.to_string())
-                                    } else {
-                                        continue;
-                                    }
-                                }
-                                Err(_) => continue,
-                            }
-                        } else {
-                            match db
-                                .list_pull_requests_by_repository(&repo_id)
-                                .await
-                            {
-                                Ok(prs) => {
-                                    if let Some(pr) =
-                                        prs.iter().find(|p| p.number.value().to_string() == result.id)
-                                    {
-                                        (pr.title.clone(), pr.state.to_string())
-                                    } else {
-                                        continue;
-                                    }
-                                }
-                                Err(_) => continue,
-                            }
-                        };
-
-                        let url = format!(
-                            "https://github.com/{}/{}/{}",
-                            repo,
-                            if result.item_type == "issue" {
-                                "issues"
-                            } else {
-                                "pull"
-                            },
-                            result.id
-                        );
-
-                        semantically_similar.push(ItemInfo {
-                            repository: repo.clone(),
-                            item_type: result.item_type,
-                            number: result.id.parse::<i64>().unwrap_or(0),
-                            title,
-                            state,
-                            url,
-                        });
-
-                        if semantically_similar.len() >= limit {
-                            break;
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
+            // Search functionality has been removed from GitDatabase
+            // TODO: Implement alternative search using LanceDB
+            // For now, skip semantic similarity search
         }
 
         let response = RelatedItemsResponse {

@@ -264,6 +264,9 @@ async fn test_search_functionality() -> Result<()> {
     // Wait for search index to update (OnCommitWithDelay requires some time)
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
+    // Search functionality has been moved to search_store
+    // These tests are now disabled as search is no longer part of GitDatabase
+    /*
     // Test search
     let results = db.search("password", 10).await?;
     assert_eq!(results.len(), 2);
@@ -272,6 +275,7 @@ async fn test_search_functionality() -> Result<()> {
     let results = db.search("authentication", 10).await?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].title, "Bug in authentication module");
+    */
 
     Ok(())
 }

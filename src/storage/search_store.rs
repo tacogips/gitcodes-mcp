@@ -1,4 +1,4 @@
-#![cfg(feature = "lancedb-backend")]
+#![cfg(feature = "search-backend")]
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,12 +28,12 @@ const COMMENTS_TABLE: &str = "comments";
 const USERS_TABLE: &str = "users";
 const FILES_TABLE: &str = "pull_request_files";
 
-pub struct LanceDbStore {
+pub struct SearchStore {
     connection: Connection,
     data_dir: PathBuf,
 }
 
-impl LanceDbStore {
+impl SearchStore {
     pub async fn new(data_dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&data_dir)?;
         let connection = connect(data_dir.to_str().unwrap()).execute().await?;
@@ -597,6 +597,47 @@ impl LanceDbStore {
         results.truncate(limit);
         Ok(results)
     }
+
+    /// High-level search method that accepts a SearchQuery
+    pub async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>> {
+        // Build filter clauses
+        let mut filters = Vec::new();
+        
+        if let Some(repo) = &query.repository {
+            filters.push(format!("repository_id = '{}'", repo));
+        }
+        
+        if let Some(state) = &query.state {
+            filters.push(format!("state = '{}'", state));
+        }
+        
+        if let Some(label) = &query.label {
+            // For labels, we might need to search in a labels field or use contains
+            filters.push(format!("labels LIKE '%{}%'", label));
+        }
+        
+        // Combine custom filter if provided
+        let filter = if !filters.is_empty() {
+            let base_filter = filters.join(" AND ");
+            if let Some(custom_filter) = &query.filter {
+                Some(format!("{} AND {}", base_filter, custom_filter))
+            } else {
+                Some(base_filter)
+            }
+        } else {
+            query.filter.clone()
+        };
+        
+        // Convert to LanceDbQuery
+        let lance_query = LanceDbQuery {
+            text: query.text,
+            limit: query.limit,
+            offset: query.offset,
+            filter,
+        };
+        
+        self.search_all(&lance_query).await
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -607,6 +648,31 @@ pub enum SearchResult {
     Comment(GitHubComment),
     User(GitHubUser),
     File(GitHubPullRequestFile),
+}
+
+/// Generic search query for the SearchStore
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchQuery {
+    /// The search query text
+    pub text: String,
+    
+    /// Optional repository filter (owner/repo format)
+    pub repository: Option<String>,
+    
+    /// Optional state filter (open/closed)
+    pub state: Option<String>,
+    
+    /// Optional label filter  
+    pub label: Option<String>,
+    
+    /// Result limit
+    pub limit: Option<usize>,
+    
+    /// Offset for pagination
+    pub offset: Option<usize>,
+    
+    /// Optional SQL-style filter expression
+    pub filter: Option<String>,
 }
 
 /// Search query types for LanceDB
@@ -761,7 +827,7 @@ pub mod hybrid {
     
     // Placeholder for future implementation
     pub async fn hybrid_search(
-        _store: &LanceDbStore,
+        _store: &SearchStore,
         _query: HybridSearchQuery,
         _limit: usize,
     ) -> Result<Vec<SearchResult>> {
