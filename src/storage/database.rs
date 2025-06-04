@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use crate::ids::{IssueId, PullRequestId, RepositoryId, UserId};
 use crate::storage::models::*;
 use crate::storage::paths::StoragePaths;
+use crate::storage::search_store::{self, SearchStore, SearchQuery, SearchResult};
 use crate::types::{ResourceType, RepositoryName};
 
 static MODELS: Lazy<Models> = Lazy::new(|| {
@@ -26,6 +27,7 @@ static MODELS: Lazy<Models> = Lazy::new(|| {
 pub struct GitDatabase {
     db: Database<'static>,
     paths: StoragePaths,
+    search_store: SearchStore,
 }
 
 impl GitDatabase {
@@ -48,9 +50,15 @@ impl GitDatabase {
             .create(&*MODELS, &paths.database_path())
             .context("Failed to open native_db database")?;
 
+        // Initialize search store
+        let search_store = SearchStore::new(paths.search_store_path())
+            .await
+            .context("Failed to initialize search store")?;
+
         Ok(Self {
             db,
             paths,
+            search_store,
         })
     }
 
@@ -413,5 +421,27 @@ impl GitDatabase {
         
         // Fetch all users
         self.get_users_by_ids(&user_ids).await
+    }
+    
+    // Search methods that delegate to SearchStore
+    
+    /// Search across all entities using the search store
+    pub async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>> {
+        self.search_store.search(query).await
+    }
+    
+    /// Search specifically for repositories
+    pub async fn search_repositories(&self, query: &search_store::LanceDbQuery) -> Result<Vec<crate::types::GitHubRepository>> {
+        self.search_store.search_repositories(query).await
+    }
+    
+    /// Search specifically for issues
+    pub async fn search_issues(&self, query: &search_store::LanceDbQuery) -> Result<Vec<crate::types::GitHubIssue>> {
+        self.search_store.search_issues(query).await
+    }
+    
+    /// Get access to the search store for advanced search operations
+    pub fn search_store(&self) -> &SearchStore {
+        &self.search_store
     }
 }

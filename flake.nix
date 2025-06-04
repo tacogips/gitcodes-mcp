@@ -77,6 +77,7 @@
             pkgs.nodePackages.npm
             pkgs.go-task
             cargo-machete
+            pkgs.protobuf
           ];
 
           inputsFrom = [ ];
@@ -109,6 +110,7 @@
           nativeBuildInputs = [
             rust-toolchain
             pkgs.pkg-config
+            pkgs.protobuf
           ];
 
           buildInputs =

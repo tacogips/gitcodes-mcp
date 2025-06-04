@@ -1,9 +1,7 @@
-use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
+use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber};
 use crate::services::SyncService;
-use crate::storage::GitDatabase;
-#[cfg(feature = "search-backend")]
-use crate::storage::{SearchStore, SearchResult, SearchQuery};
-use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, RepositoryName};
+use crate::storage::{GitDatabase, SearchResult, SearchQuery};
+use crate::types::{ItemType, ResourceType, RepositoryName};
 use rmcp::{Error as McpError, ServerHandler, model::*, tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -42,8 +40,6 @@ pub struct GitDbTools {
     github_token: Option<String>,
     repository_cache_dir: Option<PathBuf>,
     db: Arc<Mutex<Option<Arc<GitDatabase>>>>,
-    #[cfg(feature = "search-backend")]
-    search_store: Arc<Mutex<Option<Arc<SearchStore>>>>,
 }
 
 impl GitDbTools {
@@ -53,8 +49,6 @@ impl GitDbTools {
             github_token,
             repository_cache_dir,
             db: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "search-backend")]
-            search_store: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -73,24 +67,6 @@ impl GitDbTools {
         }
     }
 
-    /// Get or initialize the search store
-    #[cfg(feature = "search-backend")]
-    async fn get_search_store(&self) -> Result<Arc<SearchStore>, ToolError> {
-        let mut store_opt = self.search_store.lock().await;
-        if let Some(store) = &*store_opt {
-            Ok(store.clone())
-        } else {
-            let search_dir = crate::storage::get_search_dir()
-                .map_err(|e| ToolError::Other(format!("Failed to get search directory: {}", e)))?;
-            let store = Arc::new(
-                SearchStore::new(search_dir)
-                    .await
-                    .map_err(|e| ToolError::Other(format!("Failed to initialize search store: {}", e)))?
-            );
-            *store_opt = Some(store.clone());
-            Ok(store)
-        }
-    }
 }
 
 // Parameter structs are no longer needed since we use flat parameters in tool methods
@@ -128,12 +104,12 @@ pub struct SyncResponse {
 /// Response for search operation
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResponse {
-    pub results: Vec<SearchResult>,
+    pub results: Vec<ItemSearchResult>,
     pub total_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchResult {
+pub struct ItemSearchResult {
     pub repository: String,
     pub item_type: String,
     pub number: i64,
@@ -384,75 +360,74 @@ impl GitDbTools {
         )]
         limit: Option<usize>,
     ) -> Result<CallToolResult, McpError> {
-        #[cfg(feature = "search-backend")]
-        {
-            let search_store = self.get_search_store().await
-                .map_err(|e| McpError::Other(Box::new(e)))?;
-            
-            // Build the search query
-            let query = SearchQuery {
-                text: query,
-                repository: repo,
-                state: state.map(|s| match s {
-                    StateFilter::Open => "open".to_string(),
-                    StateFilter::Closed => "closed".to_string(),
-                }),
-                label: label,
-                limit: limit,
-                offset: None,
-                filter: None,
-            };
-            
-            // Perform the search
-            let results = search_store.search(query).await
-                .map_err(|e| McpError::Other(Box::new(ToolError::Other(format!("Search failed: {}", e)))))?;
-            
-            // Convert results to response format
-            let items: Vec<serde_json::Value> = results.into_iter().map(|result| {
-                match result {
-                    SearchResult::Repository(repo) => serde_json::json!({
-                        "repository": repo.full_name,
-                        "item_type": "repository",
-                        "title": repo.name,
-                        "description": repo.description,
-                        "url": repo.html_url,
-                        "stargazers_count": repo.stargazers_count,
-                    }),
-                    SearchResult::Issue(issue) => serde_json::json!({
-                        "repository": issue.repository_id,
-                        "item_type": "issue",
-                        "number": issue.number,
-                        "title": issue.title,
-                        "state": issue.state,
-                        "url": issue.url,
-                    }),
-                    SearchResult::PullRequest(pr) => serde_json::json!({
-                        "repository": pr.repository_id,
-                        "item_type": "pull_request",
-                        "number": pr.number,
-                        "title": pr.title,
-                        "state": pr.state,
-                        "url": pr.url,
-                    }),
-                    SearchResult::Comment(comment) => serde_json::json!({
-                        "item_type": "comment",
-                        "body": comment.body,
-                        "url": comment.url,
-                        "author": comment.author,
-                    }),
-                }
-            }).collect();
-            
-            success_result(serde_json::json!({
-                "results": items,
-                "count": items.len()
-            }))
-        }
+        let db = match self.get_db().await {
+            Ok(db) => db,
+            Err(e) => return error_result(e.to_string()),
+        };
         
-        #[cfg(not(feature = "search-backend"))]
-        {
-            error_result("Search functionality requires the 'search-backend' feature to be enabled".to_string())
-        }
+        // Build the search query
+        let search_query = SearchQuery {
+            text: query,
+            repository: repo,
+            state: state.map(|s| match s {
+                StateFilter::Open => "open".to_string(),
+                StateFilter::Closed => "closed".to_string(),
+            }),
+            label: label,
+            limit: limit,
+            offset: None,
+            filter: None,
+        };
+        
+        // Perform the search
+        let results = match db.search(search_query).await {
+            Ok(results) => results,
+            Err(e) => return error_result(format!("Search failed: {}", e)),
+        };
+        
+        // Convert results to response format
+        let items: Vec<ItemSearchResult> = results.into_iter().filter_map(|result| {
+            match result {
+                SearchResult::Issue(issue) => {
+                    Some(ItemSearchResult {
+                        repository: issue.repository_id.to_string(),
+                        item_type: "issue".to_string(),
+                        number: issue.number as i64,
+                        title: issue.title,
+                        body: issue.body,
+                        state: issue.state,
+                        author: issue.user.login,
+                        labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
+                        created_at: issue.created_at.to_rfc3339(),
+                        updated_at: issue.updated_at.to_rfc3339(),
+                        url: format!("https://github.com/{}/issues/{}", issue.repository_id, issue.number),
+                    })
+                },
+                SearchResult::PullRequest(pr) => {
+                    Some(ItemSearchResult {
+                        repository: pr.repository_id.to_string(),
+                        item_type: "pull_request".to_string(),
+                        number: pr.number as i64,
+                        title: pr.title,
+                        body: pr.body,
+                        state: pr.state,
+                        author: pr.user.login,
+                        labels: pr.labels.iter().map(|l| l.name.clone()).collect(),
+                        created_at: pr.created_at.to_rfc3339(),
+                        updated_at: pr.updated_at.to_rfc3339(),
+                        url: format!("https://github.com/{}/pull/{}", pr.repository_id, pr.number),
+                    })
+                },
+                _ => None
+            }
+        }).collect();
+        
+        let response = SearchResponse {
+            results: items.clone(),
+            total_count: items.len(),
+        };
+        
+        success_result(serde_json::to_string(&response).unwrap())
     }
 
     #[tool(

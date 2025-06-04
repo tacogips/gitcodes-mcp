@@ -1,21 +1,18 @@
-#![cfg(feature = "search-backend")]
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use arrow_array::{
-    ArrayRef, Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+    ArrayRef, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
 };
 use arrow_schema::{DataType, Field, Schema};
 use lancedb::index::scalar::FtsIndexBuilder;
 use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
-use lancedb::{connect, Connection, Table};
+use lancedb::{connect, Connection};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::ids::FullId;
+use crate::types::FullId;
 use crate::types::{
     GitHubComment, GitHubIssue, GitHubPullRequest, GitHubPullRequestFile, GitHubRepository,
     GitHubUser,
@@ -421,12 +418,12 @@ impl SearchStore {
         
         // Apply full-text search
         table_query = table_query.full_text_search(
-            lance_index::scalar::FullTextSearchQuery::new(query.text.clone())
+            lancedb::index::scalar::FullTextSearchQuery::new(query.text.clone())
         );
         
         // Apply filters if specified
         if let Some(filter) = &query.filter {
-            table_query = table_query.filter(filter.as_str());
+            table_query = table_query.where_clause(filter.as_str());
         }
         
         // Set limit and offset
@@ -529,12 +526,12 @@ impl SearchStore {
         
         // Apply full-text search
         table_query = table_query.full_text_search(
-            lance_index::scalar::FullTextSearchQuery::new(query.text.clone())
+            lancedb::index::scalar::FullTextSearchQuery::new(query.text.clone())
         );
         
         // Apply filters if specified
         if let Some(filter) = &query.filter {
-            table_query = table_query.filter(filter.as_str());
+            table_query = table_query.where_clause(filter.as_str());
         }
         
         // Set limit and offset
@@ -634,6 +631,10 @@ impl SearchStore {
             limit: query.limit,
             offset: query.offset,
             filter,
+            search_fields: None,
+            select_fields: None,
+            fast_search: false,
+            postfilter: false,
         };
         
         self.search_all(&lance_query).await

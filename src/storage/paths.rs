@@ -122,6 +122,16 @@ impl StoragePaths {
     pub fn lancedb_dir(&self) -> PathBuf {
         self.data_dir.join("lancedb")
     }
+
+    /// Returns the path to the search store directory.
+    /// Alias for lancedb_dir for compatibility.
+    ///
+    /// # Returns
+    ///
+    /// PathBuf pointing to `{data_dir}/lancedb`
+    pub fn search_store_path(&self) -> PathBuf {
+        self.lancedb_dir()
+    }
 }
 
 /// Get the search store directory path

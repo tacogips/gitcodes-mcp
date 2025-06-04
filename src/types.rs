@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
@@ -133,5 +134,185 @@ impl std::str::FromStr for RepositoryName {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         RepositoryName::new(s)
+    }
+}
+
+// GitHub API Types
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRepository {
+    pub id: u64,
+    pub owner: String,
+    pub name: String,
+    pub full_name: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub clone_url: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub language: Option<String>,
+    pub fork: bool,
+    pub forks_count: u32,
+    pub stargazers_count: u32,
+    pub open_issues_count: u32,
+    pub is_template: Option<bool>,
+    pub topics: Vec<String>,
+    pub visibility: String,
+    pub default_branch: String,
+    pub permissions: Option<serde_json::Value>,
+    pub license: Option<GitHubLicense>,
+    pub archived: bool,
+    pub disabled: bool,
+}
+
+impl GitHubRepository {
+    pub fn full_id(&self) -> FullId {
+        FullId::Repository(self.id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubIssue {
+    pub id: u64,
+    pub repository_id: FullId,
+    pub number: i32,
+    pub title: String,
+    pub body: Option<String>,
+    pub state: String,
+    pub user: GitHubUser,
+    pub assignees: Vec<GitHubUser>,
+    pub labels: Vec<GitHubLabel>,
+    pub milestone: Option<GitHubMilestone>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub closed_at: Option<DateTime<Utc>>,
+}
+
+impl GitHubIssue {
+    pub fn full_id(&self) -> FullId {
+        FullId::Issue(self.id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPullRequest {
+    pub id: u64,
+    pub repository_id: FullId,
+    pub number: i32,
+    pub title: String,
+    pub body: Option<String>,
+    pub state: String,
+    pub user: GitHubUser,
+    pub assignees: Vec<GitHubUser>,
+    pub labels: Vec<GitHubLabel>,
+    pub milestone: Option<GitHubMilestone>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub merged_at: Option<DateTime<Utc>>,
+    pub head: GitHubBranch,
+    pub base: GitHubBranch,
+    pub draft: bool,
+}
+
+impl GitHubPullRequest {
+    pub fn full_id(&self) -> FullId {
+        FullId::PullRequest(self.id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubComment {
+    pub id: u64,
+    pub issue_id: FullId,
+    pub user: GitHubUser,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl GitHubComment {
+    pub fn full_id(&self) -> FullId {
+        FullId::Comment(self.id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubUser {
+    pub id: i64,
+    pub login: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub avatar_url: Option<String>,
+    pub html_url: String,
+    pub bio: Option<String>,
+    pub company: Option<String>,
+    pub location: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub public_repos: i32,
+    pub followers: i32,
+    pub following: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubLabel {
+    pub id: u64,
+    pub name: String,
+    pub color: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubMilestone {
+    pub id: u64,
+    pub number: i32,
+    pub title: String,
+    pub description: Option<String>,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubBranch {
+    pub ref_: String,
+    pub sha: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubLicense {
+    pub key: String,
+    pub name: String,
+    pub spdx_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPullRequestFile {
+    pub sha: String,
+    pub filename: String,
+    pub status: String,
+    pub additions: i32,
+    pub deletions: i32,
+    pub changes: i32,
+    pub patch: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FullId {
+    Repository(u64),
+    Issue(u64),
+    PullRequest(u64),
+    Comment(u64),
+    User(i64),
+}
+
+impl std::fmt::Display for FullId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FullId::Repository(id) => write!(f, "repo:{}", id),
+            FullId::Issue(id) => write!(f, "issue:{}", id),
+            FullId::PullRequest(id) => write!(f, "pr:{}", id),
+            FullId::Comment(id) => write!(f, "comment:{}", id),
+            FullId::User(id) => write!(f, "user:{}", id),
+        }
     }
 }

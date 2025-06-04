@@ -1,7 +1,5 @@
-#![cfg(feature = "search-backend")]
-
 use anyhow::Result;
-use gitdb::storage::{SearchStore, SearchResult};
+use gitdb::storage::{SearchStore, SearchResult, search_store::LanceDbQuery};
 use gitdb::types::{GitHubRepository, GitHubIssue, GitHubPullRequest, GitHubUser};
 use gitdb::ids::FullId;
 use tempfile::TempDir;
@@ -115,12 +113,14 @@ async fn test_search_repositories() -> Result<()> {
     store.save_repository(&repo3).await?;
     
     // Search for "tokio"
-    let results = store.search_repositories("tokio", 10).await?;
+    let query = LanceDbQuery::new("tokio").with_limit(10);
+    let results = store.search_repositories(&query).await?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].full_name, "tokio-rs/tokio");
     
     // Search for "rust"
-    let results = store.search_repositories("rust", 10).await?;
+    let query = LanceDbQuery::new("rust").with_limit(10);
+    let results = store.search_repositories(&query).await?;
     assert!(results.len() >= 1);
     assert!(results.iter().any(|r| r.full_name == "rust-lang/rust"));
     
@@ -165,17 +165,20 @@ async fn test_save_and_search_issues() -> Result<()> {
     store.save_issue(&issue2).await?;
     
     // Search for "async"
-    let results = store.search_issues("async", 10).await?;
+    let query = LanceDbQuery::new("async").with_limit(10);
+    let results = store.search_issues(&query).await?;
     assert_eq!(results.len(), 1);
     assert!(results[0].title.contains("Async"));
     
     // Search for "HTTP"
-    let results = store.search_issues("HTTP", 10).await?;
+    let query = LanceDbQuery::new("HTTP").with_limit(10);
+    let results = store.search_issues(&query).await?;
     assert_eq!(results.len(), 1);
     assert!(results[0].title.contains("HTTP/2"));
     
     // Search in labels
-    let results = store.search_issues("bug", 10).await?;
+    let query = LanceDbQuery::new("bug").with_limit(10);
+    let results = store.search_issues(&query).await?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].number, 1);
     
@@ -197,7 +200,8 @@ async fn test_search_all() -> Result<()> {
     store.save_issue(&issue).await?;
     
     // Search across all types
-    let results = store.search_all("async", 10).await?;
+    let query = LanceDbQuery::new("async").with_limit(10);
+    let results = store.search_all(&query).await?;
     
     // Should find both repository and issue
     assert!(results.len() >= 2);
@@ -232,12 +236,15 @@ async fn test_full_text_search_features() -> Result<()> {
     store.save_repository(&repo3).await?;
     
     // Test partial word matching
-    let results = store.search_repositories("optim", 10).await?;
+    let query = LanceDbQuery::new("optim").with_limit(10);
+    let results = store.search_repositories(&query).await?;
     assert!(results.len() >= 2); // Should match "optimization" and "optimize"
     
     // Test case insensitive search
-    let results_lower = store.search_repositories("rust", 10).await?;
-    let results_upper = store.search_repositories("RUST", 10).await?;
+    let query_lower = LanceDbQuery::new("rust").with_limit(10);
+    let results_lower = store.search_repositories(&query_lower).await?;
+    let query_upper = LanceDbQuery::new("RUST").with_limit(10);
+    let results_upper = store.search_repositories(&query_upper).await?;
     assert_eq!(results_lower.len(), results_upper.len());
     
     Ok(())
@@ -254,10 +261,12 @@ async fn test_search_with_special_characters() -> Result<()> {
     store.save_repository(&repo).await?;
     
     // Search with special characters
-    let results = store.search_repositories("test-org", 10).await?;
+    let query = LanceDbQuery::new("test-org").with_limit(10);
+    let results = store.search_repositories(&query).await?;
     assert!(!results.is_empty());
     
-    let results = store.search_repositories("/api/v1", 10).await?;
+    let query = LanceDbQuery::new("/api/v1").with_limit(10);
+    let results = store.search_repositories(&query).await?;
     assert!(!results.is_empty());
     
     Ok(())
@@ -282,8 +291,9 @@ async fn test_concurrent_operations() -> Result<()> {
     for i in 0..3 {
         let store_clone = Arc::clone(&store);
         let handle = tokio::spawn(async move {
-            let query = format!("repo{}", i + 1);
-            store_clone.search_repositories(&query, 10).await
+            let query_str = format!("repo{}", i + 1);
+            let query = LanceDbQuery::new(query_str).with_limit(10);
+            store_clone.search_repositories(&query).await
         });
         handles.push(handle);
     }
