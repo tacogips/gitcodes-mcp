@@ -329,13 +329,13 @@ impl GitDbTools {
     }
 
     #[tool(
-        description = "Search issues/PRs across titles, bodies, comments. Returns array with repository, item_type, number, title, state, url. Examples: `{\"query\": \"memory leak\"}`, `{\"query\": \"async bug\", \"state\": \"open\"}`, `{\"query\": \"performance\", \"repo\": \"tokio-rs/tokio\", \"label\": \"bug\", \"limit\": 20}`"
+        description = "Search issues/PRs across titles, bodies, comments, and participants. Returns array with repository, item_type, number, title, state, url. Examples: `{\"query\": \"memory leak\"}`, `{\"query\": \"async bug\", \"state\": \"open\"}`, `{\"query\": \"performance\", \"repo\": \"tokio-rs/tokio\", \"label\": \"bug\", \"limit\": 20}`. Search by participant: `{\"query\": \"assignee:alice commenter:bob\"}` or `{\"query\": \"participant:alice\"}`"
     )]
     async fn search_items(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Search query (required). Searches titles, bodies, comments. Examples: 'memory leak', 'async bug', 'performance issue'"
+            description = "Search query (required). Searches titles, bodies, comments. Use field prefixes for specific searches: 'assignee:username', 'commenter:username', 'participant:username' (searches both assignees and commenters). Examples: 'memory leak', 'async bug', 'performance issue', 'assignee:alice', 'commenter:bob', 'participant:charlie'"
         )]
         query: String,
         #[tool(param)]

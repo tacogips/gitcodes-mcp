@@ -65,6 +65,8 @@ impl GitDatabase {
         schema_builder.add_text_field("author", TEXT | STORED);
         schema_builder.add_text_field("labels", TEXT | STORED);
         schema_builder.add_text_field("assignees", TEXT | STORED);
+        schema_builder.add_text_field("commenters", TEXT | STORED);
+        schema_builder.add_text_field("participants", TEXT | STORED);
 
         let schema = schema_builder.build();
 
@@ -358,6 +360,28 @@ impl GitDatabase {
         let author_field = schema.get_field("author").unwrap();
         let labels_field = schema.get_field("labels").unwrap();
         let assignees_field = schema.get_field("assignees").unwrap();
+        let commenters_field = schema.get_field("commenters").unwrap();
+        let participants_field = schema.get_field("participants").unwrap();
+
+        // Collect commenters from issue comments
+        let r = self.db.r_transaction()?;
+        let comments: Vec<IssueComment> = r.scan()
+            .secondary(IssueCommentKey::issue_id)?
+            .start_with(issue.id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        let mut commenters: Vec<String> = comments.iter()
+            .map(|c| c.author.clone())
+            .collect();
+        commenters.sort();
+        commenters.dedup();
+
+        // Create participants list (assignees + commenters + author)
+        let mut participants = issue.assignees.clone();
+        participants.extend(commenters.clone());
+        participants.push(issue.author.clone());
+        participants.sort();
+        participants.dedup();
 
         let mut doc = doc!();
         doc.add_text(id_field, &issue.id.to_string());
@@ -370,6 +394,8 @@ impl GitDatabase {
         doc.add_text(author_field, &issue.author);
         doc.add_text(labels_field, &issue.labels.join(" "));
         doc.add_text(assignees_field, &issue.assignees.join(" "));
+        doc.add_text(commenters_field, &commenters.join(" "));
+        doc.add_text(participants_field, &participants.join(" "));
 
         writer.add_document(doc)?;
         writer.commit()?;
@@ -388,6 +414,28 @@ impl GitDatabase {
         let author_field = schema.get_field("author").unwrap();
         let labels_field = schema.get_field("labels").unwrap();
         let assignees_field = schema.get_field("assignees").unwrap();
+        let commenters_field = schema.get_field("commenters").unwrap();
+        let participants_field = schema.get_field("participants").unwrap();
+
+        // Collect commenters from pull request comments
+        let r = self.db.r_transaction()?;
+        let comments: Vec<PullRequestComment> = r.scan()
+            .secondary(PullRequestCommentKey::pull_request_id)?
+            .start_with(pr.id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        let mut commenters: Vec<String> = comments.iter()
+            .map(|c| c.author.clone())
+            .collect();
+        commenters.sort();
+        commenters.dedup();
+
+        // Create participants list (assignees + commenters + author)
+        let mut participants = pr.assignees.clone();
+        participants.extend(commenters.clone());
+        participants.push(pr.author.clone());
+        participants.sort();
+        participants.dedup();
 
         let mut doc = doc!();
         doc.add_text(id_field, &pr.id.to_string());
@@ -400,6 +448,8 @@ impl GitDatabase {
         doc.add_text(author_field, &pr.author);
         doc.add_text(labels_field, &pr.labels.join(" "));
         doc.add_text(assignees_field, &pr.assignees.join(" "));
+        doc.add_text(commenters_field, &commenters.join(" "));
+        doc.add_text(participants_field, &participants.join(" "));
 
         writer.add_document(doc)?;
         writer.commit()?;
@@ -415,10 +465,12 @@ impl GitDatabase {
         let author_field = schema.get_field("author").unwrap();
         let labels_field = schema.get_field("labels").unwrap();
         let assignees_field = schema.get_field("assignees").unwrap();
+        let commenters_field = schema.get_field("commenters").unwrap();
+        let participants_field = schema.get_field("participants").unwrap();
 
         let query_parser = QueryParser::for_index(
             &self.search_index,
-            vec![title_field, body_field, author_field, labels_field, assignees_field],
+            vec![title_field, body_field, author_field, labels_field, assignees_field, commenters_field, participants_field],
         );
 
         let query = query_parser.parse_query(query)?;
