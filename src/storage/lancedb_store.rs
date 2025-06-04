@@ -414,15 +414,40 @@ impl LanceDbStore {
     }
 
     // Search operations using LanceDB's native FTS
-    pub async fn search_repositories(&self, query: &str, limit: usize) -> Result<Vec<GitHubRepository>> {
+    pub async fn search_repositories(&self, query: &LanceDbQuery) -> Result<Vec<GitHubRepository>> {
         let table = self.connection.open_table(REPOSITORIES_TABLE).execute().await?;
         
-        let mut results = table
-            .query()
-            .full_text_search(lance_index::scalar::FullTextSearchQuery::new(query.to_string()))
-            .limit(limit)
-            .execute()
-            .await?;
+        let mut table_query = table.query();
+        
+        // Apply full-text search
+        table_query = table_query.full_text_search(
+            lance_index::scalar::FullTextSearchQuery::new(query.text.clone())
+        );
+        
+        // Apply filters if specified
+        if let Some(filter) = &query.filter {
+            table_query = table_query.filter(filter.as_str());
+        }
+        
+        // Set limit and offset
+        let limit = query.limit.unwrap_or(10);
+        table_query = table_query.limit(limit);
+        
+        if let Some(offset) = query.offset {
+            table_query = table_query.offset(offset);
+        }
+        
+        // Apply fast search if enabled
+        if query.fast_search {
+            table_query = table_query.fast_search();
+        }
+        
+        // Apply postfilter if enabled
+        if query.postfilter {
+            table_query = table_query.postfilter();
+        }
+        
+        let mut results = table_query.execute().await?;
 
         let mut repositories = Vec::new();
         while let Some(batch) = results.next().await? {
@@ -497,15 +522,40 @@ impl LanceDbStore {
         Ok(())
     }
 
-    pub async fn search_issues(&self, query: &str, limit: usize) -> Result<Vec<GitHubIssue>> {
+    pub async fn search_issues(&self, query: &LanceDbQuery) -> Result<Vec<GitHubIssue>> {
         let table = self.connection.open_table(ISSUES_TABLE).execute().await?;
         
-        let mut results = table
-            .query()
-            .full_text_search(lance_index::scalar::FullTextSearchQuery::new(query.to_string()))
-            .limit(limit)
-            .execute()
-            .await?;
+        let mut table_query = table.query();
+        
+        // Apply full-text search
+        table_query = table_query.full_text_search(
+            lance_index::scalar::FullTextSearchQuery::new(query.text.clone())
+        );
+        
+        // Apply filters if specified
+        if let Some(filter) = &query.filter {
+            table_query = table_query.filter(filter.as_str());
+        }
+        
+        // Set limit and offset
+        let limit = query.limit.unwrap_or(10);
+        table_query = table_query.limit(limit);
+        
+        if let Some(offset) = query.offset {
+            table_query = table_query.offset(offset);
+        }
+        
+        // Apply fast search if enabled
+        if query.fast_search {
+            table_query = table_query.fast_search();
+        }
+        
+        // Apply postfilter if enabled
+        if query.postfilter {
+            table_query = table_query.postfilter();
+        }
+        
+        let mut results = table_query.execute().await?;
 
         let mut issues = Vec::new();
         while let Some(batch) = results.next().await? {
@@ -527,17 +577,18 @@ impl LanceDbStore {
     }
 
     // Combined search across all tables
-    pub async fn search_all(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    pub async fn search_all(&self, query: &LanceDbQuery) -> Result<Vec<SearchResult>> {
         let mut results = Vec::new();
+        let limit = query.limit.unwrap_or(10);
 
         // Search repositories
-        let repos = self.search_repositories(query, limit).await?;
+        let repos = self.search_repositories(query).await?;
         for repo in repos {
             results.push(SearchResult::Repository(repo));
         }
 
         // Search issues
-        let issues = self.search_issues(query, limit).await?;
+        let issues = self.search_issues(query).await?;
         for issue in issues {
             results.push(SearchResult::Issue(issue));
         }
@@ -558,15 +609,154 @@ pub enum SearchResult {
     File(GitHubPullRequestFile),
 }
 
+/// Search query types for LanceDB
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanceDbQuery {
+    /// The search query text for full-text search
+    pub text: String,
+    
+    /// Optional limit on number of results (default: 10)
+    pub limit: Option<usize>,
+    
+    /// Optional offset for pagination (default: 0)
+    pub offset: Option<usize>,
+    
+    /// Optional SQL-style filter expression
+    /// Examples: "state = 'open'", "stars > 100", "language = 'Rust' AND fork = false"
+    pub filter: Option<String>,
+    
+    /// Optional list of fields to search in (default: all indexed fields)
+    pub search_fields: Option<Vec<String>>,
+    
+    /// Optional list of fields to return (default: all fields)
+    pub select_fields: Option<Vec<String>>,
+    
+    /// Enable fast search mode (only search indexed data)
+    pub fast_search: bool,
+    
+    /// Post-filter instead of pre-filter (applies filter after search)
+    pub postfilter: bool,
+}
+
+impl LanceDbQuery {
+    /// Create a new query with just the search text
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            limit: None,
+            offset: None,
+            filter: None,
+            search_fields: None,
+            select_fields: None,
+            fast_search: false,
+            postfilter: false,
+        }
+    }
+    
+    /// Set the maximum number of results to return
+    pub fn with_limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+    
+    /// Set the offset for pagination
+    pub fn with_offset(mut self, offset: usize) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+    
+    /// Add a SQL-style filter expression
+    pub fn with_filter(mut self, filter: impl Into<String>) -> Self {
+        self.filter = Some(filter.into());
+        self
+    }
+    
+    /// Specify which fields to search in
+    pub fn with_search_fields(mut self, fields: Vec<String>) -> Self {
+        self.search_fields = Some(fields);
+        self
+    }
+    
+    /// Specify which fields to return in results
+    pub fn with_select_fields(mut self, fields: Vec<String>) -> Self {
+        self.select_fields = Some(fields);
+        self
+    }
+    
+    /// Enable fast search mode
+    pub fn enable_fast_search(mut self) -> Self {
+        self.fast_search = true;
+        self
+    }
+    
+    /// Enable post-filtering
+    pub fn enable_postfilter(mut self) -> Self {
+        self.postfilter = true;
+        self
+    }
+}
+
 // Module for future hybrid search with embeddings
 pub mod hybrid {
     use super::*;
     
-    // This will be implemented when we add vector embeddings
+    /// Reranking strategy for combining search results
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum RerankStrategy {
+        /// Reciprocal Rank Fusion with k parameter
+        RRF { k: f32 },
+        /// Linear combination with weights
+        Linear { text_weight: f32, vector_weight: f32 },
+        /// Use only text search results
+        TextOnly,
+        /// Use only vector search results
+        VectorOnly,
+    }
+    
+    /// Hybrid search query combining text and vector search
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct HybridSearchQuery {
-        pub text_query: String,
-        pub embedding: Option<Vec<f32>>,
-        pub rerank: bool,
+        /// Text query for full-text search
+        pub text_query: Option<String>,
+        
+        /// Vector embedding for semantic search
+        pub vector_query: Option<Vec<f32>>,
+        
+        /// Base query parameters
+        pub base_params: LanceDbQuery,
+        
+        /// Reranking strategy to combine results
+        pub rerank_strategy: RerankStrategy,
+    }
+    
+    impl HybridSearchQuery {
+        /// Create a new hybrid query
+        pub fn new() -> Self {
+            Self {
+                text_query: None,
+                vector_query: None,
+                base_params: LanceDbQuery::new(""),
+                rerank_strategy: RerankStrategy::RRF { k: 60.0 },
+            }
+        }
+        
+        /// Set the text query
+        pub fn with_text(mut self, text: impl Into<String>) -> Self {
+            self.text_query = Some(text.into());
+            self
+        }
+        
+        /// Set the vector query
+        pub fn with_vector(mut self, vector: Vec<f32>) -> Self {
+            self.vector_query = Some(vector);
+            self
+        }
+        
+        /// Set the reranking strategy
+        pub fn with_rerank_strategy(mut self, strategy: RerankStrategy) -> Self {
+            self.rerank_strategy = strategy;
+            self
+        }
     }
     
     // Placeholder for future implementation

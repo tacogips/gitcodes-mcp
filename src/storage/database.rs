@@ -11,7 +11,7 @@ use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, doc};
 use crate::ids::{IssueId, PullRequestId, RepositoryId, UserId};
 use crate::storage::models::*;
 use crate::storage::paths::StoragePaths;
-use crate::types::ResourceType;
+use crate::types::{ResourceType, RepositoryName};
 
 static MODELS: Lazy<Models> = Lazy::new(|| {
     let mut models = Models::new();
@@ -126,10 +126,10 @@ impl GitDatabase {
         Ok(r.get().primary(id.clone())?)
     }
 
-    pub async fn get_repository_by_full_name(&self, full_name: &str) -> Result<Option<Repository>> {
+    pub async fn get_repository_by_full_name(&self, full_name: &RepositoryName) -> Result<Option<Repository>> {
         let r = self.db.r_transaction()?;
         Ok(r.get()
-            .secondary(RepositoryKey::full_name, full_name)?)
+            .secondary(RepositoryKey::full_name, full_name.as_str())?)
     }
 
     pub async fn list_repositories(&self) -> Result<Vec<Repository>> {

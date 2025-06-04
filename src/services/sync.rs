@@ -8,7 +8,7 @@ use tracing::{debug, error, info};
 use crate::git::GitHubClient;
 use crate::ids::{RepositoryId, SyncStatusId};
 use crate::storage::{CrossReference, GitDatabase, SyncStatus};
-use crate::types::{ItemType, ResourceType, SyncStatusType};
+use crate::types::{ItemType, ResourceType, SyncStatusType, RepositoryName};
 
 pub struct SyncService {
     db: Arc<GitDatabase>,
@@ -311,7 +311,11 @@ impl SyncService {
             let full_name = format!("{}/{}", owner, repo);
 
             // Check if target repository is registered
-            if let Some(target_repo) = self.db.get_repository_by_full_name(&full_name).await? {
+            let repo_name = match RepositoryName::new(&full_name) {
+                Ok(name) => name,
+                Err(_) => continue, // Skip invalid repository names
+            };
+            if let Some(target_repo) = self.db.get_repository_by_full_name(&repo_name).await? {
                 let cross_ref = CrossReference {
                     source_type,
                     source_id,

@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use gitdb::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber};
 use gitdb::services::SyncService;
 use gitdb::storage::GitDatabase;
-use gitdb::types::ItemType;
+use gitdb::types::{ItemType, RepositoryName};
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -234,6 +234,13 @@ async fn main() -> Result<()> {
         } => {
             // First, determine repository ID if filtering by repo
             let repo_id = if let Some(repo_name) = repo {
+                let repo_name = match RepositoryName::new(&repo_name) {
+                    Ok(name) => name,
+                    Err(e) => {
+                        eprintln!("Invalid repository name: {}", e);
+                        return Ok(());
+                    }
+                };
                 match db.get_repository_by_full_name(&repo_name).await? {
                     Some(repository) => Some(repository.id),
                     None => {
@@ -324,7 +331,14 @@ async fn main() -> Result<()> {
             };
 
             // Get repository
-            let repository = match db.get_repository_by_full_name(&repo_name).await? {
+            let repo_name_typed = match RepositoryName::new(&repo_name) {
+                Ok(name) => name,
+                Err(e) => {
+                    eprintln!("Invalid repository name: {}", e);
+                    return Ok(());
+                }
+            };
+            let repository = match db.get_repository_by_full_name(&repo_name_typed).await? {
                 Some(repo) => repo,
                 None => {
                     eprintln!("Repository {} not found", repo_name);

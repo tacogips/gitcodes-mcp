@@ -1,7 +1,7 @@
 use anyhow::Result;
 use gitdb::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
 use gitdb::storage::{CrossReference, GitDatabase, Repository, SyncStatus};
-use gitdb::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType};
+use gitdb::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType, RepositoryName};
 use tempfile::TempDir;
 
 async fn create_test_db() -> Result<(GitDatabase, TempDir)> {
@@ -59,7 +59,8 @@ async fn test_repository_operations() -> Result<()> {
     db.save_repository(&repo).await?;
 
     // Test get by full name
-    let retrieved = db.get_repository_by_full_name("test/repo").await?;
+    let repo_name = RepositoryName::new("test/repo").unwrap();
+    let retrieved = db.get_repository_by_full_name(&repo_name).await?;
     assert!(retrieved.is_some());
     let retrieved = retrieved.unwrap();
     assert_eq!(retrieved.full_name, "test/repo");

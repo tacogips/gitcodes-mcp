@@ -1,7 +1,7 @@
 use crate::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
 use crate::services::SyncService;
 use crate::storage::GitDatabase;
-use crate::types::{IssueState, ItemType, PullRequestState, ResourceType};
+use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, RepositoryName};
 use rmcp::{Error as McpError, ServerHandler, model::*, tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -366,7 +366,11 @@ impl GitDbTools {
 
         // Get repository ID if filtering by repo
         let filter_repo_id = if let Some(repo_name) = &repo {
-            match db.get_repository_by_full_name(repo_name).await {
+            let repo_name_typed = match RepositoryName::new(repo_name) {
+                Ok(name) => name,
+                Err(e) => return error_result(format!("Invalid repository name: {}", e)),
+            };
+            match db.get_repository_by_full_name(&repo_name_typed).await {
                 Ok(Some(repo)) => Some(repo.id),
                 Ok(None) => return error_result(format!("Repository {} not found", repo_name)),
                 Err(e) => return error_result(format!("Failed to get repository: {}", e)),
@@ -580,7 +584,11 @@ impl GitDbTools {
         };
 
         // Get repository
-        let repository = match db.get_repository_by_full_name(&repo).await {
+        let repo_name = match RepositoryName::new(&repo) {
+            Ok(name) => name,
+            Err(e) => return error_result(format!("Invalid repository name: {}", e)),
+        };
+        let repository = match db.get_repository_by_full_name(&repo_name).await {
             Ok(Some(repo)) => repo,
             Ok(None) => return error_result(format!("Repository {} not found", repo)),
             Err(e) => return error_result(format!("Failed to get repository: {}", e)),
