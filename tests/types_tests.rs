@@ -112,3 +112,40 @@ fn test_serialization() {
     let deserialized: PullRequestState = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized, PullRequestState::Merged);
 }
+
+#[test]
+fn test_repository_name() {
+    // Test valid repository names
+    let repo_name = RepositoryName::new("owner/repo").unwrap();
+    assert_eq!(repo_name.as_str(), "owner/repo");
+    assert_eq!(repo_name.to_string(), "owner/repo");
+    
+    // Test FromStr implementation
+    let repo_name: RepositoryName = "user/project".parse().unwrap();
+    assert_eq!(repo_name.as_str(), "user/project");
+    
+    // Test AsRef<str>
+    let s: &str = repo_name.as_ref();
+    assert_eq!(s, "user/project");
+    
+    // Test into_string
+    let owned = repo_name.clone().into_string();
+    assert_eq!(owned, "user/project");
+    
+    // Test invalid repository names
+    assert!(RepositoryName::new("").is_err());
+    assert!(RepositoryName::new("just-a-name").is_err());
+    assert!(RepositoryName::new("owner/repo/extra").is_err());
+    assert!(RepositoryName::new("owner repo").is_err());
+    assert!(RepositoryName::new("owner/ repo").is_err());
+    assert!(RepositoryName::new(" owner/repo").is_err());
+    assert!(RepositoryName::new("owner/repo ").is_err());
+    
+    // Test serialization
+    let repo_name = RepositoryName::new("test/repo").unwrap();
+    let json = serde_json::to_string(&repo_name).unwrap();
+    assert_eq!(json, "\"test/repo\"");
+    
+    let deserialized: RepositoryName = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized, repo_name);
+}
