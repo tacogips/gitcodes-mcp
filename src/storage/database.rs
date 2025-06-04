@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::Utc;
 use native_db::*;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
@@ -7,7 +8,7 @@ use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, doc};
 
-use crate::ids::{IssueId, PullRequestId, RepositoryId};
+use crate::ids::{IssueId, PullRequestId, RepositoryId, UserId};
 use crate::storage::models::*;
 use crate::storage::paths::StoragePaths;
 use crate::types::ResourceType;
@@ -22,6 +23,8 @@ static MODELS: Lazy<Models> = Lazy::new(|| {
     models.define::<SyncStatus>().unwrap();
     models.define::<CrossReference>().unwrap();
     models.define::<User>().unwrap();
+    models.define::<IssueParticipant>().unwrap();
+    models.define::<PullRequestParticipant>().unwrap();
     models
 });
 
@@ -350,6 +353,21 @@ impl GitDatabase {
     }
 
     async fn index_issue(&self, issue: &Issue) -> Result<()> {
+        // Get all participants for this issue first (before locking)
+        let participants = self.get_issue_participants(issue.id).await?;
+        let participant_logins: Vec<String> = participants.iter()
+            .map(|u| u.login.clone())
+            .collect();
+        
+        // Separate commenters (those who are participants but not assignees or author)
+        let mut commenters: Vec<String> = participant_logins.iter()
+            .filter(|login| **login != issue.author && !issue.assignees.contains(login))
+            .cloned()
+            .collect();
+        commenters.sort();
+        commenters.dedup();
+
+        // Now lock and index
         let mut writer = self.index_writer.lock().unwrap();
         let schema = self.search_index.schema();
 
@@ -363,26 +381,6 @@ impl GitDatabase {
         let assignees_field = schema.get_field("assignees").unwrap();
         let commenters_field = schema.get_field("commenters").unwrap();
         let participants_field = schema.get_field("participants").unwrap();
-
-        // Collect commenters from issue comments
-        let r = self.db.r_transaction()?;
-        let comments: Vec<IssueComment> = r.scan()
-            .secondary(IssueCommentKey::issue_id)?
-            .start_with(issue.id)?
-            .collect::<Result<Vec<_>, _>>()?;
-        
-        let mut commenters: Vec<String> = comments.iter()
-            .map(|c| c.author.clone())
-            .collect();
-        commenters.sort();
-        commenters.dedup();
-
-        // Create participants list (assignees + commenters + author)
-        let mut participants = issue.assignees.clone();
-        participants.extend(commenters.clone());
-        participants.push(issue.author.clone());
-        participants.sort();
-        participants.dedup();
 
         let mut doc = doc!();
         doc.add_text(id_field, &issue.id.to_string());
@@ -396,7 +394,7 @@ impl GitDatabase {
         doc.add_text(labels_field, &issue.labels.join(" "));
         doc.add_text(assignees_field, &issue.assignees.join(" "));
         doc.add_text(commenters_field, &commenters.join(" "));
-        doc.add_text(participants_field, &participants.join(" "));
+        doc.add_text(participants_field, &participant_logins.join(" "));
 
         writer.add_document(doc)?;
         writer.commit()?;
@@ -404,6 +402,21 @@ impl GitDatabase {
     }
 
     async fn index_pull_request(&self, pr: &PullRequest) -> Result<()> {
+        // Get all participants for this PR first (before locking)
+        let participants = self.get_pull_request_participants(pr.id).await?;
+        let participant_logins: Vec<String> = participants.iter()
+            .map(|u| u.login.clone())
+            .collect();
+        
+        // Separate commenters (those who are participants but not assignees or author)
+        let mut commenters: Vec<String> = participant_logins.iter()
+            .filter(|login| **login != pr.author && !pr.assignees.contains(login))
+            .cloned()
+            .collect();
+        commenters.sort();
+        commenters.dedup();
+
+        // Now lock and index
         let mut writer = self.index_writer.lock().unwrap();
         let schema = self.search_index.schema();
 
@@ -418,26 +431,6 @@ impl GitDatabase {
         let commenters_field = schema.get_field("commenters").unwrap();
         let participants_field = schema.get_field("participants").unwrap();
 
-        // Collect commenters from pull request comments
-        let r = self.db.r_transaction()?;
-        let comments: Vec<PullRequestComment> = r.scan()
-            .secondary(PullRequestCommentKey::pull_request_id)?
-            .start_with(pr.id)?
-            .collect::<Result<Vec<_>, _>>()?;
-        
-        let mut commenters: Vec<String> = comments.iter()
-            .map(|c| c.author.clone())
-            .collect();
-        commenters.sort();
-        commenters.dedup();
-
-        // Create participants list (assignees + commenters + author)
-        let mut participants = pr.assignees.clone();
-        participants.extend(commenters.clone());
-        participants.push(pr.author.clone());
-        participants.sort();
-        participants.dedup();
-
         let mut doc = doc!();
         doc.add_text(id_field, &pr.id.to_string());
         doc.add_text(type_field, "pull_request");
@@ -450,7 +443,7 @@ impl GitDatabase {
         doc.add_text(labels_field, &pr.labels.join(" "));
         doc.add_text(assignees_field, &pr.assignees.join(" "));
         doc.add_text(commenters_field, &commenters.join(" "));
-        doc.add_text(participants_field, &participants.join(" "));
+        doc.add_text(participants_field, &participant_logins.join(" "));
 
         writer.add_document(doc)?;
         writer.commit()?;
@@ -511,6 +504,156 @@ impl GitDatabase {
         }
 
         Ok(results)
+    }
+
+    // User management methods
+    pub async fn get_or_create_user(
+        &self,
+        github_id: i64,
+        login: &str,
+        avatar_url: Option<String>,
+        html_url: Option<String>,
+        user_type: &str,
+        site_admin: bool,
+    ) -> Result<User> {
+        let user_id = UserId::new(github_id);
+        
+        let rw = self.db.rw_transaction()?;
+        
+        match rw.get().primary::<User>(user_id)? {
+            Some(existing_user) => {
+                // User exists, update if data changed
+                let mut updated_user = existing_user.clone();
+                if updated_user.login != login {
+                    updated_user.login = login.to_string();
+                }
+                // Update other fields
+                updated_user.avatar_url = avatar_url;
+                updated_user.html_url = html_url;
+                updated_user.user_type = user_type.to_string();
+                updated_user.site_admin = site_admin;
+                updated_user.last_updated_at = Utc::now();
+                
+                rw.update(existing_user, updated_user.clone())?;
+                rw.commit()?;
+                Ok(updated_user)
+            }
+            None => {
+                // Create new user
+                let now = Utc::now();
+                let new_user = User {
+                    id: user_id,
+                    login: login.to_string(),
+                    avatar_url,
+                    html_url,
+                    user_type: user_type.to_string(),
+                    site_admin,
+                    first_seen_at: now,
+                    last_updated_at: now,
+                };
+                rw.insert(new_user.clone())?;
+                rw.commit()?;
+                Ok(new_user)
+            }
+        }
+    }
+    
+    pub async fn get_user_by_login(&self, login: &str) -> Result<Option<User>> {
+        let r = self.db.r_transaction()?;
+        Ok(r.get()
+            .secondary::<User>(UserKey::login, login)?)
+    }
+    
+    pub async fn get_users_by_ids(&self, user_ids: &[UserId]) -> Result<Vec<User>> {
+        let r = self.db.r_transaction()?;
+        let mut users = Vec::new();
+        
+        for user_id in user_ids {
+            if let Some(user) = r.get().primary::<User>(*user_id)? {
+                users.push(user);
+            }
+        }
+        
+        Ok(users)
+    }
+    
+    // Participant management methods
+    pub async fn add_issue_participant(
+        &self,
+        issue_id: IssueId,
+        user_id: UserId,
+        participation_type: ParticipationType,
+    ) -> Result<()> {
+        let id = format!("{}:{}", issue_id, user_id);
+        let participant = IssueParticipant {
+            id,
+            issue_id,
+            user_id,
+            participation_type,
+            created_at: Utc::now(),
+        };
+        
+        let rw = self.db.rw_transaction()?;
+        rw.insert(participant)?;
+        rw.commit()?;
+        Ok(())
+    }
+    
+    pub async fn add_pull_request_participant(
+        &self,
+        pull_request_id: PullRequestId,
+        user_id: UserId,
+        participation_type: ParticipationType,
+    ) -> Result<()> {
+        let id = format!("{}:{}", pull_request_id, user_id);
+        let participant = PullRequestParticipant {
+            id,
+            pull_request_id,
+            user_id,
+            participation_type,
+            created_at: Utc::now(),
+        };
+        
+        let rw = self.db.rw_transaction()?;
+        rw.insert(participant)?;
+        rw.commit()?;
+        Ok(())
+    }
+    
+    pub async fn get_issue_participants(&self, issue_id: IssueId) -> Result<Vec<User>> {
+        let r = self.db.r_transaction()?;
+        
+        // Get all participant records for this issue
+        let participants: Vec<IssueParticipant> = r.scan()
+            .secondary(IssueParticipantKey::issue_id)?
+            .start_with(issue_id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        // Collect unique user IDs
+        let user_ids: Vec<UserId> = participants.into_iter()
+            .map(|p| p.user_id)
+            .collect();
+        
+        // Fetch all users
+        self.get_users_by_ids(&user_ids).await
+    }
+    
+    pub async fn get_pull_request_participants(&self, pr_id: PullRequestId) -> Result<Vec<User>> {
+        let r = self.db.r_transaction()?;
+        
+        // Get all participant records for this PR
+        let participants: Vec<PullRequestParticipant> = r.scan()
+            .secondary(PullRequestParticipantKey::pull_request_id)?
+            .start_with(pr_id)?
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        // Collect unique user IDs
+        let user_ids: Vec<UserId> = participants.into_iter()
+            .map(|p| p.user_id)
+            .collect();
+        
+        // Fetch all users
+        self.get_users_by_ids(&user_ids).await
     }
 }
 

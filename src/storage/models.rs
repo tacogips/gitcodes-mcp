@@ -153,3 +153,38 @@ pub struct User {
     pub first_seen_at: DateTime<Utc>,
     pub last_updated_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 9, version = 1)]
+#[native_db]
+pub struct IssueParticipant {
+    #[primary_key]
+    pub id: String, // Composite key: "{issue_id}:{user_id}"
+    #[secondary_key]
+    pub issue_id: IssueId,
+    #[secondary_key]
+    pub user_id: UserId,
+    pub participation_type: ParticipationType,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 10, version = 1)]
+#[native_db]
+pub struct PullRequestParticipant {
+    #[primary_key]
+    pub id: String, // Composite key: "{pr_id}:{user_id}"
+    #[secondary_key]
+    pub pull_request_id: PullRequestId,
+    #[secondary_key]
+    pub user_id: UserId,
+    pub participation_type: ParticipationType,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParticipationType {
+    Author,
+    Assignee,
+    Commenter,
+}
