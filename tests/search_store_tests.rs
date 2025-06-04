@@ -1,7 +1,6 @@
 use anyhow::Result;
 use gitdb::storage::{SearchStore, SearchResult, search_store::LanceDbQuery};
-use gitdb::types::{GitHubRepository, GitHubIssue, GitHubPullRequest, GitHubUser};
-use gitdb::ids::FullId;
+use gitdb::types::{GitHubRepository, GitHubIssue, GitHubUser, FullId};
 use tempfile::TempDir;
 use chrono::Utc;
 
