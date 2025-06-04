@@ -88,6 +88,7 @@ impl SearchStore {
             Field::new("license", DataType::Utf8, true),
             Field::new("archived", DataType::Boolean, false),
             Field::new("disabled", DataType::Boolean, false),
+            Field::new("raw_text", DataType::Utf8, false), // Combined searchable text
             Field::new("data", DataType::Utf8, false), // Full JSON data
         ]));
 
@@ -101,10 +102,10 @@ impl SearchStore {
             .execute()
             .await?;
 
-        // Create FTS index on searchable fields (single column only for now)
+        // Create FTS index on combined raw_text field
         table
             .create_index(
-                &["full_name"],
+                &["raw_text"],
                 Index::FTS(FtsIndexBuilder::default()),
             )
             .execute()
@@ -128,6 +129,7 @@ impl SearchStore {
             Field::new("created_at", DataType::Utf8, false),
             Field::new("updated_at", DataType::Utf8, false),
             Field::new("closed_at", DataType::Utf8, true),
+            Field::new("raw_text", DataType::Utf8, false), // Combined searchable text
             Field::new("data", DataType::Utf8, false), // Full JSON data
         ]));
 
@@ -140,10 +142,10 @@ impl SearchStore {
             .execute()
             .await?;
 
-        // Create FTS index (single column only for now)
+        // Create FTS index on combined raw_text field
         table
             .create_index(
-                &["title"],
+                &["raw_text"],
                 Index::FTS(FtsIndexBuilder::default()),
             )
             .execute()
@@ -154,6 +156,28 @@ impl SearchStore {
 
     pub async fn save_repository(&self, repo: &GitHubRepository) -> Result<()> {
         let table = self.connection.open_table(REPOSITORIES_TABLE).execute().await?;
+        
+        // Build raw_text field combining all searchable content
+        let mut raw_text_parts = vec![
+            repo.full_name.clone(),
+            repo.name.clone(),
+            repo.owner.clone(),
+        ];
+        
+        if let Some(desc) = &repo.description {
+            raw_text_parts.push(desc.clone());
+        }
+        
+        if let Some(lang) = &repo.language {
+            raw_text_parts.push(lang.clone());
+        }
+        
+        // Add topics
+        for topic in &repo.topics {
+            raw_text_parts.push(topic.clone());
+        }
+        
+        let raw_text = vec![raw_text_parts.join(" ")];
         
         let id = vec![repo.full_id().to_string()];
         let owner = vec![repo.owner.clone()];
@@ -210,6 +234,7 @@ impl SearchStore {
                 Arc::new(StringArray::from(license)),
                 Arc::new(arrow_array::BooleanArray::from(archived)),
                 Arc::new(arrow_array::BooleanArray::from(disabled)),
+                Arc::new(StringArray::from(raw_text)),
                 Arc::new(StringArray::from(data)),
             ],
         )?;
@@ -307,6 +332,33 @@ impl SearchStore {
     pub async fn save_issue(&self, issue: &GitHubIssue) -> Result<()> {
         let table = self.connection.open_table(ISSUES_TABLE).execute().await?;
         
+        // Build raw_text field combining all searchable content
+        let mut raw_text_parts = vec![
+            issue.title.clone(),
+            format!("#{}", issue.number),
+        ];
+        
+        if let Some(body) = &issue.body {
+            raw_text_parts.push(body.clone());
+        }
+        
+        // Add labels
+        for label in &issue.labels {
+            raw_text_parts.push(label.name.clone());
+        }
+        
+        // Add assignees
+        for assignee in &issue.assignees {
+            raw_text_parts.push(assignee.login.clone());
+        }
+        
+        // Add milestone
+        if let Some(milestone) = &issue.milestone {
+            raw_text_parts.push(milestone.title.clone());
+        }
+        
+        let raw_text = vec![raw_text_parts.join(" ")];
+        
         let assignees_json = serde_json::to_string(
             &issue
                 .assignees
@@ -352,6 +404,7 @@ impl SearchStore {
                 Arc::new(StringArray::from(created_at)),
                 Arc::new(StringArray::from(updated_at)),
                 Arc::new(StringArray::from(closed_at)),
+                Arc::new(StringArray::from(raw_text)),
                 Arc::new(StringArray::from(data)),
             ],
         )?;
