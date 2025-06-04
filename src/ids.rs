@@ -59,6 +59,7 @@ define_id!(PullRequestId, i64);
 define_id!(CommentId, i64);
 define_id!(IssueNumber, i64);
 define_id!(PullRequestNumber, i64);
+define_id!(UserId, i64);
 
 // For sync status and cross references
 define_id!(SyncStatusId, i64);

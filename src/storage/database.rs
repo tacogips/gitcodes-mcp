@@ -21,6 +21,7 @@ static MODELS: Lazy<Models> = Lazy::new(|| {
     models.define::<PullRequestComment>().unwrap();
     models.define::<SyncStatus>().unwrap();
     models.define::<CrossReference>().unwrap();
+    models.define::<User>().unwrap();
     models
 });
 

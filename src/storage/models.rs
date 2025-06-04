@@ -4,7 +4,7 @@ use native_model::{native_model, Model};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{
-    CommentId, IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId, SyncStatusId,
+    CommentId, IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId, SyncStatusId, UserId,
 };
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType};
 
@@ -136,4 +136,20 @@ pub struct CrossReference {
     pub target_number: i64,
     pub link_text: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 8, version = 1)]
+#[native_db]
+pub struct User {
+    #[primary_key]
+    pub id: UserId,
+    #[secondary_key(unique)]
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub html_url: Option<String>,
+    pub user_type: String,
+    pub site_admin: bool,
+    pub first_seen_at: DateTime<Utc>,
+    pub last_updated_at: DateTime<Utc>,
 }
