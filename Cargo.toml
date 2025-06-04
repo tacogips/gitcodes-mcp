@@ -46,6 +46,7 @@ lumin = "0.1.16"
 strum = { version = "0.25", features = ["derive"] }
 uuid = { version = "1.4", features = ["v4"] }
 once_cell = "1.18"
+futures = "0.3"
 
 # Database and storage
 native_db = "0.8.1"

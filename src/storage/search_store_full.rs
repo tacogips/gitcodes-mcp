@@ -377,7 +377,8 @@ impl SearchStore {
             ],
         )?;
 
-        table.add(vec![batch]).execute().await?;
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], table.schema().await?);
+        table.add(batches).execute().await?;
         Ok(())
     }
 
@@ -423,7 +424,7 @@ impl SearchStore {
         
         // Apply filters if specified
         if let Some(filter) = &query.filter {
-            table_query = table_query.where_clause(filter.as_str());
+            table_query = table_query.only_if(filter.as_str());
         }
         
         // Set limit and offset
@@ -515,7 +516,8 @@ impl SearchStore {
             ],
         )?;
 
-        table.add(vec![batch]).execute().await?;
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], table.schema().await?);
+        table.add(batches).execute().await?;
         Ok(())
     }
 
@@ -531,7 +533,7 @@ impl SearchStore {
         
         // Apply filters if specified
         if let Some(filter) = &query.filter {
-            table_query = table_query.where_clause(filter.as_str());
+            table_query = table_query.only_if(filter.as_str());
         }
         
         // Set limit and offset
