@@ -4,7 +4,8 @@ use native_model::{native_model, Model};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{
-    CommentId, IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId, SyncStatusId, UserId,
+    CommentId, IssueId, IssueNumber, ProjectId, ProjectNumber, PullRequestId, PullRequestNumber,
+    RepositoryId, SyncStatusId, UserId,
 };
 use crate::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType};
 
@@ -46,6 +47,8 @@ pub struct Issue {
     pub updated_at: DateTime<Utc>,
     pub closed_at: Option<DateTime<Utc>>,
     pub comments_count: i64,
+    // Projects this issue belongs to (populated by project sync)
+    pub project_ids: Vec<ProjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -74,6 +77,8 @@ pub struct PullRequest {
     pub additions: i64,
     pub deletions: i64,
     pub changed_files: i64,
+    // Projects this PR belongs to (populated by project sync)
+    pub project_ids: Vec<ProjectId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -187,4 +192,41 @@ pub enum ParticipationType {
     Author,
     Assignee,
     Commenter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 11, version = 1)]
+#[native_db]
+pub struct Project {
+    #[primary_key]
+    pub id: ProjectId,
+    pub owner: String, // Organization or user login
+    pub number: ProjectNumber,
+    pub title: String,
+    pub description: Option<String>,
+    pub state: String, // OPEN, CLOSED
+    pub visibility: String, // PUBLIC, PRIVATE
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub indexed_at: DateTime<Utc>,
+    // Track which repositories this project can include items from
+    pub linked_repositories: Vec<RepositoryId>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[native_model(id = 12, version = 1)]
+#[native_db]
+pub struct ProjectItem {
+    #[primary_key]
+    pub id: String, // Composite: "{project_id}:{item_type}:{item_id}"
+    #[secondary_key]
+    pub project_id: ProjectId,
+    pub item_type: ItemType, // Issue or PullRequest
+    pub item_id: i64, // IssueId or PullRequestId value
+    #[secondary_key]
+    pub repository_id: RepositoryId, // The repository this item belongs to
+    pub position: Option<f64>, // Position in the project board
+    pub added_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

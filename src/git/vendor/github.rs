@@ -364,6 +364,7 @@ impl GitHubClient {
             updated_at: issue.updated_at,
             closed_at: issue.closed_at,
             comments_count: issue.comments as i64,
+            project_ids: Vec::new(), // Projects are populated by project sync
         }
     }
 
@@ -414,6 +415,7 @@ impl GitHubClient {
             additions: pr.additions.unwrap_or(0) as i64,
             deletions: pr.deletions.unwrap_or(0) as i64,
             changed_files: pr.changed_files.unwrap_or(0) as i64,
+            project_ids: Vec::new(), // Projects are populated by project sync
         })
     }
 }

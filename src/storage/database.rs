@@ -3,7 +3,7 @@ use chrono::Utc;
 use native_db::*;
 use once_cell::sync::Lazy;
 
-use crate::ids::{IssueId, PullRequestId, RepositoryId, UserId};
+use crate::ids::{IssueId, ProjectId, PullRequestId, RepositoryId, UserId};
 use crate::storage::models::*;
 use crate::storage::paths::StoragePaths;
 use crate::storage::search_store::{self, SearchStore, SearchQuery, SearchResult};
@@ -21,6 +21,8 @@ static MODELS: Lazy<Models> = Lazy::new(|| {
     models.define::<User>().unwrap();
     models.define::<IssueParticipant>().unwrap();
     models.define::<PullRequestParticipant>().unwrap();
+    models.define::<Project>().unwrap();
+    models.define::<ProjectItem>().unwrap();
     models
 });
 
@@ -421,6 +423,80 @@ impl GitDatabase {
         
         // Fetch all users
         self.get_users_by_ids(&user_ids).await
+    }
+    
+    // Project management methods
+    
+    /// Saves a project to the database
+    pub async fn save_project(&self, project: Project) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(project)?;
+        rw.commit()?;
+        Ok(())
+    }
+    
+    /// Gets a project by ID
+    pub async fn get_project(&self, project_id: &ProjectId) -> Result<Option<Project>> {
+        let r = self.db.r_transaction()?;
+        Ok(r.get().primary::<Project>(project_id.clone())?)
+    }
+    
+    /// Gets all projects
+    pub async fn get_all_projects(&self) -> Result<Vec<Project>> {
+        let r = self.db.r_transaction()?;
+        let projects: Vec<Project> = r.scan().primary::<Project>()?.all()?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(projects)
+    }
+    
+    /// Adds an issue or PR to a project
+    pub async fn add_item_to_project(&self, project_item: ProjectItem) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        rw.insert(project_item)?;
+        rw.commit()?;
+        Ok(())
+    }
+    
+    /// Gets all items in a project
+    pub async fn get_project_items(&self, project_id: &ProjectId) -> Result<Vec<ProjectItem>> {
+        let r = self.db.r_transaction()?;
+        let items: Vec<ProjectItem> = r.scan()
+            .secondary(ProjectItemKey::project_id)?
+            .start_with(project_id.clone())?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(items)
+    }
+    
+    /// Updates an issue to include a project reference
+    pub async fn add_project_to_issue(&self, issue_id: IssueId, project_id: ProjectId) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        
+        if let Some(issue) = rw.get().primary::<Issue>(issue_id)? {
+            if !issue.project_ids.contains(&project_id) {
+                let mut updated_issue = issue.clone();
+                updated_issue.project_ids.push(project_id);
+                rw.update(issue, updated_issue)?;
+            }
+        }
+        
+        rw.commit()?;
+        Ok(())
+    }
+    
+    /// Updates a PR to include a project reference
+    pub async fn add_project_to_pull_request(&self, pr_id: PullRequestId, project_id: ProjectId) -> Result<()> {
+        let rw = self.db.rw_transaction()?;
+        
+        if let Some(pr) = rw.get().primary::<PullRequest>(pr_id)? {
+            if !pr.project_ids.contains(&project_id) {
+                let mut updated_pr = pr.clone();
+                updated_pr.project_ids.push(project_id);
+                rw.update(pr, updated_pr)?;
+            }
+        }
+        
+        rw.commit()?;
+        Ok(())
     }
     
     // Search methods that delegate to SearchStore

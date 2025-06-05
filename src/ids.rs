@@ -63,3 +63,62 @@ define_id!(UserId, i64);
 
 // For sync status and cross references
 define_id!(SyncStatusId, i64);
+
+// For GitHub Projects V2
+// ProjectId uses String (GraphQL node ID) so we need a custom implementation without Copy
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProjectId(String);
+
+impl ProjectId {
+    /// Creates a new instance of the ProjectId.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The underlying value for the ID
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    /// Returns a reference to the underlying value of the ID.
+    ///
+    /// # Returns
+    ///
+    /// A string slice of the ID value
+    pub fn value(&self) -> &str {
+        &self.0
+    }
+    
+    /// Consumes self and returns the underlying String.
+    ///
+    /// # Returns
+    ///
+    /// The inner String value
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Display for ProjectId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for ProjectId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl ToKey for ProjectId {
+    fn to_key(&self) -> native_db::Key {
+        self.0.to_key()
+    }
+
+    fn key_names() -> Vec<String> {
+        <String as ToKey>::key_names()
+    }
+}
+
+define_id!(ProjectNumber, i64);

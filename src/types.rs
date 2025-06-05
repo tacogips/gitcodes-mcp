@@ -66,6 +66,7 @@ impl PullRequestState {
 pub enum ResourceType {
     Issues,
     PullRequests,
+    Projects,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString)]
