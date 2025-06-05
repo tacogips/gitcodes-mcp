@@ -2,15 +2,28 @@ use anyhow::Result;
 use gitdb::ids::{IssueId, IssueNumber, PullRequestId, PullRequestNumber, RepositoryId};
 use gitdb::storage::{CrossReference, GitDatabase, Repository, SyncStatus};
 use gitdb::types::{IssueState, ItemType, PullRequestState, ResourceType, SyncStatusType, RepositoryName};
-use tempfile::TempDir;
+use std::path::PathBuf;
 
-async fn create_test_db() -> Result<(GitDatabase, TempDir)> {
-    let temp_dir = TempDir::new()?;
+// Helper to clean up test directory after test completion
+fn defer_cleanup(path: PathBuf) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let _ = std::fs::remove_dir_all(&path);
+    });
+}
+
+async fn create_test_db() -> Result<(GitDatabase, PathBuf)> {
+    // Use dirs crate to get temp dir path
+    let temp_base = dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("gitdb_tests");
+    std::fs::create_dir_all(&temp_base)?;
     
     // Create unique directories for this test
     let test_id = uuid::Uuid::new_v4();
-    let data_dir = temp_dir.path().join(format!("data_{}", test_id));
-    let config_dir = temp_dir.path().join(format!("config_{}", test_id));
+    let test_dir = temp_base.join(format!("test_{}", test_id));
+    let data_dir = test_dir.join("data");
+    let config_dir = test_dir.join("config");
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&config_dir)?;
     
@@ -25,21 +38,24 @@ async fn create_test_db() -> Result<(GitDatabase, TempDir)> {
         unsafe {
             std::env::set_var("GITDB_DATA_DIR", &data_dir);
             std::env::set_var("GITDB_CONFIG_DIR", &config_dir);
+            std::env::set_var("GITDB_SKIP_VECTOR_INDEX", "1");
         }
         let db = GitDatabase::new().await?;
         unsafe {
             std::env::remove_var("GITDB_DATA_DIR");
             std::env::remove_var("GITDB_CONFIG_DIR");
+            std::env::remove_var("GITDB_SKIP_VECTOR_INDEX");
         }
         db
     };
     
-    Ok((db, temp_dir))
+    Ok((db, test_dir))
 }
 
 #[tokio::test]
 async fn test_repository_operations() -> Result<()> {
-    let (db, _temp_dir) = create_test_db().await?;
+    let (db, test_dir) = create_test_db().await?;
+    defer_cleanup(test_dir);
 
     let repo = Repository {
         id: RepositoryId::new(1),
@@ -76,7 +92,8 @@ async fn test_repository_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_issue_operations() -> Result<()> {
-    let (db, _temp_dir) = create_test_db().await?;
+    let (db, test_dir) = create_test_db().await?;
+    defer_cleanup(test_dir);
 
     let issue = gitdb::storage::Issue {
         id: IssueId::new(1),
@@ -110,7 +127,8 @@ async fn test_issue_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_pull_request_operations() -> Result<()> {
-    let (db, _temp_dir) = create_test_db().await?;
+    let (db, test_dir) = create_test_db().await?;
+    defer_cleanup(test_dir);
 
     let pr = gitdb::storage::PullRequest {
         id: PullRequestId::new(1),
@@ -151,7 +169,8 @@ async fn test_pull_request_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_sync_status_operations() -> Result<()> {
-    let (db, _temp_dir) = create_test_db().await?;
+    let (db, test_dir) = create_test_db().await?;
+    defer_cleanup(test_dir);
 
     let status = SyncStatus {
         id: gitdb::ids::SyncStatusId::new(0),
@@ -180,7 +199,8 @@ async fn test_sync_status_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_cross_reference_operations() -> Result<()> {
-    let (db, _temp_dir) = create_test_db().await?;
+    let (db, test_dir) = create_test_db().await?;
+    defer_cleanup(test_dir);
 
     let cross_ref = CrossReference {
         source_type: ItemType::Issue,
@@ -223,7 +243,8 @@ async fn test_cross_reference_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_search_functionality() -> Result<()> {
-    let (db, _temp_dir) = create_test_db().await?;
+    let (db, test_dir) = create_test_db().await?;
+    defer_cleanup(test_dir);
 
     // Add test data
     let issue1 = gitdb::storage::Issue {
