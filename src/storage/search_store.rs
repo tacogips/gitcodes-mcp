@@ -858,6 +858,331 @@ impl SearchStore {
         // For now, return a placeholder embedding
         Ok(vec![0.0; EMBEDDING_DIMENSION as usize])
     }
+
+    /// Perform vector search on repositories with scores
+    pub async fn vector_search_repositories_scored(
+        &self, 
+        query_vector: Vec<f32>, 
+        limit: usize,
+        filter: Option<String>
+    ) -> Result<Vec<hybrid::ScoredSearchResult>> {
+        let table = self.connection.open_table(REPOSITORIES_TABLE).execute().await?;
+        
+        let mut table_query = table
+            .vector_search(query_vector)?
+            .limit(limit)
+            .column("embedding");
+        
+        // Apply filters if specified
+        if let Some(filter) = filter {
+            table_query = table_query.only_if(filter.as_str());
+        }
+        
+        let mut results = match table_query.execute().await {
+            Ok(results) => results,
+            Err(e) => {
+                // If FTS index doesn't exist, return empty results
+                if e.to_string().contains("no inverted index") {
+                    return Ok(Vec::new());
+                }
+                return Err(e.into());
+            }
+        };
+        
+        let mut scored_results = Vec::new();
+        while let Some(batch_result) = results.next().await {
+            let batch = batch_result?;
+            
+            // Get data column
+            let data_array = batch
+                .column_by_name("data")
+                .ok_or_else(|| anyhow!("Missing data column"))?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| anyhow!("Invalid data column type"))?;
+                
+            // Get distance column (score)
+            let distance_array = batch
+                .column_by_name("_distance")
+                .ok_or_else(|| anyhow!("Missing _distance column"))?
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .ok_or_else(|| anyhow!("Invalid _distance column type"))?;
+
+            for i in 0..batch.num_rows() {
+                let json_str = data_array.value(i);
+                let repo: GitHubRepository = serde_json::from_str(json_str)?;
+                let distance = distance_array.value(i);
+                // Convert distance to similarity score (inverse of distance)
+                let score = 1.0 / (1.0 + distance);
+                
+                scored_results.push(hybrid::ScoredSearchResult {
+                    result: SearchResult::Repository(repo),
+                    score,
+                });
+            }
+        }
+        
+        Ok(scored_results)
+    }
+
+    /// Perform vector search on issues with scores
+    pub async fn vector_search_issues_scored(
+        &self, 
+        query_vector: Vec<f32>, 
+        limit: usize,
+        filter: Option<String>
+    ) -> Result<Vec<hybrid::ScoredSearchResult>> {
+        let table = self.connection.open_table(ISSUES_TABLE).execute().await?;
+        
+        let mut table_query = table
+            .vector_search(query_vector)?
+            .limit(limit)
+            .column("embedding");
+        
+        // Apply filters if specified
+        if let Some(filter) = filter {
+            table_query = table_query.only_if(filter.as_str());
+        }
+        
+        let mut results = match table_query.execute().await {
+            Ok(results) => results,
+            Err(e) => {
+                // If FTS index doesn't exist, return empty results
+                if e.to_string().contains("no inverted index") {
+                    return Ok(Vec::new());
+                }
+                return Err(e.into());
+            }
+        };
+        
+        let mut scored_results = Vec::new();
+        while let Some(batch_result) = results.next().await {
+            let batch = batch_result?;
+            
+            // Get data column
+            let data_array = batch
+                .column_by_name("data")
+                .ok_or_else(|| anyhow!("Missing data column"))?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| anyhow!("Invalid data column type"))?;
+                
+            // Get distance column (score)
+            let distance_array = batch
+                .column_by_name("_distance")
+                .ok_or_else(|| anyhow!("Missing _distance column"))?
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .ok_or_else(|| anyhow!("Invalid _distance column type"))?;
+
+            for i in 0..batch.num_rows() {
+                let json_str = data_array.value(i);
+                let issue: GitHubIssue = serde_json::from_str(json_str)?;
+                let distance = distance_array.value(i);
+                // Convert distance to similarity score (inverse of distance)
+                let score = 1.0 / (1.0 + distance);
+                
+                scored_results.push(hybrid::ScoredSearchResult {
+                    result: SearchResult::Issue(issue),
+                    score,
+                });
+            }
+        }
+        
+        Ok(scored_results)
+    }
+
+    /// Search repositories with scores for full-text search
+    pub async fn search_repositories_scored(&self, query: &LanceDbQuery) -> Result<Vec<hybrid::ScoredSearchResult>> {
+        let table = match self.connection.open_table(REPOSITORIES_TABLE).execute().await {
+            Ok(table) => table,
+            Err(_) => return Ok(Vec::new()), // Table doesn't exist yet
+        };
+        
+        let mut table_query = table.query();
+        
+        // Apply full-text search
+        table_query = table_query.full_text_search(
+            FullTextSearchQuery::new(query.text.clone())
+                .with_columns(&["searchable_content".to_string()])
+                .unwrap()
+        );
+        
+        // Apply filters if specified
+        if let Some(filter) = &query.filter {
+            table_query = table_query.only_if(filter.as_str());
+        }
+        
+        // Set limit and offset
+        let limit = query.limit.unwrap_or(10);
+        table_query = table_query.limit(limit);
+        
+        if let Some(offset) = query.offset {
+            table_query = table_query.offset(offset);
+        }
+        
+        // Apply fast search if enabled
+        if query.fast_search {
+            table_query = table_query.fast_search();
+        }
+        
+        // Apply postfilter if enabled
+        if query.postfilter {
+            table_query = table_query.postfilter();
+        }
+        
+        let mut results = match table_query.execute().await {
+            Ok(results) => results,
+            Err(e) => {
+                // If FTS index doesn't exist, return empty results
+                if e.to_string().contains("no inverted index") {
+                    return Ok(Vec::new());
+                }
+                return Err(e.into());
+            }
+        };
+
+        let mut scored_results = Vec::new();
+        while let Some(batch_result) = results.next().await {
+            let batch = batch_result?;
+            
+            let data_array = batch
+                .column_by_name("data")
+                .ok_or_else(|| anyhow!("Missing data column"))?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| anyhow!("Invalid data column type"))?;
+                
+            // Try to get score column (may not exist for FTS)
+            let score_array = batch.column_by_name("_score")
+                .and_then(|col| col.as_any().downcast_ref::<Float32Array>());
+
+            for i in 0..batch.num_rows() {
+                let json_str = data_array.value(i);
+                let repo: GitHubRepository = serde_json::from_str(json_str)?;
+                
+                // Use score if available, otherwise use rank-based score
+                let score = if let Some(scores) = score_array {
+                    scores.value(i)
+                } else {
+                    // Use inverse rank as score
+                    1.0 / (i as f32 + 1.0)
+                };
+                
+                scored_results.push(hybrid::ScoredSearchResult {
+                    result: SearchResult::Repository(repo),
+                    score,
+                });
+            }
+        }
+
+        Ok(scored_results)
+    }
+
+    /// Search issues with scores for full-text search
+    pub async fn search_issues_scored(&self, query: &LanceDbQuery) -> Result<Vec<hybrid::ScoredSearchResult>> {
+        let table = self.connection.open_table(ISSUES_TABLE).execute().await?;
+        
+        let mut table_query = table.query();
+        
+        // Apply full-text search
+        table_query = table_query.full_text_search(
+            FullTextSearchQuery::new(query.text.clone())
+                .with_columns(&["searchable_content".to_string()])
+                .unwrap()
+        );
+        
+        // Apply filters if specified
+        if let Some(filter) = &query.filter {
+            table_query = table_query.only_if(filter.as_str());
+        }
+        
+        // Set limit and offset
+        let limit = query.limit.unwrap_or(10);
+        table_query = table_query.limit(limit);
+        
+        if let Some(offset) = query.offset {
+            table_query = table_query.offset(offset);
+        }
+        
+        // Apply fast search if enabled
+        if query.fast_search {
+            table_query = table_query.fast_search();
+        }
+        
+        // Apply postfilter if enabled
+        if query.postfilter {
+            table_query = table_query.postfilter();
+        }
+        
+        let mut results = match table_query.execute().await {
+            Ok(results) => results,
+            Err(e) => {
+                // If FTS index doesn't exist, return empty results
+                if e.to_string().contains("no inverted index") {
+                    return Ok(Vec::new());
+                }
+                return Err(e.into());
+            }
+        };
+
+        let mut scored_results = Vec::new();
+        while let Some(batch_result) = results.next().await {
+            let batch = batch_result?;
+            let data_array = batch
+                .column_by_name("data")
+                .ok_or_else(|| anyhow!("Missing data column"))?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| anyhow!("Invalid data column type"))?;
+                
+            // Try to get score column (may not exist for FTS)
+            let score_array = batch.column_by_name("_score")
+                .and_then(|col| col.as_any().downcast_ref::<Float32Array>());
+
+            for i in 0..batch.num_rows() {
+                let json_str = data_array.value(i);
+                let issue: GitHubIssue = serde_json::from_str(json_str)?;
+                
+                // Use score if available, otherwise use rank-based score
+                let score = if let Some(scores) = score_array {
+                    scores.value(i)
+                } else {
+                    // Use inverse rank as score
+                    1.0 / (i as f32 + 1.0)
+                };
+                
+                scored_results.push(hybrid::ScoredSearchResult {
+                    result: SearchResult::Issue(issue),
+                    score,
+                });
+            }
+        }
+
+        Ok(scored_results)
+    }
+
+    /// Search all with scores
+    pub async fn search_all_scored(&self, query: &LanceDbQuery) -> Result<Vec<hybrid::ScoredSearchResult>> {
+        let mut results = Vec::new();
+        let limit = query.limit.unwrap_or(10);
+
+        // Search repositories
+        let repos = self.search_repositories_scored(query).await?;
+        results.extend(repos);
+
+        // Search issues
+        let issues = self.search_issues_scored(query).await?;
+        results.extend(issues);
+
+        // Sort by score (descending)
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+
+        // Limit total results
+        results.truncate(limit);
+        Ok(results)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1024,7 +1349,7 @@ impl UnifiedSearchQuery {
             text: Some(text.into()),
             vector: None,
             search_mode: SearchMode::Hybrid { 
-                rerank_strategy: hybrid::RerankStrategy::RRF { k: 60.0 } 
+                rerank_strategy: hybrid::RerankStrategy::Linear { text_weight: 0.7, vector_weight: 0.3 } 
             },
             limit: None,
             offset: None,
@@ -1067,6 +1392,13 @@ pub mod hybrid {
         VectorOnly,
     }
 
+    /// Search result with score
+    #[derive(Debug, Clone)]
+    pub struct ScoredSearchResult {
+        pub result: SearchResult,
+        pub score: f32,
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct HybridSearchQuery {
         pub text_query: Option<String>,
@@ -1081,7 +1413,7 @@ pub mod hybrid {
                 text_query: None,
                 vector_query: None,
                 base_params: LanceDbQuery::new(""),
-                rerank_strategy: RerankStrategy::RRF { k: 60.0 },
+                rerank_strategy: RerankStrategy::Linear { text_weight: 0.7, vector_weight: 0.3 },
             }
         }
 
@@ -1233,11 +1565,111 @@ pub mod hybrid {
                 all_results.truncate(limit);
                 Ok(all_results)
             }
-            RerankStrategy::Linear { text_weight: _, vector_weight: _ } => {
+            RerankStrategy::Linear { text_weight, vector_weight } => {
                 // Linear combination of scores
-                // Similar to RRF but with weighted combination
-                // Implementation would be similar to RRF but with different scoring
-                unimplemented!("Linear reranking strategy not yet implemented")
+                let mut text_results = Vec::new();
+                let mut vector_results = Vec::new();
+                
+                // Get text search results with scores
+                if let Some(text) = query.text_query {
+                    let mut text_query = LanceDbQuery::new(text);
+                    text_query.limit = Some(limit * 2); // Get more results for fusion
+                    text_query.filter = query.base_params.filter.clone();
+                    text_results = store.search_all_scored(&text_query).await?;
+                }
+                
+                // Get vector search results with scores
+                if let Some(vector) = query.vector_query {
+                    // Search repositories
+                    let repos = store.vector_search_repositories_scored(
+                        vector.clone(), 
+                        limit * 2, 
+                        query.base_params.filter.clone()
+                    ).await?;
+                    vector_results.extend(repos);
+                    
+                    // Search issues
+                    let issues = store.vector_search_issues_scored(
+                        vector, 
+                        limit * 2, 
+                        query.base_params.filter
+                    ).await?;
+                    vector_results.extend(issues);
+                }
+                
+                // Normalize scores for text results (0-1 range)
+                let max_text_score = text_results.iter()
+                    .map(|r| r.score)
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(1.0);
+                let min_text_score = text_results.iter()
+                    .map(|r| r.score)
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(0.0);
+                let text_range = max_text_score - min_text_score;
+                
+                // Normalize scores for vector results (0-1 range)
+                let max_vector_score = vector_results.iter()
+                    .map(|r| r.score)
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(1.0);
+                let min_vector_score = vector_results.iter()
+                    .map(|r| r.score)
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or(0.0);
+                let vector_range = max_vector_score - min_vector_score;
+                
+                // Create a map of result ID to normalized scores
+                let mut combined_scores: HashMap<String, f32> = HashMap::new();
+                let mut result_map: HashMap<String, SearchResult> = HashMap::new();
+                
+                // Process text results
+                for scored_result in text_results {
+                    let id = result_to_id(&scored_result.result);
+                    let normalized_score = if text_range > 0.0 {
+                        (scored_result.score - min_text_score) / text_range
+                    } else {
+                        1.0
+                    };
+                    combined_scores.insert(id.clone(), text_weight * normalized_score);
+                    result_map.insert(id, scored_result.result);
+                }
+                
+                // Process vector results
+                for scored_result in vector_results {
+                    let id = result_to_id(&scored_result.result);
+                    let normalized_score = if vector_range > 0.0 {
+                        (scored_result.score - min_vector_score) / vector_range
+                    } else {
+                        1.0
+                    };
+                    let weighted_score = vector_weight * normalized_score;
+                    
+                    // Add to existing score if result exists in both searches
+                    *combined_scores.entry(id.clone()).or_insert(0.0) += weighted_score;
+                    result_map.entry(id).or_insert(scored_result.result);
+                }
+                
+                // Convert to results and sort by combined score
+                let mut results_with_scores: Vec<(SearchResult, f32)> = combined_scores
+                    .into_iter()
+                    .filter_map(|(id, score)| {
+                        result_map.remove(&id).map(|result| (result, score))
+                    })
+                    .collect();
+                
+                // Sort by score (descending)
+                results_with_scores.sort_by(|(_, score_a), (_, score_b)| {
+                    score_b.partial_cmp(score_a).unwrap()
+                });
+                
+                let mut final_results: Vec<SearchResult> = results_with_scores
+                    .into_iter()
+                    .map(|(result, _)| result)
+                    .collect();
+                
+                final_results.truncate(limit);
+                Ok(final_results)
             }
         }
     }

@@ -66,6 +66,20 @@ fn test_hybrid_search_query() {
 }
 
 #[test]
+fn test_hybrid_search_query_default_is_linear() {
+    let query = HybridSearchQuery::new();
+    
+    // Verify default is Linear with text_weight=0.7, vector_weight=0.3
+    match query.rerank_strategy {
+        RerankStrategy::Linear { text_weight, vector_weight } => {
+            assert_eq!(text_weight, 0.7);
+            assert_eq!(vector_weight, 0.3);
+        }
+        _ => panic!("Default should be Linear rerank strategy"),
+    }
+}
+
+#[test]
 fn test_rerank_strategies() {
     // Test RRF
     let rrf = RerankStrategy::RRF { k: 60.0 };

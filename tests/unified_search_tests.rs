@@ -220,23 +220,31 @@ async fn test_unified_search_hybrid_mode_with_different_strategies() -> Result<(
     store.create_fts_index_repositories().await?;
     store.create_fts_index_issues().await?;
     
-    // Test 1: Hybrid search with default RRF strategy
+    // Test 1: Hybrid search with default Linear strategy
     let query = UnifiedSearchQuery::hybrid("cargo")
         .with_limit(10);
     let results = store.unified_search(query).await?;
     
     assert!(!results.is_empty(), "Hybrid search should return results");
-    println!("Default RRF strategy returned {} results", results.len());
+    println!("Default Linear strategy returned {} results", results.len());
     
-    // Test 2: Hybrid search with different RRF k value
+    // Test 2: Hybrid search with RRF strategy
     let query = UnifiedSearchQuery::hybrid("rust")
-        .with_rerank_strategy(RerankStrategy::RRF { k: 30.0 })
+        .with_rerank_strategy(RerankStrategy::RRF { k: 60.0 })
         .with_limit(10);
     let results = store.unified_search(query).await?;
     
-    println!("RRF with k=30 returned {} results", results.len());
+    println!("RRF with k=60 returned {} results", results.len());
     
-    // Test 3: Hybrid search with TextOnly strategy
+    // Test 3: Hybrid search with different Linear weights
+    let query = UnifiedSearchQuery::hybrid("rust")
+        .with_rerank_strategy(RerankStrategy::Linear { text_weight: 0.8, vector_weight: 0.2 })
+        .with_limit(10);
+    let results = store.unified_search(query).await?;
+    
+    println!("Linear with text_weight=0.8 returned {} results", results.len());
+    
+    // Test 4: Hybrid search with TextOnly strategy
     let query = UnifiedSearchQuery::hybrid("build")
         .with_rerank_strategy(RerankStrategy::TextOnly)
         .with_limit(10);
@@ -244,7 +252,7 @@ async fn test_unified_search_hybrid_mode_with_different_strategies() -> Result<(
     
     println!("TextOnly strategy returned {} results", results.len());
     
-    // Test 4: Hybrid search with VectorOnly strategy
+    // Test 5: Hybrid search with VectorOnly strategy
     let query = UnifiedSearchQuery::hybrid("performance")
         .with_rerank_strategy(RerankStrategy::VectorOnly)
         .with_limit(10);
