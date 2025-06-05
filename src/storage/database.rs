@@ -449,6 +449,26 @@ impl GitDatabase {
         Ok(projects)
     }
     
+    /// Gets all projects with their item counts
+    pub async fn get_all_projects_with_stats(&self) -> Result<Vec<(Project, usize, usize)>> {
+        let projects = self.get_all_projects().await?;
+        let mut results = Vec::new();
+        
+        for project in projects {
+            let items = self.get_project_items(&project.id).await?;
+            let issue_count = items.iter()
+                .filter(|item| matches!(item.item_type, crate::types::ItemType::Issue))
+                .count();
+            let pr_count = items.iter()
+                .filter(|item| matches!(item.item_type, crate::types::ItemType::PullRequest))
+                .count();
+            
+            results.push((project, issue_count, pr_count));
+        }
+        
+        Ok(results)
+    }
+    
     /// Adds an issue or PR to a project
     pub async fn add_item_to_project(&self, project_item: ProjectItem) -> Result<()> {
         let rw = self.db.rw_transaction()?;
@@ -497,6 +517,186 @@ impl GitDatabase {
         
         rw.commit()?;
         Ok(())
+    }
+    
+    /// Gets all issues belonging to a project
+    pub async fn get_issues_by_project(&self, project_id: &ProjectId) -> Result<Vec<Issue>> {
+        let r = self.db.r_transaction()?;
+        
+        // First get all project items for this project
+        let project_items = self.get_project_items(project_id).await?;
+        
+        // Filter for issue items and collect their IDs
+        let issue_ids: Vec<IssueId> = project_items
+            .into_iter()
+            .filter_map(|item| {
+                if matches!(item.item_type, crate::types::ItemType::Issue) {
+                    Some(IssueId::new(item.item_id))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        // Fetch all issues by their IDs
+        let mut issues = Vec::new();
+        for issue_id in issue_ids {
+            if let Some(issue) = r.get().primary::<Issue>(issue_id)? {
+                issues.push(issue);
+            }
+        }
+        
+        Ok(issues)
+    }
+    
+    /// Gets all pull requests belonging to a project
+    pub async fn get_pull_requests_by_project(&self, project_id: &ProjectId) -> Result<Vec<PullRequest>> {
+        let r = self.db.r_transaction()?;
+        
+        // First get all project items for this project
+        let project_items = self.get_project_items(project_id).await?;
+        
+        // Filter for PR items and collect their IDs
+        let pr_ids: Vec<PullRequestId> = project_items
+            .into_iter()
+            .filter_map(|item| {
+                if matches!(item.item_type, crate::types::ItemType::PullRequest) {
+                    Some(PullRequestId::new(item.item_id))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        // Fetch all PRs by their IDs
+        let mut prs = Vec::new();
+        for pr_id in pr_ids {
+            if let Some(pr) = r.get().primary::<PullRequest>(pr_id)? {
+                prs.push(pr);
+            }
+        }
+        
+        Ok(prs)
+    }
+    
+    /// Lists issues filtered by multiple criteria including project
+    pub async fn list_issues_filtered(
+        &self,
+        repo_id: Option<&RepositoryId>,
+        project_id: Option<&ProjectId>,
+        state: Option<crate::types::IssueState>,
+    ) -> Result<Vec<Issue>> {
+        let r = self.db.r_transaction()?;
+        
+        let mut issues = if let Some(repo_id) = repo_id {
+            // Start with repository filter
+            self.list_issues_by_repository(repo_id).await?
+        } else if let Some(project_id) = project_id {
+            // Start with project filter
+            self.get_issues_by_project(project_id).await?
+        } else {
+            // Get all issues
+            r.scan().primary::<Issue>()?.all()?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        
+        // Apply additional filters
+        if let Some(project_id) = project_id {
+            if repo_id.is_some() {
+                // If we already filtered by repo, now filter by project
+                issues.retain(|issue| issue.project_ids.contains(project_id));
+            }
+        }
+        
+        if let Some(state) = state {
+            issues.retain(|issue| issue.state == state);
+        }
+        
+        Ok(issues)
+    }
+    
+    /// Lists pull requests filtered by multiple criteria including project
+    pub async fn list_pull_requests_filtered(
+        &self,
+        repo_id: Option<&RepositoryId>,
+        project_id: Option<&ProjectId>,
+        state: Option<crate::types::PullRequestState>,
+    ) -> Result<Vec<PullRequest>> {
+        let r = self.db.r_transaction()?;
+        
+        let mut prs = if let Some(repo_id) = repo_id {
+            // Start with repository filter
+            self.list_pull_requests_by_repository(repo_id).await?
+        } else if let Some(project_id) = project_id {
+            // Start with project filter
+            self.get_pull_requests_by_project(project_id).await?
+        } else {
+            // Get all PRs
+            r.scan().primary::<PullRequest>()?.all()?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        
+        // Apply additional filters
+        if let Some(project_id) = project_id {
+            if repo_id.is_some() {
+                // If we already filtered by repo, now filter by project
+                prs.retain(|pr| pr.project_ids.contains(project_id));
+            }
+        }
+        
+        if let Some(state) = state {
+            prs.retain(|pr| pr.state == state);
+        }
+        
+        Ok(prs)
+    }
+    
+    /// Checks if an issue belongs to a project
+    pub async fn is_issue_in_project(&self, issue_id: &IssueId, project_id: &ProjectId) -> Result<bool> {
+        if let Some(issue) = self.get_issue(issue_id).await? {
+            Ok(issue.project_ids.contains(project_id))
+        } else {
+            Ok(false)
+        }
+    }
+    
+    /// Checks if a pull request belongs to a project
+    pub async fn is_pull_request_in_project(&self, pr_id: &PullRequestId, project_id: &ProjectId) -> Result<bool> {
+        if let Some(pr) = self.get_pull_request(pr_id).await? {
+            Ok(pr.project_ids.contains(project_id))
+        } else {
+            Ok(false)
+        }
+    }
+    
+    /// Gets all projects that contain a specific issue
+    pub async fn get_projects_for_issue(&self, issue_id: &IssueId) -> Result<Vec<Project>> {
+        if let Some(issue) = self.get_issue(issue_id).await? {
+            let mut projects = Vec::new();
+            for project_id in &issue.project_ids {
+                if let Some(project) = self.get_project(project_id).await? {
+                    projects.push(project);
+                }
+            }
+            Ok(projects)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+    
+    /// Gets all projects that contain a specific pull request
+    pub async fn get_projects_for_pull_request(&self, pr_id: &PullRequestId) -> Result<Vec<Project>> {
+        if let Some(pr) = self.get_pull_request(pr_id).await? {
+            let mut projects = Vec::new();
+            for project_id in &pr.project_ids {
+                if let Some(project) = self.get_project(project_id).await? {
+                    projects.push(project);
+                }
+            }
+            Ok(projects)
+        } else {
+            Ok(Vec::new())
+        }
     }
     
     // Search methods that delegate to SearchStore

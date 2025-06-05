@@ -150,6 +150,7 @@ async fn test_search_with_participants() {
         updated_at: Utc::now(),
         closed_at: None,
         comments_count: 1,
+        project_ids: vec![],
     };
     db.save_issue(&issue).await.unwrap();
     

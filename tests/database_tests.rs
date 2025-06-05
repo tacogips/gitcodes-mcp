@@ -109,6 +109,7 @@ async fn test_issue_operations() -> Result<()> {
         updated_at: chrono::Utc::now(),
         closed_at: None,
         comments_count: 0,
+        project_ids: vec![],
     };
 
     // Test save
@@ -151,6 +152,7 @@ async fn test_pull_request_operations() -> Result<()> {
         additions: 100,
         deletions: 50,
         changed_files: 5,
+        project_ids: vec![],
     };
 
     // Test save
@@ -261,6 +263,7 @@ async fn test_search_functionality() -> Result<()> {
         updated_at: chrono::Utc::now(),
         closed_at: None,
         comments_count: 0,
+        project_ids: vec![],
     };
 
     let issue2 = gitdb::storage::Issue {
@@ -277,6 +280,7 @@ async fn test_search_functionality() -> Result<()> {
         updated_at: chrono::Utc::now(),
         closed_at: None,
         comments_count: 0,
+        project_ids: vec![],
     };
 
     db.save_issue(&issue1).await?;

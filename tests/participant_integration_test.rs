@@ -65,6 +65,7 @@ async fn test_participant_workflow() {
         updated_at: Utc::now(),
         closed_at: None,
         comments_count: 1,
+        project_ids: vec![],
     };
     
     // Save issue
@@ -108,6 +109,7 @@ async fn test_participant_workflow() {
         additions: 100,
         deletions: 50,
         changed_files: 5,
+        project_ids: vec![],
     };
     
     // Save PR
