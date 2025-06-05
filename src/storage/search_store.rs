@@ -3,11 +3,12 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use arrow_array::{
-    ArrayRef, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+    ArrayRef, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
 };
 use arrow_schema::{DataType, Field, Schema};
 use futures::StreamExt;
 use lancedb::index::scalar::FtsIndexBuilder;
+use lancedb::index::vector::IvfPqIndexBuilder;
 use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{connect, Connection};
@@ -25,6 +26,9 @@ const PULL_REQUESTS_TABLE: &str = "pull_requests";
 const COMMENTS_TABLE: &str = "comments";
 const USERS_TABLE: &str = "users";
 const FILES_TABLE: &str = "pull_request_files";
+
+// Vector embedding dimension - common sizes are 384 (all-MiniLM-L6-v2), 768 (BERT), 1536 (OpenAI)
+const EMBEDDING_DIMENSION: i32 = 384;
 
 pub struct SearchStore {
     connection: Connection,
@@ -88,7 +92,11 @@ impl SearchStore {
             Field::new("license", DataType::Utf8, true),
             Field::new("archived", DataType::Boolean, false),
             Field::new("disabled", DataType::Boolean, false),
-            Field::new("raw_text", DataType::Utf8, false), // Combined searchable text
+            Field::new("searchable_content", DataType::Utf8, false), // Combined searchable text
+            Field::new("embedding", DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                EMBEDDING_DIMENSION
+            ), true), // Vector embedding of searchable_content
             Field::new("data", DataType::Utf8, false), // Full JSON data
         ]));
 
@@ -102,11 +110,22 @@ impl SearchStore {
             .execute()
             .await?;
 
-        // Create FTS index on combined raw_text field
+        // Create FTS index on combined searchable_content field
         table
             .create_index(
-                &["raw_text"],
+                &["searchable_content"],
                 Index::FTS(FtsIndexBuilder::default()),
+            )
+            .execute()
+            .await?;
+
+        // Create vector index on embedding field
+        table
+            .create_index(
+                &["embedding"],
+                Index::IvfPq(IvfPqIndexBuilder::default()
+                    .num_partitions(100)
+                    .num_sub_vectors(16)),
             )
             .execute()
             .await?;
@@ -129,7 +148,11 @@ impl SearchStore {
             Field::new("created_at", DataType::Utf8, false),
             Field::new("updated_at", DataType::Utf8, false),
             Field::new("closed_at", DataType::Utf8, true),
-            Field::new("raw_text", DataType::Utf8, false), // Combined searchable text
+            Field::new("searchable_content", DataType::Utf8, false), // Combined searchable text
+            Field::new("embedding", DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                EMBEDDING_DIMENSION
+            ), true), // Vector embedding of searchable_content
             Field::new("data", DataType::Utf8, false), // Full JSON data
         ]));
 
@@ -142,11 +165,22 @@ impl SearchStore {
             .execute()
             .await?;
 
-        // Create FTS index on combined raw_text field
+        // Create FTS index on combined searchable_content field
         table
             .create_index(
-                &["raw_text"],
+                &["searchable_content"],
                 Index::FTS(FtsIndexBuilder::default()),
+            )
+            .execute()
+            .await?;
+
+        // Create vector index on embedding field
+        table
+            .create_index(
+                &["embedding"],
+                Index::IvfPq(IvfPqIndexBuilder::default()
+                    .num_partitions(100)
+                    .num_sub_vectors(16)),
             )
             .execute()
             .await?;
@@ -157,27 +191,31 @@ impl SearchStore {
     pub async fn save_repository(&self, repo: &GitHubRepository) -> Result<()> {
         let table = self.connection.open_table(REPOSITORIES_TABLE).execute().await?;
         
-        // Build raw_text field combining all searchable content
-        let mut raw_text_parts = vec![
+        // Build searchable_content field combining all searchable content
+        let mut searchable_content_parts = vec![
             repo.full_name.clone(),
             repo.name.clone(),
             repo.owner.clone(),
         ];
         
         if let Some(desc) = &repo.description {
-            raw_text_parts.push(desc.clone());
+            searchable_content_parts.push(desc.clone());
         }
         
         if let Some(lang) = &repo.language {
-            raw_text_parts.push(lang.clone());
+            searchable_content_parts.push(lang.clone());
         }
         
         // Add topics
         for topic in &repo.topics {
-            raw_text_parts.push(topic.clone());
+            searchable_content_parts.push(topic.clone());
         }
         
-        let raw_text = vec![raw_text_parts.join(" ")];
+        let searchable_content = vec![searchable_content_parts.join(" ")];
+        
+        // TODO: Generate real embeddings from searchable_content using an embedding model
+        // For now, create a placeholder embedding vector
+        let embedding_vec: Vec<f32> = vec![0.0; EMBEDDING_DIMENSION as usize];
         
         let id = vec![repo.full_id().to_string()];
         let owner = vec![repo.owner.clone()];
@@ -209,6 +247,11 @@ impl SearchStore {
         // Get the schema from the table
         let schema = table.schema().await?;
 
+        // Create the embedding array
+        let embedding_array = Float32Array::from(embedding_vec);
+        let field = Arc::new(Field::new("item", DataType::Float32, true));
+        let embedding_list = FixedSizeListArray::try_new(field, EMBEDDING_DIMENSION, Arc::new(embedding_array), None)?;
+
         let batch = RecordBatch::try_new(
             schema,
             vec![
@@ -234,7 +277,8 @@ impl SearchStore {
                 Arc::new(StringArray::from(license)),
                 Arc::new(arrow_array::BooleanArray::from(archived)),
                 Arc::new(arrow_array::BooleanArray::from(disabled)),
-                Arc::new(StringArray::from(raw_text)),
+                Arc::new(StringArray::from(searchable_content)),
+                Arc::new(embedding_list) as ArrayRef,
                 Arc::new(StringArray::from(data)),
             ],
         )?;
@@ -332,32 +376,36 @@ impl SearchStore {
     pub async fn save_issue(&self, issue: &GitHubIssue) -> Result<()> {
         let table = self.connection.open_table(ISSUES_TABLE).execute().await?;
         
-        // Build raw_text field combining all searchable content
-        let mut raw_text_parts = vec![
+        // Build searchable_content field combining all searchable content
+        let mut searchable_content_parts = vec![
             issue.title.clone(),
             format!("#{}", issue.number),
         ];
         
         if let Some(body) = &issue.body {
-            raw_text_parts.push(body.clone());
+            searchable_content_parts.push(body.clone());
         }
         
         // Add labels
         for label in &issue.labels {
-            raw_text_parts.push(label.name.clone());
+            searchable_content_parts.push(label.name.clone());
         }
         
         // Add assignees
         for assignee in &issue.assignees {
-            raw_text_parts.push(assignee.login.clone());
+            searchable_content_parts.push(assignee.login.clone());
         }
         
         // Add milestone
         if let Some(milestone) = &issue.milestone {
-            raw_text_parts.push(milestone.title.clone());
+            searchable_content_parts.push(milestone.title.clone());
         }
         
-        let raw_text = vec![raw_text_parts.join(" ")];
+        let searchable_content = vec![searchable_content_parts.join(" ")];
+        
+        // TODO: Generate real embeddings from searchable_content using an embedding model
+        // For now, create a placeholder embedding vector
+        let embedding_vec: Vec<f32> = vec![0.0; EMBEDDING_DIMENSION as usize];
         
         let assignees_json = serde_json::to_string(
             &issue
@@ -388,6 +436,11 @@ impl SearchStore {
         // Get the schema from the table
         let schema = table.schema().await?;
 
+        // Create the embedding array
+        let embedding_array = Float32Array::from(embedding_vec);
+        let field = Arc::new(Field::new("item", DataType::Float32, true));
+        let embedding_list = FixedSizeListArray::try_new(field, EMBEDDING_DIMENSION, Arc::new(embedding_array), None)?;
+
         let batch = RecordBatch::try_new(
             schema,
             vec![
@@ -404,7 +457,8 @@ impl SearchStore {
                 Arc::new(StringArray::from(created_at)),
                 Arc::new(StringArray::from(updated_at)),
                 Arc::new(StringArray::from(closed_at)),
-                Arc::new(StringArray::from(raw_text)),
+                Arc::new(StringArray::from(searchable_content)),
+                Arc::new(embedding_list) as ArrayRef,
                 Arc::new(StringArray::from(data)),
             ],
         )?;
@@ -533,6 +587,95 @@ impl SearchStore {
         
         self.search_all(&lance_query).await
     }
+
+    /// Perform vector search on repositories using embedding similarity
+    pub async fn vector_search_repositories(
+        &self, 
+        query_vector: Vec<f32>, 
+        limit: usize,
+        filter: Option<String>
+    ) -> Result<Vec<GitHubRepository>> {
+        let table = self.connection.open_table(REPOSITORIES_TABLE).execute().await?;
+        
+        let mut table_query = table
+            .vector_search(query_vector)?
+            .limit(limit)
+            .column("embedding");
+        
+        // Apply filters if specified
+        if let Some(filter) = filter {
+            table_query = table_query.only_if(filter.as_str());
+        }
+        
+        let mut results = table_query.execute().await?;
+        
+        let mut repositories = Vec::new();
+        while let Some(batch_result) = results.next().await {
+            let batch = batch_result?;
+            let data_array = batch
+                .column_by_name("data")
+                .ok_or_else(|| anyhow!("Missing data column"))?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| anyhow!("Invalid data column type"))?;
+
+            for i in 0..batch.num_rows() {
+                let json_str = data_array.value(i);
+                let repo: GitHubRepository = serde_json::from_str(json_str)?;
+                repositories.push(repo);
+            }
+        }
+        
+        Ok(repositories)
+    }
+
+    /// Perform vector search on issues using embedding similarity
+    pub async fn vector_search_issues(
+        &self, 
+        query_vector: Vec<f32>, 
+        limit: usize,
+        filter: Option<String>
+    ) -> Result<Vec<GitHubIssue>> {
+        let table = self.connection.open_table(ISSUES_TABLE).execute().await?;
+        
+        let mut table_query = table
+            .vector_search(query_vector)?
+            .limit(limit)
+            .column("embedding");
+        
+        // Apply filters if specified
+        if let Some(filter) = filter {
+            table_query = table_query.only_if(filter.as_str());
+        }
+        
+        let mut results = table_query.execute().await?;
+        
+        let mut issues = Vec::new();
+        while let Some(batch_result) = results.next().await {
+            let batch = batch_result?;
+            let data_array = batch
+                .column_by_name("data")
+                .ok_or_else(|| anyhow!("Missing data column"))?
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| anyhow!("Invalid data column type"))?;
+
+            for i in 0..batch.num_rows() {
+                let json_str = data_array.value(i);
+                let issue: GitHubIssue = serde_json::from_str(json_str)?;
+                issues.push(issue);
+            }
+        }
+        
+        Ok(issues)
+    }
+
+    /// Generate embedding for text (placeholder - needs real implementation)
+    pub async fn generate_embedding(&self, _text: &str) -> Result<Vec<f32>> {
+        // TODO: Integrate with a real embedding model
+        // For now, return a placeholder embedding
+        Ok(vec![0.0; EMBEDDING_DIMENSION as usize])
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -620,6 +763,7 @@ impl LanceDbQuery {
 
 pub mod hybrid {
     use super::*;
+    use std::collections::HashMap;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum RerankStrategy {
@@ -648,7 +792,9 @@ pub mod hybrid {
         }
 
         pub fn with_text(mut self, text: impl Into<String>) -> Self {
-            self.text_query = Some(text.into());
+            let text_str = text.into();
+            self.text_query = Some(text_str.clone());
+            self.base_params.text = text_str;
             self
         }
 
@@ -661,5 +807,160 @@ pub mod hybrid {
             self.rerank_strategy = strategy;
             self
         }
+
+        pub fn with_filter(mut self, filter: impl Into<String>) -> Self {
+            self.base_params = self.base_params.with_filter(filter);
+            self
+        }
+
+        pub fn with_limit(mut self, limit: usize) -> Self {
+            self.base_params = self.base_params.with_limit(limit);
+            self
+        }
+    }
+
+    /// Perform hybrid search combining text and vector search
+    pub async fn hybrid_search(
+        store: &SearchStore,
+        query: HybridSearchQuery,
+    ) -> Result<Vec<SearchResult>> {
+        let limit = query.base_params.limit.unwrap_or(10);
+        
+        match query.rerank_strategy {
+            RerankStrategy::TextOnly => {
+                // Only perform text search
+                if let Some(text) = query.text_query {
+                    let mut text_query = LanceDbQuery::new(text);
+                    text_query.limit = query.base_params.limit;
+                    text_query.filter = query.base_params.filter;
+                    store.search_all(&text_query).await
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            RerankStrategy::VectorOnly => {
+                // Only perform vector search
+                if let Some(vector) = query.vector_query {
+                    let mut results = Vec::new();
+                    
+                    // Search repositories
+                    let repos = store.vector_search_repositories(
+                        vector.clone(), 
+                        limit, 
+                        query.base_params.filter.clone()
+                    ).await?;
+                    for repo in repos {
+                        results.push(SearchResult::Repository(repo));
+                    }
+                    
+                    // Search issues
+                    let issues = store.vector_search_issues(
+                        vector, 
+                        limit, 
+                        query.base_params.filter
+                    ).await?;
+                    for issue in issues {
+                        results.push(SearchResult::Issue(issue));
+                    }
+                    
+                    results.truncate(limit);
+                    Ok(results)
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            RerankStrategy::RRF { k } => {
+                // Reciprocal Rank Fusion
+                let mut text_results = Vec::new();
+                let mut vector_results = Vec::new();
+                
+                // Get text search results
+                if let Some(text) = query.text_query {
+                    let mut text_query = LanceDbQuery::new(text);
+                    text_query.limit = Some(limit * 2); // Get more results for fusion
+                    text_query.filter = query.base_params.filter.clone();
+                    text_results = store.search_all(&text_query).await?;
+                }
+                
+                // Get vector search results
+                if let Some(vector) = query.vector_query {
+                    // Search repositories
+                    let repos = store.vector_search_repositories(
+                        vector.clone(), 
+                        limit * 2, 
+                        query.base_params.filter.clone()
+                    ).await?;
+                    for repo in repos {
+                        vector_results.push(SearchResult::Repository(repo));
+                    }
+                    
+                    // Search issues
+                    let issues = store.vector_search_issues(
+                        vector, 
+                        limit * 2, 
+                        query.base_params.filter
+                    ).await?;
+                    for issue in issues {
+                        vector_results.push(SearchResult::Issue(issue));
+                    }
+                }
+                
+                // Apply RRF scoring
+                let mut scores: HashMap<String, f32> = HashMap::new();
+                
+                // Score text results
+                for (rank, result) in text_results.iter().enumerate() {
+                    let id = result_to_id(result);
+                    let score = 1.0 / (k + rank as f32 + 1.0);
+                    *scores.entry(id).or_insert(0.0) += score;
+                }
+                
+                // Score vector results
+                for (rank, result) in vector_results.iter().enumerate() {
+                    let id = result_to_id(result);
+                    let score = 1.0 / (k + rank as f32 + 1.0);
+                    *scores.entry(id).or_insert(0.0) += score;
+                }
+                
+                // Combine and sort by score
+                let mut all_results: Vec<SearchResult> = text_results;
+                for vr in vector_results {
+                    if !result_exists(&all_results, &vr) {
+                        all_results.push(vr);
+                    }
+                }
+                
+                all_results.sort_by(|a, b| {
+                    let score_a = scores.get(&result_to_id(a)).unwrap_or(&0.0);
+                    let score_b = scores.get(&result_to_id(b)).unwrap_or(&0.0);
+                    score_b.partial_cmp(score_a).unwrap()
+                });
+                
+                all_results.truncate(limit);
+                Ok(all_results)
+            }
+            RerankStrategy::Linear { text_weight: _, vector_weight: _ } => {
+                // Linear combination of scores
+                // Similar to RRF but with weighted combination
+                // Implementation would be similar to RRF but with different scoring
+                unimplemented!("Linear reranking strategy not yet implemented")
+            }
+        }
+    }
+
+    fn result_to_id(result: &SearchResult) -> String {
+        match result {
+            SearchResult::Repository(repo) => repo.full_id().to_string(),
+            SearchResult::Issue(issue) => issue.full_id().to_string(),
+            SearchResult::PullRequest(pr) => pr.full_id().to_string(),
+            SearchResult::Comment(comment) => comment.full_id().to_string(),
+            SearchResult::User(user) => user.id.to_string(),
+            SearchResult::File(file) => format!("{}:{}", file.sha, file.filename),
+        }
+    }
+
+    fn result_exists(results: &[SearchResult], target: &SearchResult) -> bool {
+        let target_id = result_to_id(target);
+        results.iter().any(|r| result_to_id(r) == target_id)
     }
 }
