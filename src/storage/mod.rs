@@ -8,4 +8,4 @@ mod search_tests;
 pub use database::*;
 pub use models::*;
 pub use paths::*;
-pub use search_store::{SearchStore, SearchResult, SearchQuery};
+pub use search_store::{SearchStore, SearchResult, SearchQuery, SearchMode, UnifiedSearchQuery};

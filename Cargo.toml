@@ -91,3 +91,7 @@ path = "src/bin/gitdb_cli.rs"
 [[bench]]
 name = "search_benchmarks"
 harness = false
+
+[[example]]
+name = "unified_search"
+path = "examples/unified_search.rs"

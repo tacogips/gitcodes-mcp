@@ -573,19 +573,109 @@ impl SearchStore {
             query.filter.clone()
         };
         
-        // Convert to LanceDbQuery
-        let lance_query = LanceDbQuery {
-            text: query.text,
+        // Use the new unified search method with FullText mode by default
+        let unified_query = UnifiedSearchQuery {
+            text: Some(query.text),
+            vector: None,
+            search_mode: SearchMode::FullText,
             limit: query.limit,
             offset: query.offset,
             filter,
-            search_fields: None,
-            select_fields: None,
-            fast_search: false,
-            postfilter: false,
         };
         
-        self.search_all(&lance_query).await
+        self.unified_search(unified_query).await
+    }
+
+    /// Unified search method supporting full text, semantic, and hybrid search modes
+    pub async fn unified_search(&self, query: UnifiedSearchQuery) -> Result<Vec<SearchResult>> {
+        let limit = query.limit.unwrap_or(10);
+        
+        match query.search_mode {
+            SearchMode::FullText => {
+                // Full text search
+                if let Some(text) = query.text {
+                    let lance_query = LanceDbQuery {
+                        text,
+                        limit: query.limit,
+                        offset: query.offset,
+                        filter: query.filter,
+                        search_fields: None,
+                        select_fields: None,
+                        fast_search: false,
+                        postfilter: false,
+                    };
+                    self.search_all(&lance_query).await
+                } else {
+                    Err(anyhow!("Text query is required for full text search"))
+                }
+            }
+            SearchMode::Semantic => {
+                // Semantic/vector search
+                let vector = if let Some(vec) = query.vector {
+                    vec
+                } else if let Some(text) = &query.text {
+                    // Generate embedding from text
+                    self.generate_embedding(text).await?
+                } else {
+                    return Err(anyhow!("Either text or vector is required for semantic search"));
+                };
+                
+                let mut results = Vec::new();
+                
+                // Search repositories
+                let repos = self.vector_search_repositories(
+                    vector.clone(),
+                    limit,
+                    query.filter.clone()
+                ).await?;
+                for repo in repos {
+                    results.push(SearchResult::Repository(repo));
+                }
+                
+                // Search issues
+                let issues = self.vector_search_issues(
+                    vector,
+                    limit,
+                    query.filter
+                ).await?;
+                for issue in issues {
+                    results.push(SearchResult::Issue(issue));
+                }
+                
+                // Limit total results
+                results.truncate(limit);
+                Ok(results)
+            }
+            SearchMode::Hybrid { rerank_strategy } => {
+                // Hybrid search
+                let vector = if let Some(vec) = query.vector {
+                    Some(vec)
+                } else if let Some(text) = &query.text {
+                    // Generate embedding from text
+                    Some(self.generate_embedding(text).await?)
+                } else {
+                    None
+                };
+                
+                let hybrid_query = hybrid::HybridSearchQuery {
+                    text_query: query.text,
+                    vector_query: vector,
+                    base_params: LanceDbQuery {
+                        text: String::new(), // Will be set by with_text if needed
+                        limit: query.limit,
+                        offset: query.offset,
+                        filter: query.filter,
+                        search_fields: None,
+                        select_fields: None,
+                        fast_search: false,
+                        postfilter: false,
+                    },
+                    rerank_strategy,
+                };
+                
+                hybrid::hybrid_search(self, hybrid_query).await
+            }
+        }
     }
 
     /// Perform vector search on repositories using embedding similarity
@@ -689,6 +779,16 @@ pub enum SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SearchMode {
+    /// Full text search using FTS index
+    FullText,
+    /// Semantic search using vector embeddings
+    Semantic,
+    /// Hybrid search combining text and vector with reranking
+    Hybrid { rerank_strategy: hybrid::RerankStrategy },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchQuery {
     pub text: String,
     pub repository: Option<String>,
@@ -696,6 +796,22 @@ pub struct SearchQuery {
     pub label: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub filter: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedSearchQuery {
+    /// Text query for full-text search (required for FullText and Hybrid modes)
+    pub text: Option<String>,
+    /// Pre-computed vector embedding for semantic search (auto-generated from text if not provided)
+    pub vector: Option<Vec<f32>>,
+    /// Search mode: FullText, Semantic, or Hybrid
+    pub search_mode: SearchMode,
+    /// Maximum number of results
+    pub limit: Option<usize>,
+    /// Offset for pagination
+    pub offset: Option<usize>,
+    /// SQL-style filter expression
     pub filter: Option<String>,
 }
 
@@ -757,6 +873,92 @@ impl LanceDbQuery {
 
     pub fn enable_postfilter(mut self) -> Self {
         self.postfilter = true;
+        self
+    }
+}
+
+impl UnifiedSearchQuery {
+    /// Create a new unified search query
+    pub fn new(search_mode: SearchMode) -> Self {
+        Self {
+            text: None,
+            vector: None,
+            search_mode,
+            limit: None,
+            offset: None,
+            filter: None,
+        }
+    }
+
+    /// Create a full text search query
+    pub fn full_text(text: impl Into<String>) -> Self {
+        Self {
+            text: Some(text.into()),
+            vector: None,
+            search_mode: SearchMode::FullText,
+            limit: None,
+            offset: None,
+            filter: None,
+        }
+    }
+
+    /// Create a semantic search query from text (embedding will be generated)
+    pub fn semantic_from_text(text: impl Into<String>) -> Self {
+        Self {
+            text: Some(text.into()),
+            vector: None,
+            search_mode: SearchMode::Semantic,
+            limit: None,
+            offset: None,
+            filter: None,
+        }
+    }
+
+    /// Create a semantic search query from vector
+    pub fn semantic_from_vector(vector: Vec<f32>) -> Self {
+        Self {
+            text: None,
+            vector: Some(vector),
+            search_mode: SearchMode::Semantic,
+            limit: None,
+            offset: None,
+            filter: None,
+        }
+    }
+
+    /// Create a hybrid search query
+    pub fn hybrid(text: impl Into<String>) -> Self {
+        Self {
+            text: Some(text.into()),
+            vector: None,
+            search_mode: SearchMode::Hybrid { 
+                rerank_strategy: hybrid::RerankStrategy::RRF { k: 60.0 } 
+            },
+            limit: None,
+            offset: None,
+            filter: None,
+        }
+    }
+
+    pub fn with_limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: usize) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    pub fn with_filter(mut self, filter: impl Into<String>) -> Self {
+        self.filter = Some(filter.into());
+        self
+    }
+
+    pub fn with_rerank_strategy(mut self, strategy: hybrid::RerankStrategy) -> Self {
+        if let SearchMode::Hybrid { .. } = self.search_mode {
+            self.search_mode = SearchMode::Hybrid { rerank_strategy: strategy };
+        }
         self
     }
 }
