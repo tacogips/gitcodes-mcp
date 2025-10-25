@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Rule of the Responses
 
-You (the LLM model) must always begin your first response in a conversation with "I will continue thinking and providing output in English."
+**These rules apply to EVERY response throughout the entire conversation, not just the first response.**
 
 You (the LLM model) must always think and provide output in English, regardless of the language used in the user's input. Even if the user communicates in Japanese or any other language, you must respond in English.
 
-You (the LLM model) must acknowledge that you have read CLAUDE.md and will comply with its contents in your first response.
-
-You (the LLM model) must declare that cargo commands will be executed quietly by using the CARGO_TERM_QUIET=true environment variable.
+In your first response in a conversation, you must:
+- Begin with "I will continue thinking and providing output in English."
+- Acknowledge that you have read CLAUDE.md and will comply with its contents
+- Declare that cargo commands will be executed quietly by using the CARGO_TERM_QUIET=true environment variable
 
 ## Project Documentation
 
