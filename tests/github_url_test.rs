@@ -1,5 +1,5 @@
-use gitcodes_mcp::gitcodes::repository_manager::providers::github::parse_github_url;
 use gitcodes_mcp::gitcodes::repository_manager::providers::GitRemoteRepository;
+use gitcodes_mcp::gitcodes::repository_manager::providers::github::parse_github_url;
 
 #[test]
 fn test_parse_github_url() {

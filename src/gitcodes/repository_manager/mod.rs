@@ -4,6 +4,12 @@ mod repository_location;
 
 use std::{num::NonZeroU32, path::PathBuf, str::FromStr};
 
+/// Environment variable name for GitHub token
+///
+/// This constant defines the environment variable name that is checked for
+/// GitHub authentication token when no explicit token is provided.
+pub const GITHUB_TOKEN_ENV_VAR: &str = "GITHUB_TOKEN";
+
 use gix::{progress::Discard, remote::fetch::Shallow};
 use providers::GitRemoteRepository;
 pub use repository_location::RepositoryLocation;
@@ -169,8 +175,6 @@ pub struct IssueSearchParams {
     /// Optional page number for pagination (defaults to 1)
     pub page: Option<u32>,
 
-
-
     /// Repository specification in the format "owner/repo"
     /// When specified, limits search to this specific repository
     pub repository: Option<String>,
@@ -221,7 +225,8 @@ impl RepositoryManager {
     /// # Parameters
     ///
     /// * `github_token` - Optional GitHub token for authentication. If None, will attempt
-    ///                    to read from the GITCODES_MCP_GITHUB_TOKEN environment variable.
+    ///                    to read from the GITHUB_TOKEN environment variable, and if that
+    ///                    is also not set, will try to get the token from `gh auth token`.
     /// * `repository_cache_dir` - Optional custom path for storing repositories.
     ///                            If None, the system's temporary directory is used.
     ///
@@ -233,8 +238,10 @@ impl RepositoryManager {
         github_token: Option<String>,
         local_repository_cache_dir_base: Option<PathBuf>,
     ) -> Result<Self, String> {
-        // If no github_token is provided, check environment variable
-        let github_token = github_token.or_else(|| std::env::var("GITCODES_MCP_GITHUB_TOKEN").ok());
+        // If no github_token is provided, check environment variable, then gh auth
+        let github_token = github_token
+            .or_else(|| std::env::var(GITHUB_TOKEN_ENV_VAR).ok())
+            .or_else(Self::get_token_from_gh_auth);
         // Use provided path or default to system temp directory
         let local_repository_cache_dir_base = match local_repository_cache_dir_base {
             Some(path) => path,
@@ -285,6 +292,53 @@ impl RepositoryManager {
         let uuid = Uuid::new_v4();
 
         format!("{}_{}", pid, uuid.simple())
+    }
+
+    /// Attempts to get a GitHub token from the `gh` CLI tool
+    ///
+    /// This function checks if the `gh` command is available and if so,
+    /// runs `gh auth token` to retrieve the currently authenticated token.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<String>` - The GitHub token if successfully retrieved, None otherwise
+    fn get_token_from_gh_auth() -> Option<String> {
+        use std::process::Command;
+
+        // First check if gh command is available
+        let gh_available = Command::new("gh")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        if !gh_available {
+            tracing::debug!("gh CLI not found, skipping gh auth token");
+            return None;
+        }
+
+        // Try to get the token from gh auth
+        match Command::new("gh").arg("auth").arg("token").output() {
+            Ok(output) if output.status.success() => {
+                let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if token.is_empty() {
+                    tracing::debug!("gh auth token returned empty string");
+                    None
+                } else {
+                    tracing::info!("Successfully retrieved GitHub token from gh auth");
+                    Some(token)
+                }
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::debug!("gh auth token failed: {}", stderr.trim());
+                None
+            }
+            Err(e) => {
+                tracing::debug!("Failed to execute gh auth token: {}", e);
+                None
+            }
+        }
     }
 
     /// Gets the local repository for a given repository location without cloning
@@ -471,30 +525,11 @@ impl RepositoryManager {
             }
         }
 
-        // For GitHub repositories with HTTPS URLs, use SSH format to avoid HTTP redirect issues with gitoxide
-        // Get the appropriate URL based on the repository type
-        let clone_url = if remote_repository
-            .clone_url()
-            .starts_with("https://github.com")
-        {
-            // Use SSH URL format for GitHub HTTPS URLs to avoid redirect issues
-            let original_url = remote_repository.clone_url();
-            let ssh_url = remote_repository.to_ssh_url();
-            tracing::info!(
-                "Converting GitHub HTTPS URL '{}' to SSH format '{}' to avoid HTTP redirect issues",
-                original_url,
-                ssh_url
-            );
-            tracing::debug!("DEBUG: This message will only show with --debug flag");
-            ssh_url
-        } else {
-            // For non-GitHub or already SSH URLs, use the original URL
-            remote_repository.clone_url()
-        };
-
-        tracing::info!("Using clone URL: {}", clone_url);
+        // For GitHub repositories, we try HTTPS first (with token auth if available),
+        // and only fall back to SSH if HTTPS fails. This supports users who authenticate
+        // via gh auth / git credential helper instead of SSH keys.
+        let clone_url = remote_repository.clone_url();
         let ref_name = remote_repository.get_ref_name();
-        tracing::info!("Reference name: {:?}", ref_name);
 
         tracing::info!(
             "Cloning repository from {} to {}{}",
@@ -506,255 +541,199 @@ impl RepositoryManager {
                 .unwrap_or_default()
         );
 
-        // Setup authentication for GitHub if token is available
-        let mut auth_url = clone_url.clone();
-        if let Some(token) = &self.github_token {
-            // Add token to URL for authentication if it's a GitHub HTTPS URL
-            if clone_url.starts_with("https://github.com") {
-                auth_url = format!(
-                    "https://{}:x-oauth-basic@{}",
-                    token,
-                    clone_url.trim_start_matches("https://")
-                );
-            }
-        }
+        // Build the list of URLs to try in order of preference
+        let urls_to_try = self.build_clone_urls(remote_repository);
 
-        // Initialize repository creation options
-        use gix::clone::PrepareFetch;
-        use gix::create::Kind;
-        use gix::open::Options as OpenOptions;
+        // Try each URL in order until one succeeds
+        let mut last_error: Option<String> = None;
 
-        // Format URL - ensure the URL is in a format gitoxide can handle
-        let normalized_url = if auth_url.starts_with("https://github.com") {
-            // For GitHub HTTPS URLs, make sure we have a proper path format
-            // and ensure the URL doesn't end with .git (GitHub API handles this automatically)
-
-            // Handle both formats: with and without trailing slash
-            let github_path = if auth_url.starts_with("https://github.com/") {
-                auth_url.trim_start_matches("https://github.com/")
-            } else {
-                auth_url.trim_start_matches("https://github.com")
-            };
-
-            // Remove .git suffix if present (GitHub handles this automatically but it causes redirect issues with gitoxide)
-            let github_path = github_path.trim_end_matches(".git");
-
-            // Ensure path doesn't start with a slash (could happen if URL was https://github.com/user)
-            let github_path = github_path.trim_start_matches('/');
-
-            // Further normalize by ensuring there are no trailing slashes
-            let github_path = github_path.trim_end_matches('/');
-
-            if let Some(token) = &self.github_token {
-                format!("https://{}:x-oauth-basic@github.com/{}", token, github_path)
-            } else {
-                format!("https://github.com/{}", github_path)
-            }
-        } else {
-            auth_url
-        };
-
-        // Log the normalized URL with any sensitive information redacted
-        let log_url = if normalized_url.contains('@') {
-            // Redact authentication tokens in logs
-            let parts: Vec<&str> = normalized_url.splitn(2, '@').collect();
-            if parts.len() == 2 {
-                format!("https://[REDACTED]@{}", parts[1])
-            } else {
-                "[REDACTED URL]".to_string()
-            }
-        } else {
-            normalized_url.clone()
-        };
-
-        tracing::info!("Using normalized URL: {}", log_url);
-
-        // Initialize repository creation options
-        let mut fetch_result = PrepareFetch::new(
-            normalized_url.as_str(),
-            repo_dir.clone(),
-            Kind::WithWorktree, // We want a standard clone with worktree
-            gix::create::Options::default(),
-            OpenOptions::default(),
-        );
-
-        // Configure HTTP redirect handling if it's a PrepareFetch instance
-        if let Ok(mut prepare_fetch) = fetch_result {
-            // Add custom configuration for HTTP URL handling
-            tracing::info!("Configuring HTTP redirect handling for PrepareFetch");
-
-            // Configure the remote to follow redirects and fetch all tags
-            prepare_fetch = prepare_fetch.configure_remote(|remote| {
-                tracing::info!("Configuring remote to follow redirects");
-
-                // Make it follow all redirects
-                let remote = remote.with_fetch_tags(gix::remote::fetch::Tags::All);
-
-                // Return the modified remote
-                Ok(remote)
-            });
-
-            // Basic configuration for all URLs
-            prepare_fetch = prepare_fetch.with_in_memory_config_overrides([
-                "http.followRedirects=true",
-                "http.lowSpeedLimit=1000",
-                "http.lowSpeedTime=30",
-            ]);
-
-            /* NOTE FOR FUTURE DEVELOPERS:
-             * The code below has comprehensive HTTP redirect handling for HTTPS GitHub URLs.
-             * This was previously used to try to solve the HTTPS URL redirect issue with gitoxide,
-             * but we've since switched to automatically converting GitHub HTTPS URLs to SSH format.
-             *
-             * If you want to implement proper HTTPS URL handling in the future when gitoxide's
-             * HTTP redirect handling is improved, this configuration can be a starting point:
-             *
-             * if url.starts_with("https://") {
-             *     // Try a more comprehensive set of HTTP configuration options
-             *     prepare_fetch = prepare_fetch.with_in_memory_config_overrides([
-             *         // Set followRedirects=true to be parsed as FollowRedirects::All
-             *         "http.followRedirects=true",
-             *
-             *         // Alternative notation as a backup
-             *         "http.followRedirects=all",
-             *
-             *         // Add several performance settings to improve reliability
-             *         "http.lowSpeedLimit=1000",      // Increase timeout threshold
-             *         "http.lowSpeedTime=30",        // Wait longer for slow connections
-             *         "http.maxRequests=5",          // Allow multiple simultaneous connections
-             *
-             *         // Set user agent to mimic a standard git client
-             *         "http.userAgent=git/2.37.0",
-             *
-             *         // Enable verbose HTTP logging for debugging
-             *         "http.curlVerbose=true",
-             *
-             *         // Add extra networking timeouts
-             *         "http.connectTimeout=30",
-             *         "core.askPass=",               // Disable credential prompting
-             *     ]);
-             * }
-             *
-             * See https://github.com/GitoxideLabs/gitoxide/issues/974 for updates on the gitoxide HTTP redirect issue.
-             */
-
-            // Reassign to fetch_result
-            fetch_result = Ok(prepare_fetch);
-            tracing::info!("Successfully configured HTTP redirect handling");
-        } else {
-            tracing::warn!(
-                "Failed to configure HTTP redirect handling: {:?}",
-                fetch_result.as_ref().err()
-            );
-        }
-
-        // If HTTPS URL fails, try the direct-append approach first before falling back to SSH
-        if fetch_result.is_err() && clone_url.starts_with("https://github.com") {
-            let fetch_error = fetch_result.err();
-            tracing::warn!("HTTPS clone failed with error: {:?}", fetch_error);
-            tracing::warn!(
-                "**** FALLBACK MECHANISM TRIGGERED - First attempting .git suffix approach ****"
+        for (url_index, (url, url_description)) in urls_to_try.iter().enumerate() {
+            // Log URL (redact token if present)
+            let log_url = Self::redact_token_from_url(url);
+            tracing::info!(
+                "Attempt {}/{}: Trying {} ({})",
+                url_index + 1,
+                urls_to_try.len(),
+                url_description,
+                log_url
             );
 
-            // First attempt alternative: Try using the HTTPS URL with .git explicitly appended
-            // This works around some redirect issues by bypassing GitHub's redirect to the canonical URL
-            tracing::info!("Attempting alternative HTTPS URL format with explicit .git suffix");
-
-            // Clean up any partial clone directory
+            // Clean up any partial clone directory from previous attempts
             if repo_dir.exists() {
                 let _ = std::fs::remove_dir_all(repo_dir);
             }
 
-            // Construct a URL with explicit .git suffix
-            let github_path = if clone_url.starts_with("https://github.com/") {
-                clone_url.trim_start_matches("https://github.com/")
-            } else {
-                clone_url.trim_start_matches("https://github.com")
-            };
-
-            // Normalize path and ensure it has .git suffix
-            let github_path = github_path.trim_end_matches(".git").trim_start_matches('/');
-            let explicit_git_url = format!("https://github.com/{}.git", github_path);
-
-            tracing::info!(
-                "Trying HTTPS URL with explicit .git suffix: {}",
-                explicit_git_url
-            );
-
-            // Try with explicit .git suffix
-            fetch_result = PrepareFetch::new(
-                explicit_git_url.as_str(),
-                repo_dir.clone(),
-                Kind::WithWorktree,
-                gix::create::Options::default(),
-                OpenOptions::default(),
-            );
-
-            // Configure this attempt with explicit URL formatting
-            if let Ok(mut prepare_fetch) = fetch_result {
-                prepare_fetch = prepare_fetch.with_in_memory_config_overrides([
-                    "http.followRedirects=all", // Alternative string format
-                    "http.lowSpeedLimit=1000",
-                    "http.lowSpeedTime=30",
-                    "http.curlVerbose=true", // Enable verbose HTTP logging
-                ]);
-
-                fetch_result = Ok(prepare_fetch);
-            }
-
-            // If that fails too, fall back to SSH
-            if fetch_result.is_err() {
-                tracing::warn!("Alternative HTTPS approach failed, falling back to SSH URL format");
-                tracing::warn!("**** FALLBACK MECHANISM - Second stage: SSH URL fallback ****");
-
-                // Clean up any partial clone directory
-                if repo_dir.exists() {
-                    let _ = std::fs::remove_dir_all(repo_dir);
-                }
-
-                // Convert to SSH URL format which is more reliable with gitoxide
-                // Use the to_ssh_url method from GitHub info
-                // We already know this is a GitHub repository from the URL check
-                let ssh_url = match remote_repository {
-                    GitRemoteRepository::Github(github_info) => github_info.to_ssh_url(),
-                };
-
-                tracing::info!("Trying SSH URL: {}", ssh_url);
-
-                // Try again with SSH URL
-                fetch_result = PrepareFetch::new(
-                    ssh_url.as_str(),
-                    repo_dir.clone(),
-                    Kind::WithWorktree,
-                    gix::create::Options::default(),
-                    OpenOptions::default(),
-                );
-
-                if fetch_result.is_err() {
-                    tracing::warn!(
-                        "Both HTTPS approaches and SSH URL format failed to clone the repository"
+            // Try to clone with this URL
+            match self
+                .try_clone_with_url(url, repo_dir, ref_name.as_deref())
+                .await
+            {
+                Ok(()) => {
+                    tracing::info!(
+                        "Successfully cloned repository to {} using {}",
+                        repo_dir.display(),
+                        url_description
                     );
-
-                    // Clean up any partial clone directory
-                    if repo_dir.exists() {
-                        let _ = std::fs::remove_dir_all(repo_dir);
-                    }
-
-                    // Return error indicating that all approaches failed
-                    return Err("Failed to clone repository: All URL formats failed (HTTPS, HTTPS with .git, and SSH)".to_string());
+                    return Ok(local_repo);
+                }
+                Err(e) => {
+                    tracing::warn!("{} failed: {}", url_description, e);
+                    last_error = Some(e);
+                    // Continue to next URL
                 }
             }
         }
 
-        // Handle the result of our fetch preparation (either initial or fallback)
+        // All URLs failed - clean up and return error
+        if repo_dir.exists() {
+            let _ = std::fs::remove_dir_all(repo_dir);
+        }
+
+        let error_msg = last_error.unwrap_or_else(|| "No URLs available to try".to_string());
+        Err(format!(
+            "Failed to clone repository: All URL formats failed.\n\nLast error: {}\n\n\
+            Suggestion: Tried {} URL format(s). If you're using GitHub:\n  \
+            - For HTTPS with gh auth / credential helper, ensure 'gh auth status' shows you're logged in\n  \
+            - For SSH, ensure your SSH keys are properly set up: 'ssh -T git@github.com'\n  \
+            - You can also try providing a GitHub token via GITHUB_TOKEN environment variable",
+            error_msg,
+            urls_to_try.len()
+        ))
+    }
+
+    /// Build a list of URLs to try for cloning, in order of preference
+    ///
+    /// For GitHub HTTPS URLs, we try:
+    /// 1. HTTPS with .git suffix (and token if available) - works with credential helpers
+    /// 2. HTTPS without .git suffix (and token if available) - alternative format
+    /// 3. SSH URL - fallback for users with SSH keys configured
+    ///
+    /// For SSH URLs or non-GitHub URLs, we just use the original URL.
+    fn build_clone_urls(&self, remote_repository: &GitRemoteRepository) -> Vec<(String, String)> {
+        let clone_url = remote_repository.clone_url();
+        let mut urls = Vec::new();
+
+        if clone_url.starts_with("https://github.com") {
+            // Extract the path from the URL
+            let github_path = clone_url
+                .trim_start_matches("https://github.com/")
+                .trim_start_matches("https://github.com")
+                .trim_start_matches('/')
+                .trim_end_matches('/')
+                .trim_end_matches(".git");
+
+            // For public repositories, try unauthenticated HTTPS first since
+            // embedding tokens in URLs can cause issues with URL encoding.
+            // For private repos, users should use SSH or git credential helpers.
+
+            // 1. HTTPS without embedded token (works for public repos and with credential helpers)
+            let https_with_git = format!("https://github.com/{}.git", github_path);
+            urls.push((https_with_git, "HTTPS with .git suffix".to_string()));
+
+            // 2. HTTPS without .git suffix (alternative format)
+            let https_without_git = format!("https://github.com/{}", github_path);
+            urls.push((https_without_git, "HTTPS without .git suffix".to_string()));
+
+            // 3. SSH URL (fallback for users with SSH keys, also works for private repos)
+            let ssh_url = match remote_repository {
+                GitRemoteRepository::Github(github_info) => github_info.to_ssh_url(),
+            };
+            urls.push((ssh_url, "SSH".to_string()));
+
+            // 4. HTTPS with embedded token (last resort for private repos without SSH)
+            // Note: URL encoding issues with some HTTP backends may cause this to fail
+            if let Some(token) = &self.github_token {
+                urls.push((
+                    format!(
+                        "https://{}:x-oauth-basic@github.com/{}.git",
+                        token, github_path
+                    ),
+                    "HTTPS with embedded token".to_string(),
+                ));
+            }
+        } else if clone_url.starts_with("git@") {
+            // SSH URL - try it directly, then try HTTPS as fallback
+            urls.push((clone_url.clone(), "SSH (original)".to_string()));
+
+            // For SSH URLs, also try HTTPS as fallback
+            let GitRemoteRepository::Github(github_info) = remote_repository;
+            let https_url = format!(
+                "https://github.com/{}/{}.git",
+                github_info.repo_info.user, github_info.repo_info.repo
+            );
+            if let Some(token) = &self.github_token {
+                urls.push((
+                    format!(
+                        "https://{}:x-oauth-basic@github.com/{}/{}.git",
+                        token, github_info.repo_info.user, github_info.repo_info.repo
+                    ),
+                    "HTTPS with token (fallback)".to_string(),
+                ));
+            } else {
+                urls.push((https_url, "HTTPS (fallback)".to_string()));
+            }
+        } else {
+            // Non-GitHub URL - just use as-is
+            urls.push((clone_url, "Original URL".to_string()));
+        }
+
+        urls
+    }
+
+    /// Redact token from URL for logging
+    fn redact_token_from_url(url: &str) -> String {
+        if url.contains('@') && url.contains("x-oauth-basic") {
+            let parts: Vec<&str> = url.splitn(2, '@').collect();
+            if parts.len() == 2 {
+                return format!("https://[REDACTED]@{}", parts[1]);
+            }
+        }
+        url.to_string()
+    }
+
+    /// Try to clone a repository with a specific URL
+    ///
+    /// Returns Ok(()) if successful, Err with error message if failed.
+    async fn try_clone_with_url(
+        &self,
+        url: &str,
+        repo_dir: &std::path::Path,
+        ref_name: Option<&str>,
+    ) -> Result<(), String> {
+        use gix::clone::PrepareFetch;
+        use gix::create::Kind;
+        use gix::open::Options as OpenOptions;
+
+        // Initialize repository creation
+        let fetch_result = PrepareFetch::new(
+            url,
+            repo_dir,
+            Kind::WithWorktree,
+            gix::create::Options::default(),
+            OpenOptions::default(),
+        );
+
         let mut fetch = match fetch_result {
             Ok(fetch) => fetch,
-            Err(e) => return Err(format!("Failed to prepare repository for fetching: {}", e)),
+            Err(e) => return Err(format!("Failed to prepare fetch: {}", e)),
         };
+
+        // Configure HTTP settings for HTTPS URLs
+        if url.starts_with("https://") {
+            fetch = fetch.configure_remote(|remote| {
+                Ok(remote.with_fetch_tags(gix::remote::fetch::Tags::All))
+            });
+
+            fetch = fetch.with_in_memory_config_overrides([
+                "http.followRedirects=true",
+                "http.lowSpeedLimit=1000",
+                "http.lowSpeedTime=30",
+            ]);
+        }
 
         // Configure the reference to fetch if specified
         if let Some(ref_name) = ref_name {
-            fetch = match fetch.with_ref_name(Some(&ref_name)) {
+            fetch = match fetch.with_ref_name(Some(ref_name)) {
                 Ok(f) => f,
                 Err(e) => return Err(format!("Invalid reference name: {}", e)),
             };
@@ -764,76 +743,48 @@ impl RepositoryManager {
         let depth = NonZeroU32::new(1).unwrap();
         fetch = fetch.with_shallow(Shallow::DepthAtRemote(depth));
 
-        // Clone the repository
+        // Perform the actual clone
         match fetch.fetch_then_checkout(&mut Discard, &gix::interrupt::IS_INTERRUPTED) {
             Ok((mut checkout, _fetch_outcome)) => {
                 // Finalize the checkout process
                 match checkout.main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED) {
-                    Ok((_repo, _outcome)) => {
-                        tracing::info!("Successfully cloned repository to {}", repo_dir.display());
-                        Ok(local_repo)
-                    }
+                    Ok((_repo, _outcome)) => Ok(()),
                     Err(e) => {
-                        // Clean up failed checkout attempt
-                        if repo_dir.exists() {
-                            let _ = std::fs::remove_dir_all(repo_dir);
-                        }
-
-                        // Provide more descriptive error for checkout failures
                         let error_message = if e.to_string().contains("reference")
                             || e.to_string().contains("ref")
                         {
-                            format!("Failed to checkout repository: {}. The specified branch or tag may not exist", e)
+                            format!(
+                                "Checkout failed: {}. The specified branch or tag may not exist",
+                                e
+                            )
                         } else {
-                            format!("Failed to checkout repository: {}", e)
+                            format!("Checkout failed: {}", e)
                         };
-
                         Err(error_message)
                     }
                 }
             }
             Err(e) => {
-                // Clean up failed clone attempt
-                if repo_dir.exists() {
-                    let _ = std::fs::remove_dir_all(repo_dir);
-                }
-
-                // Provide more specific error messages based on error type
                 let error_details = format!("{}", e);
-                let error_message = if error_details.contains("I/O error")
+                if error_details.contains("I/O error")
                     || error_details.contains("io error")
                     || error_details.contains("talking to the server")
                 {
-                    if clone_url.starts_with("https://github.com") {
-                        format!(
-                            "Failed to clone repository via HTTPS: {}\n\nSuggestion: There was an issue cloning via HTTPS. The system attempted to use SSH URL format as a fallback, but that also failed. Try the following:\n  - For GitHub URLs, try the format: 'https://github.com/user/repo' (without .git suffix)\n  - Or try with explicit .git suffix: 'https://github.com/user/repo.git'\n  - As an alternative, use SSH URL format directly: 'git@github.com:user/repo.git'\n  - Check your network connection or firewall settings\n  - If you're behind a proxy, ensure it's properly configured\n  - Make sure your SSH keys are set up properly for GitHub",
-                            e
-                        )
-                    } else {
-                        format!("Failed to clone repository (network error): {}\n\nSuggestion: Check your network connection and verify the repository URL is correct.", e)
-                    }
+                    Err(format!("Network error: {}", e))
                 } else if error_details.contains("authentication")
                     || error_details.contains("credential")
                     || error_details.contains("unauthorized")
                     || error_details.contains("permission")
                 {
-                    format!(
-                        "Failed to clone repository (authentication error): {}\n\nSuggestion: Authentication failed. The system attempted to use both HTTPS and SSH URL formats. Try the following:\n  - Ensure you've provided a valid GitHub token if this is a private repository\n  - For public repositories, verify your SSH keys are properly set up for GitHub access\n  - If using HTTPS, check if your token has the correct permissions\n  - Try using the SSH URL format directly: 'git@github.com:user/repo.git'",
-                        e
-                    )
+                    Err(format!("Authentication error: {}", e))
                 } else if error_details.contains("redirect")
                     || error_details.contains("301")
                     || error_details.contains("302")
                 {
-                    format!(
-                        "Failed to clone repository (redirect error): {}\n\nSuggestion: GitHub uses redirects for repository URLs, which caused an issue. The system attempted to use SSH URL format as a fallback, but that also failed. Try the following:\n  - We've already attempted multiple URL formats (with/without .git suffix and SSH)\n  - Use the SSH URL format directly: 'git@github.com:user/repo.git'\n  - This is a known issue with gitoxide (gix) when handling GitHub HTTPS redirects\n  - Verify your SSH keys are properly set up for GitHub access\n  - Check issue #974 in the gitoxide repository for updates: https://github.com/GitoxideLabs/gitoxide/issues/974",
-                        e
-                    )
+                    Err(format!("Redirect error: {}", e))
                 } else {
-                    format!("Failed to clone repository: {}\n\nSuggestion: The system automatically tried multiple URL formats including SSH format as a fallback, but all attempts failed. Try the following:\n  - Use the SSH URL format directly: 'git@github.com:user/repo.git'\n  - Verify your SSH keys are properly set up for GitHub access\n  - If you need to use HTTPS, check if there are updates to gitoxide that might fix GitHub HTTPS URL handling\n  - For more details on the gitoxide HTTPS issue, see: https://github.com/GitoxideLabs/gitoxide/issues/974", e)
-                };
-
-                Err(error_message)
+                    Err(format!("Clone error: {}", e))
+                }
             }
         }
     }

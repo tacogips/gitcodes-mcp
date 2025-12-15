@@ -43,7 +43,7 @@ cargo run --bin gitcodes-mcp http --debug
 
 ### GitHub Authentication
 
-The GitHub API tools support both authenticated and unauthenticated requests with multiple authentication methods:
+The GitHub API tools support both authenticated and unauthenticated requests with multiple authentication methods (in priority order):
 
 #### Method 1: Command Line Argument (Highest Priority)
 
@@ -56,13 +56,25 @@ cargo run --bin gitcodes-mcp http --github-token your_github_token
 
 ```bash
 # Set GitHub personal access token via environment variable
-export GITCODES_MCP_GITHUB_TOKEN=your_github_token
+export GITHUB_TOKEN=your_github_token
 
 # Run with authentication
 cargo run --bin gitcodes-mcp http
 ```
 
-#### Method 3: Custom Repository Cache Directory
+#### Method 3: GitHub CLI (gh auth)
+
+If you have the GitHub CLI (`gh`) installed and authenticated, the token will be automatically retrieved:
+
+```bash
+# First authenticate with GitHub CLI
+gh auth login
+
+# Then run the server - it will use your gh authentication
+cargo run --bin gitcodes-mcp http
+```
+
+#### Method 4: Custom Repository Cache Directory
 
 You can also specify a custom directory for storing cloned repositories:
 

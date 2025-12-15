@@ -1,6 +1,6 @@
 use anyhow::Result;
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 // Example client for gitcodes-MCP
@@ -392,7 +392,9 @@ async fn http_sse_client() -> Result<()> {
             println!("Failed to send initialize request: {}", e);
             println!("\nIMPORTANT: HTTP/SSE transport requires special handling.");
             println!("The server expects EventSource connections, not regular HTTP requests.");
-            println!("If you see connection errors, it's likely because we're not using a proper SSE client.");
+            println!(
+                "If you see connection errors, it's likely because we're not using a proper SSE client."
+            );
 
             // Try to clean up by stopping the server process
             tokio::spawn(async {

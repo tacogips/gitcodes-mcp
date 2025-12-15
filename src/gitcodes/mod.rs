@@ -8,27 +8,27 @@
 //! ## Authentication
 //!
 //! These tools support both authenticated and unauthenticated access to GitHub.
-//! Authentication can be provided in two ways:
+//! Authentication can be provided in three ways (in priority order):
 //!
-//! ### 1. Environment Variable
-//!
-//! ```bash
-//! # Authentication is optional but recommended to avoid rate limiting
-//! export GITCODES_MCP_GITHUB_TOKEN=your_github_token
-//! ```
-//!
-//! ### 2. Programmatic API
+//! ### 1. Programmatic API (highest priority)
 //!
 //! ```no_run
 //! // Provide a token directly to the repository manager
 //! use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
-//!
 //! let repository_manager = RepositoryManager::new(Some("your_github_token".to_string()), None).unwrap();
-//!
-//! // Or use the global repository manager instance
-//! use gitcodes_mcp::gitcodes::repository_manager::instance;
-//! let manager = instance::init_repository_manager(Some("your_github_token".to_string()), None);
 //! ```
+//!
+//! ### 2. Environment Variable
+//!
+//! ```bash
+//! # Authentication is optional but recommended to avoid rate limiting
+//! export GITHUB_TOKEN=your_github_token
+//! ```
+//!
+//! ### 3. GitHub CLI (gh auth)
+//!
+//! If the `gh` CLI tool is installed and authenticated (`gh auth login`), the token
+//! will be automatically retrieved via `gh auth token`.
 //!
 //! ### GitHub Token
 //!
@@ -50,34 +50,6 @@
 //!
 //! All public repository operations work without authentication, but with
 //! significantly lower rate limits.
-//!
-//! GitHub service for interacting with repositories and code search
-//!
-//! This module provides a service for:
-//! - Searching GitHub repositories
-//! - Searching code within repositories (grep functionality)
-//! - Listing branches and tags of repositories
-//!
-//! ## Authentication
-//!
-//! The service supports both authenticated and unauthenticated access to GitHub.
-//! Authentication can be provided in two ways:
-//!
-//! ### 1. Environment Variable
-//!
-//! ```bash
-//! # Authentication is optional but recommended to avoid rate limiting
-//! export GITCODES_MCP_GITHUB_TOKEN=your_github_token
-//! ```
-//!
-//! ### 2. Programmatic API
-//!
-//! ```no_run
-//! // Provide a token directly when creating the repository manager
-//! use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
-//!
-//! let repository_manager = RepositoryManager::new(Some("your_github_token".to_string()), None).unwrap();
-//! ```
 
 pub mod local_repository;
 pub mod repository_manager;

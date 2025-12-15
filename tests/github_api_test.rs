@@ -5,12 +5,13 @@
 
 use std::env;
 
-use gitcodes_mcp::gitcodes::repository_manager::RepositoryManager;
+use gitcodes_mcp::gitcodes::repository_manager::{RepositoryManager, GITHUB_TOKEN_ENV_VAR};
+use gitcodes_mcp::gitcodes::repository_manager::providers::github::OctocrabGithubClient;
 
 /// Creates a Repository Manager for testing
 fn create_test_manager() -> RepositoryManager {
     // Check for GitHub token in environment
-    let github_token = env::var("GITCODES_MCP_GITHUB_TOKEN").ok();
+    let github_token = env::var(GITHUB_TOKEN_ENV_VAR).ok();
 
     // Create a temporary directory for repository cache
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
@@ -199,5 +200,81 @@ async fn test_list_repository_refs_error_handling() {
                 || error_message.contains("Invalid GitHub repository URL"),
             "Error message should indicate parsing error or invalid format"
         );
+    }
+}
+
+/// Tests that GITHUB_TOKEN is a valid (non-expired) token when it is set
+///
+/// This test validates the GitHub token by making a simple API call.
+/// If the token is not set or is empty, this test is skipped.
+/// If the token is set but invalid/expired, this test will fail.
+#[tokio::test]
+async fn test_github_token_validity_when_set() {
+    // Get the token from environment
+    let token = env::var(GITHUB_TOKEN_ENV_VAR).ok();
+
+    // Skip test if token is not set or empty
+    let token = match token {
+        Some(t) if !t.trim().is_empty() => t,
+        _ => {
+            println!("{} is not set or empty, skipping token validity test", GITHUB_TOKEN_ENV_VAR);
+            return;
+        }
+    };
+
+    println!("{} is set, validating token...", GITHUB_TOKEN_ENV_VAR);
+
+    // Create a client with the token
+    let client = OctocrabGithubClient::new(Some(token.clone()));
+    assert!(
+        client.is_ok(),
+        "Failed to create OctocrabGithubClient with token: {:?}",
+        client.err()
+    );
+
+    let client = client.unwrap();
+
+    // Use the search_repositories method to validate the token
+    // A simple search query that should always work
+    use gitcodes_mcp::gitcodes::repository_manager::providers::github::GithubSearchParams;
+
+    let params = GithubSearchParams {
+        query: "rust".to_string(),
+        sort_by: None,
+        order: None,
+        per_page: Some(1), // Minimize response size
+        page: Some(1),
+    };
+
+    let result = client.search_repositories(params).await;
+
+    match result {
+        Ok(results) => {
+            println!(
+                "Token is valid. Search returned {} total results",
+                results.total_count
+            );
+            assert!(
+                results.total_count > 0,
+                "Search should return at least one result for 'rust' query"
+            );
+        }
+        Err(e) => {
+            // Check if the error indicates bad credentials
+            let error_msg = e.to_lowercase();
+            if error_msg.contains("bad credentials")
+                || error_msg.contains("401")
+                || error_msg.contains("unauthorized")
+                || error_msg.contains("authentication")
+            {
+                panic!(
+                    "{} is set but appears to be invalid or expired: {}",
+                    GITHUB_TOKEN_ENV_VAR, e
+                );
+            } else {
+                // Other errors might be rate limiting or network issues
+                panic!("GitHub API request failed: {}", e);
+            }
+        }
     }
 }

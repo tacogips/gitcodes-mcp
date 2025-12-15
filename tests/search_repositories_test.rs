@@ -9,12 +9,12 @@ use std::env;
 use std::str::FromStr;
 
 use gitcodes_mcp::gitcodes::repository_manager::providers::GitProvider;
-use gitcodes_mcp::gitcodes::repository_manager::{OrderOption, RepositoryManager, SortOption};
+use gitcodes_mcp::gitcodes::repository_manager::{OrderOption, RepositoryManager, SortOption, GITHUB_TOKEN_ENV_VAR};
 
 /// Creates a Repository Manager for testing
 fn create_test_manager() -> RepositoryManager {
     // Check for GitHub token in environment
-    let github_token = env::var("GITCODES_MCP_GITHUB_TOKEN").ok();
+    let github_token = env::var(GITHUB_TOKEN_ENV_VAR).ok();
 
     // Create a temporary directory for repository cache
     let temp_dir = tempfile::tempdir().expect("Failed to create temporary directory");

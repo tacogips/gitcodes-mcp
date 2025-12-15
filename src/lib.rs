@@ -13,14 +13,17 @@
 //! ## Authentication
 //!
 //! GitHub operations support both authenticated and unauthenticated access.
-//! Authentication is handled through the `GITCODES_MCP_GITHUB_TOKEN` environment variable.
+//! Authentication is handled through (in priority order):
+//! 1. Explicit token parameter
+//! 2. `GITHUB_TOKEN` environment variable
+//! 3. GitHub CLI (`gh auth token`) if gh is installed and authenticated
 //!
 //! ```bash
 //! # Set GitHub token for authentication (optional)
-//! export GITCODES_MCP_GITHUB_TOKEN=your_github_token
+//! export GITHUB_TOKEN=your_github_token
 //! ```
 //!
-//! ### GitHub Token (`GITCODES_MCP_GITHUB_TOKEN`)
+//! ### GitHub Token (`GITHUB_TOKEN`)
 //!
 //! - **Purpose**: Authenticates requests to the GitHub API
 //! - **Requirement**: Optional, but recommended to avoid rate limits
