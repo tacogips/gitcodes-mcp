@@ -15,8 +15,8 @@ use std::str::FromStr;
 use tempfile::tempdir;
 
 use gitcodes_mcp::gitcodes::{
-    repository_manager::{RepositoryLocation, RepositoryManager},
     CodeSearchParams, LocalRepository,
+    repository_manager::{RepositoryLocation, RepositoryManager},
 };
 
 /// Test repository URL for consistent testing

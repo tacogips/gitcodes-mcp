@@ -2,13 +2,14 @@
 //!
 //! These tests use the test repository at https://github.com/tacogips/gitcodes-mcp-test-1
 //! Note: Live integration tests are commented out to avoid external dependencies.
-//! For actual testing, uncomment the integration test and set GITCODES_MCP_GITHUB_TOKEN.
+//! For actual testing, uncomment the integration test and set GITHUB_TOKEN.
 
 use std::fs::{self, File};
 use std::io::Write;
 
-use gitcodes_mcp::gitcodes::repository_manager::RepositoryLocation;
+use gitcodes_mcp::gitcodes::repository_manager::{RepositoryLocation, GITHUB_TOKEN_ENV_VAR};
 use gitcodes_mcp::gitcodes::{LocalRepository, RepositoryManager};
+use serial_test::serial;
 
 /// Tests that the HTTPS to SSH URL fallback mechanism works correctly
 ///
@@ -21,9 +22,9 @@ use gitcodes_mcp::gitcodes::{LocalRepository, RepositoryManager};
 async fn test_https_to_ssh_url_fallback() {
     use std::str::FromStr;
     use std::sync::{Arc, Mutex};
+    use tracing_subscriber::Registry;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
-    use tracing_subscriber::Registry;
 
     // Create a repository manager
     let manager = RepositoryManager::new(None, None).expect("Failed to create RepositoryManager");
@@ -318,17 +319,21 @@ async fn test_repository_url_handling() {
 /// Tests that RepositoryManager::new() properly reads GitHub token from environment variable
 ///
 /// This test verifies that when no explicit GitHub token is provided to RepositoryManager::new(),
-/// it correctly falls back to reading the GITCODES_MCP_GITHUB_TOKEN environment variable.
+/// it correctly falls back to reading the GITHUB_TOKEN environment variable.
 #[test]
+#[serial]
 fn test_github_token_environment_variable_fallback() {
     use std::env;
 
     // Save original environment variable value
-    let original_token = env::var("GITCODES_MCP_GITHUB_TOKEN").ok();
+    let original_token = env::var(GITHUB_TOKEN_ENV_VAR).ok();
 
     // Test case 1: Environment variable is set
     let test_token = "test_github_token_12345";
-    env::set_var("GITCODES_MCP_GITHUB_TOKEN", test_token);
+    // SAFETY: This test runs in a controlled test environment where we manage environment variables
+    unsafe {
+        env::set_var(GITHUB_TOKEN_ENV_VAR, test_token);
+    }
 
     // Create repository manager without explicit token
     let _manager = RepositoryManager::new(None, None).expect("Failed to create RepositoryManager");
@@ -339,23 +344,32 @@ fn test_github_token_environment_variable_fallback() {
     // The actual token verification would require accessing private fields or using the token
 
     // Test case 2: Environment variable is not set
-    env::remove_var("GITCODES_MCP_GITHUB_TOKEN");
+    // SAFETY: This test runs in a controlled test environment where we manage environment variables
+    unsafe {
+        env::remove_var(GITHUB_TOKEN_ENV_VAR);
+    }
 
     let _manager_no_token = RepositoryManager::new(None, None)
         .expect("Failed to create RepositoryManager without token");
 
     // Test case 3: Explicit token overrides environment variable
-    env::set_var("GITCODES_MCP_GITHUB_TOKEN", "env_token");
+    // SAFETY: This test runs in a controlled test environment where we manage environment variables
+    unsafe {
+        env::set_var(GITHUB_TOKEN_ENV_VAR, "env_token");
+    }
     let explicit_token = "explicit_token_67890";
 
     let _manager_explicit = RepositoryManager::new(Some(explicit_token.to_string()), None)
         .expect("Failed to create RepositoryManager with explicit token");
 
     // Restore original environment variable
-    if let Some(original) = original_token {
-        env::set_var("GITCODES_MCP_GITHUB_TOKEN", original);
-    } else {
-        env::remove_var("GITCODES_MCP_GITHUB_TOKEN");
+    // SAFETY: This test runs in a controlled test environment where we manage environment variables
+    unsafe {
+        if let Some(original) = original_token {
+            env::set_var(GITHUB_TOKEN_ENV_VAR, original);
+        } else {
+            env::remove_var(GITHUB_TOKEN_ENV_VAR);
+        }
     }
 
     // All manager instances should be created successfully
@@ -365,7 +379,7 @@ fn test_github_token_environment_variable_fallback() {
 }
 
 // UNCOMMENT THIS TEST TO RUN INTEGRATION TEST AGAINST REAL REPOSITORY
-// Make sure to set the GITCODES_MCP_GITHUB_TOKEN environment variable
+// Make sure to set the GITHUB_TOKEN environment variable
 //
 // /// Tests that the RepositoryManager can successfully clone a new repository
 // ///
@@ -375,7 +389,7 @@ fn test_github_token_environment_variable_fallback() {
 // #[tokio::test]
 // async fn test_prepare_repository_clone() {
 //     // Skip the test if running in CI without token
-//     let github_token = match env::var("GITCODES_MCP_GITHUB_TOKEN") {
+//     let github_token = match env::var("GITHUB_TOKEN") {
 //         Ok(token) => Some(token),
 //         Err(_) => {
 //             println!("No GitHub token found. This test may fail due to GitHub API rate limits.");

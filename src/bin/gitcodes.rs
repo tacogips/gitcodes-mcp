@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::net::SocketAddr;
-use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{self, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser)]
 #[command(author, version = "0.1.0", about, long_about = None)]
@@ -20,7 +20,7 @@ enum Commands {
         #[arg(short, long)]
         debug: bool,
 
-        /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
+        /// GitHub API token for authentication (overrides GITHUB_TOKEN environment variable and gh auth)
         #[arg(short = 't', long)]
         github_token: Option<String>,
 
@@ -39,7 +39,7 @@ enum Commands {
         #[arg(short, long)]
         debug: bool,
 
-        /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
+        /// GitHub API token for authentication (overrides GITHUB_TOKEN environment variable and gh auth)
         #[arg(short = 't', long)]
         github_token: Option<String>,
 

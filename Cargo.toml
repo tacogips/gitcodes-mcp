@@ -43,7 +43,7 @@ rand = "0.8"
 clap = { version = "4.4", features = ["derive"] }
 lumin = "0.1.16"
 strum = { version = "0.25", features = ["derive"] }
-gix = { version = "0.72.1", features = ["blocking-http-transport-reqwest"] }
+gix = { version = "0.72.1", features = ["blocking-http-transport-reqwest-rust-tls"] }
 gitoxide-core = { version = "0.47.1", features = ["blocking-client"] }
 uuid = { version = "1.4", features = ["v4"] }
 once_cell = "1.18"
@@ -53,6 +53,7 @@ once_cell = "1.18"
 mockito = "1.2"
 tempfile = "3.8"
 tokio-test = "0.4"
+serial_test = "3.2"
 
 [features]
 # Features used for testing

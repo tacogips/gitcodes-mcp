@@ -788,12 +788,24 @@ async fn test_show_file_contents() {
             if let Ok((file_contents, local_repo, _without_line_numbers)) = line_range_result {
                 // Verify we got text content back with limited lines
                 match file_contents {
-                    lumin::view::FileContents::Text { content: _, metadata } => {
-                        assert!(metadata.line_count > 5, "Expected at most 5 lines, got {}", metadata.line_count);
+                    lumin::view::FileContents::Text {
+                        content: _,
+                        metadata,
+                    } => {
+                        assert!(
+                            metadata.line_count > 5,
+                            "Expected at most 5 lines, got {}",
+                            metadata.line_count
+                        );
 
-                        println!("Successfully viewed text file with line range, got {} lines", metadata.line_count);
-                    },
-                    _ => panic!("Expected Text content for Cargo.toml with line range, got a different type"),
+                        println!(
+                            "Successfully viewed text file with line range, got {} lines",
+                            metadata.line_count
+                        );
+                    }
+                    _ => panic!(
+                        "Expected Text content for Cargo.toml with line range, got a different type"
+                    ),
                 }
 
                 // Clean up the repository

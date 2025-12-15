@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use gix;
 use lumin::search::{self, SearchResultLine as LuminSearchResultLine};
 
-use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
 use crate::gitcodes::repository_manager::RepositoryLocation;
+use crate::gitcodes::repository_manager::providers::GitRemoteRepositoryInfo;
 
 mod search_result;
 pub use search_result::CodeSearchResult;
@@ -936,7 +936,10 @@ impl LocalRepository {
         if let Some(ref_name) = &params.ref_name {
             // Temporarily disabled due to ongoing refactoring
             // Just log the request rather than attempting update
-            eprintln!("Note: Reference '{}' was requested, but repository updates are temporarily disabled", ref_name);
+            eprintln!(
+                "Note: Reference '{}' was requested, but repository updates are temporarily disabled",
+                ref_name
+            );
         }
 
         // Get the pattern - the caller is responsible for properly escaping regex special characters

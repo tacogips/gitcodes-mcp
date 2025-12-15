@@ -4,9 +4,9 @@ use lumin::view::FileContents;
 use std::path::PathBuf;
 use tracing_subscriber::{self, EnvFilter};
 
+use gitcodes_mcp::gitcodes::LocalRepository;
 use gitcodes_mcp::gitcodes::local_repository::prevent_directory_traversal;
 use gitcodes_mcp::gitcodes::repository_manager;
-use gitcodes_mcp::gitcodes::LocalRepository;
 use gitcodes_mcp::tools::{IssueSortOption, OrderOption, SortOption};
 
 #[derive(Parser)]
@@ -18,7 +18,7 @@ use gitcodes_mcp::tools::{IssueSortOption, OrderOption, SortOption};
 )]
 #[command(propagate_version = true)]
 struct Cli {
-    /// GitHub API token for authentication (overrides GITCODES_MCP_GITHUB_TOKEN environment variable)
+    /// GitHub API token for authentication (overrides GITHUB_TOKEN environment variable and gh auth)
     #[arg(short = 't', long, global = true)]
     github_token: Option<String>,
 

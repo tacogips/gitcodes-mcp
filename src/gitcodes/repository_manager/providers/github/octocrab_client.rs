@@ -5,7 +5,7 @@
 
 use super::{GitRemoteRepositoryInfo, GithubIssueSearchParams, GithubSearchParams};
 use crate::gitcodes::repository_manager::providers::*;
-use octocrab::models::{issues::Issue as OctocrabIssue, Repository as OctocrabRepository};
+use octocrab::models::{Repository as OctocrabRepository, issues::Issue as OctocrabIssue};
 use octocrab::{Octocrab, Page};
 
 /// Octocrab-based GitHub client
@@ -90,13 +90,10 @@ impl OctocrabGithubClient {
             search_builder = search_builder.page(page);
         }
 
-        let results = search_builder
-            .send()
-            .await
-            .map_err(|e| {
-                tracing::error!("GitHub API request failed: {:?}", e);
-                format!("Issue search failed: {}", e)
-            })?;
+        let results = search_builder.send().await.map_err(|e| {
+            tracing::error!("GitHub API request failed: {}", e);
+            format!("Issue search failed: {}", e)
+        })?;
 
         Ok(Self::convert_issue_search_results(results))
     }
@@ -113,7 +110,7 @@ impl OctocrabGithubClient {
             .list_branches()
             .send()
             .await
-            .map_err(|e| format!("Failed to list branches: {}", e))?;
+            .map_err(|e| format!("Failed to list branches: {:?}", e))?;
 
         let branches = branches_result
             .items
@@ -152,11 +149,13 @@ impl OctocrabGithubClient {
     }
 
     /// Build issue and pull request search query from parameters
-    fn build_issue_and_pull_request_search_query(params: &GithubIssueSearchParams) -> Result<String, String> {
+    fn build_issue_and_pull_request_search_query(
+        params: &GithubIssueSearchParams,
+    ) -> Result<String, String> {
         let mut query_parts = vec![params.query.clone()];
 
         let query_lower = params.query.to_lowercase();
-        
+
         // Add both 'is:issue' and 'is:pull-request' if neither is present
         if !query_lower.contains("is:issue") && !query_lower.contains("is:pull-request") {
             query_parts.push("(is:issue OR is:pull-request)".to_string());
@@ -370,10 +369,10 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
-
         };
-        
-        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+
+        let result =
+            OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
         assert_eq!(result, "memory leak (is:issue OR is:pull-request)");
 
         // Test query that already contains is:issue
@@ -391,10 +390,10 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
-
         };
-        
-        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+
+        let result =
+            OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
         assert_eq!(result, "memory leak is:issue");
 
         // Test query that already contains is:pull-request
@@ -412,10 +411,10 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
-
         };
-        
-        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+
+        let result =
+            OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
         assert_eq!(result, "memory leak is:pull-request");
 
         // Test with additional parameters
@@ -433,10 +432,13 @@ mod tests {
             assignee: None,
             milestone: None,
             issue_type: None,
-
         };
-        
-        let result = OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
-        assert_eq!(result, "bug (is:issue OR is:pull-request) repo:rust-lang/rust label:enhancement state:open author:user123");
+
+        let result =
+            OctocrabGithubClient::build_issue_and_pull_request_search_query(&params).unwrap();
+        assert_eq!(
+            result,
+            "bug (is:issue OR is:pull-request) repo:rust-lang/rust label:enhancement state:open author:user123"
+        );
     }
 }

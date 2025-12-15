@@ -209,7 +209,9 @@ async fn test_services_list_repository_refs_local_with_fetch() {
             } else if tags_before.contains(&new_tag_name) {
                 println!("Note: New tag appeared in before results (unexpected but allowed)");
             } else {
-                println!("Warning: New tag did not appear in results. This could be due to test environment limitations.");
+                println!(
+                    "Warning: New tag did not appear in results. This could be due to test environment limitations."
+                );
             }
 
             // At minimum, ensure we got some tags in both results
@@ -518,8 +520,10 @@ async fn test_local_repository_list_refs_direct() {
     };
 
     if !init_output.status.success() {
-        println!("Skipping test_local_repository_list_refs_direct: Failed to initialize git repository: {}",
-                String::from_utf8_lossy(&init_output.stderr));
+        println!(
+            "Skipping test_local_repository_list_refs_direct: Failed to initialize git repository: {}",
+            String::from_utf8_lossy(&init_output.stderr)
+        );
         return;
     }
 

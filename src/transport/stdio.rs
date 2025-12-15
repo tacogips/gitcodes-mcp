@@ -1,7 +1,7 @@
 use crate::tools::GitHubCodeTools;
 use anyhow::Result;
-use rmcp::transport::stdio;
 use rmcp::ServiceExt;
+use rmcp::transport::stdio;
 use std::path::PathBuf;
 
 pub async fn run_stdio_server(

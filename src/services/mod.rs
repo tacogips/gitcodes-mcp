@@ -1,6 +1,6 @@
+use crate::gitcodes::CodeSearchResult;
 use crate::gitcodes::local_repository::{CodeSearchParams, ViewFileParams};
 use crate::gitcodes::repository_manager;
-use crate::gitcodes::CodeSearchResult;
 use repository_manager::RepositoryLocation;
 use std::path::PathBuf;
 use std::str::FromStr;

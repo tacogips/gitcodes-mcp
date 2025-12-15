@@ -54,9 +54,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use gitcodes_mcp::gitcodes::{
+    LocalRepository,
     local_repository::TreeParams,
     repository_manager::{RepositoryLocation, RepositoryManager},
-    LocalRepository,
 };
 use tempfile::tempdir;
 

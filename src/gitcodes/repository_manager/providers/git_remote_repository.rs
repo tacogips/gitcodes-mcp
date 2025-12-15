@@ -1,5 +1,5 @@
-use crate::gitcodes::repository_manager::providers::github::{parse_github_url, GithubRemoteInfo};
-use anyhow::{anyhow, Result};
+use crate::gitcodes::repository_manager::providers::github::{GithubRemoteInfo, parse_github_url};
+use anyhow::{Result, anyhow};
 
 #[derive(Debug, Clone, strum::Display, strum::EnumString)]
 pub enum GitProvider {
