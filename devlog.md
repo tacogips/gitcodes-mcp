@@ -1,0 +1,504 @@
+# Development Log
+
+This file documents the architectural decisions and implementation patterns for the GitCodes MCP project. It's organized by pattern categories rather than chronological history to better guide future code generation.
+
+**IMPORTANT NOTE:** This devlog contains only changes made by AI agents and may not include modifications made directly by human programmers. There may be discrepancies between the current source code and the patterns documented here.
+
+## Type System Patterns
+
+### Use Native Types Over Single-Field Wrappers
+
+- **Pattern:** Replace wrapper types with native Rust types when they don't add significant behavior
+- **Example:** Replaced `GitRef` struct with direct `String` usage
+- **Implementation:**
+  ```rust
+  // Instead of:
+  pub struct GitRef { pub name: String }
+  async fn update_repository(&self, git_ref: &GitRef) -> Result<(), String> { ... }
+  
+  // Use directly:
+  async fn update_repository(&self, ref_name: &str) -> Result<(), String> { ... }
+  ```
+- **When to apply:** When a wrapper type doesn't add validation, behavior, or type safety
+
+### Parameter Grouping With Structured Types
+
+- **Pattern:** Group related parameters into a structured type
+- **Example:** `RemoteGitRepositoryInfo` for repository cloning parameters
+- **Implementation:**
+  ```rust
+  #[derive(Debug, Clone, schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+  pub struct RemoteGitRepositoryInfo {
+      pub user: String,
+      pub repo: String,
+      pub ref_name: String,
+  }
+  
+  async fn clone_repository(repo_dir: &Path, params: &RemoteGitRepositoryInfo) -> Result<(), String> { ... }
+  ```
+- **When to apply:** When multiple parameters are often passed together
+
+### Type-Safe Variants With Enums
+
+- **Pattern:** Use enums to represent different variants with distinct behaviors
+- **Example:** `RepositoryLocation` for GitHub URLs vs local paths
+- **Implementation:**
+  ```rust
+  pub enum RepositoryLocation {
+      GitHubUrl(String),
+      LocalPath(PathBuf),
+  }
+  
+  impl FromStr for RepositoryLocation { ... }
+  ```
+- **When to apply:** When a parameter can have multiple distinct types with different behaviors
+
+### Descriptive Field Naming
+
+- **Pattern:** Field names should reflect both type and purpose
+- **Example:** Renamed `repository` to `repository_location` for clarity
+- **When to apply:** When using enum types as fields, include the enum name in the field name
+- **Apply consistently in:** Struct definitions, function parameters, API documentation
+
+## Architecture Patterns
+
+### Deterministic Resource Naming with Process Isolation
+
+- **Pattern:** Generate consistent resource identifiers with process-specific differentiation
+- **Example:** Repository cache directory naming using hash of repository info and process ID
+- **Implementation:**
+  ```rust
+  // In RepositoryManager
+  fn generate_process_id() -> String {
+      use std::process;
+      use uuid::Uuid;
+      
+      let pid = process::id();
+      let uuid = Uuid::new_v4();
+      
+      format!("{}_{}", pid, uuid.simple())
+  }
+  
+  // In LocalRepository
+  fn generate_repository_hash(info: &GitRemoteRepositoryInfo) -> String {
+      use std::collections::hash_map::DefaultHasher;
+      use std::hash::{Hash, Hasher};
+      
+      let repo_key = format!("{}/{}", info.user, info.repo);
+      let mut hasher = DefaultHasher::new();
+      repo_key.hash(&mut hasher);
+      let hash_value = hasher.finish();
+      
+      format!("{:x}", hash_value)[0..12].to_string()
+  }
+  
+  pub fn new_local_repository_to_clone(
+      remote_repository_info: GitRemoteRepositoryInfo, 
+      process_id: Option<&str>
+  ) -> Self {
+      let hash_value = Self::generate_repository_hash(&remote_repository_info);
+      
+      // Include process_id in directory name if provided
+      let dir_name = if let Some(pid) = process_id {
+          format!(
+              "mcp_gitcodes_{}_{}_{}_pid{}",
+              remote_repository_info.user, remote_repository_info.repo, hash_value, pid
+          )
+      } else {
+          format!(
+              "mcp_gitcodes_{}_{}_{}" ,
+              remote_repository_info.user, remote_repository_info.repo, hash_value
+          )
+      };
+
+      let mut repo_dir = std::env::temp_dir();
+      repo_dir.push(dir_name);
+
+      Self::new(repo_dir)
+  }
+  ```
+- **Benefits:** 
+  - Predictable caching for deterministic behavior
+  - Process isolation to prevent conflicts in concurrent environments
+  - Consistent paths across runs for the same repository
+  - Uniqueness ensured by combination of deterministic hashing and process-specific IDs
+
+### Separation of Concerns
+
+- **Pattern:** Separate data handling from presentation
+- **Example:** Low-level modules return raw data; formatting done in API layers
+- **Implementation:**
+  ```rust
+  // Service method returns raw data:
+  pub async fn grep_repository(&self, params: GrepParams) -> Result<GrepResult, String> { ... }
+  
+  // API layer handles formatting:
+  match service.grep_repository(params).await {
+      Ok(result) => format_for_display(result),
+      Err(error) => format!("Search failed: {}", error),
+  }
+  ```
+- **Application:** Service methods, API controllers, data transformations
+
+### Explicit Error Handling
+
+- **Pattern:** Use Result types for operations that can fail
+- **Implementation:**
+  ```rust
+  pub async fn operation_name(&self) -> Result<SuccessType, ErrorType> {
+      match potentially_failing_operation() {
+          Ok(value) => Ok(value),
+          Err(e) => Err(format!("Descriptive error: {}", e)),
+      }
+  }
+  ```
+- **When to apply:** All functions that can fail should return Result
+
+## Module Organization Patterns
+
+### Feature-Based Module Structure
+
+- **Pattern:** Organize code by feature rather than technical layer
+- **Example:** Dedicated modules for GitHub API, Git repository operations, code search
+- **Implementation:**
+  ```
+  gitcodes/
+   ├── github/
+   │   ├── api.rs           # GitHub API operations
+   │   ├── params.rs         # API parameter structures
+   │   └── mod.rs
+   ├── repository/
+   │   ├── manager.rs        # Repository management
+   │   ├── location.rs       # Repository location types
+   │   └── mod.rs
+   └── mod.rs
+  ```
+- **Benefits:** Improves discoverability, keeps related code together
+
+### Component Encapsulation
+
+- **Pattern:** Hide implementation details behind public interfaces
+- **Example:** Making helper functions module-private with explicit public APIs
+- **Implementation:**
+  ```rust
+  // Private implementation:
+  fn parse_repository_url(url: &str) -> Result<(String, String), String> { ... }
+  
+  // Public interface:
+  pub fn prepare_repository(url: &str) -> Result<RepositoryInfo, String> {
+      let (user, repo) = parse_repository_url(url)?;
+      // ...
+  }
+  ```
+- **When to apply:** For internal helper functions, implementation details
+
+### Method Refactoring
+
+- **Pattern:** Convert standalone functions to methods on relevant structs
+- **Example:** Moving repository utility functions to `RepositoryManager` methods
+- **Implementation:**
+  ```rust
+  // Instead of:
+  fn get_repo_dir(manager: &RepositoryManager, info: &RepositoryInfo) -> PathBuf { ... }
+  
+  // Use:
+  impl RepositoryManager {
+      fn get_repo_dir(&self, info: &RepositoryInfo) -> PathBuf { ... }
+  }
+  ```
+- **Benefits:** Better encapsulation, clearer ownership, simplified signatures
+
+## API Design Patterns
+
+### Authentication Options Hierarchy
+
+- **Pattern:** Implement a clear priority order for configuration options
+- **Example:** GitHub token authentication precedence
+- **Implementation:**
+  1. Command line argument (highest priority)
+  2. Programmatic parameter (second priority)
+  3. Environment variable (fallback)
+- **Benefits:** Consistent predictable behavior, flexibility for users
+
+### Consistent Parameter Types
+
+- **Pattern:** Use consistent parameter types across related APIs
+- **Example:** Structured parameter types for search and grep operations
+- **Implementation:**
+  ```rust
+  // Related operation parameters use similar structure:
+  pub struct SearchParams { /* ... */ }
+  pub struct GrepParams { /* ... */ }
+  
+  // API methods have consistent signatures:
+  pub async fn search_repositories(&self, params: SearchParams) -> Result<...> { ... }
+  pub async fn grep_repository(&self, params: GrepParams) -> Result<...> { ... }
+  ```
+- **Benefits:** Easier to learn API, consistent usage patterns
+
+### Wrapper Pattern For Tool Integration
+
+- **Pattern:** Use wrapper classes to separate core functionality from tool integration
+- **Example:** `GitHubCodeTools` wrapper for MCP integration around `GitHubService`
+- **Implementation:**
+  ```rust
+  // Core service with business logic:
+  pub struct GitHubService { /* ... */ }
+  
+  // Wrapper with tool annotations:
+  #[derive(tool::ToolBox)]
+  pub struct GitHubCodeTools {
+      service: GitHubService,
+  }
+  
+  impl GitHubCodeTools {
+      #[tool(description = "...")]
+      pub async fn search_repositories(&self, params: SearchParams) -> CallToolResult {
+          match self.service.search_repositories(params).await {
+              Ok(result) => CallToolResult::success(result),
+              Err(error) => CallToolResult::error(error),
+          }
+      }
+  }
+  ```
+- **Benefits:** Clean separation of concerns, core services remain independent of tool framework
+
+## Data Handling Patterns
+
+### Path Type Safety
+
+- **Pattern:** Use specialized path types instead of strings
+- **Example:** Replaced string paths with `Path` and `PathBuf`
+- **Implementation:**
+  ```rust
+  // Instead of:
+  fn get_repo_dir(base_dir: &str, repo: &str) -> String { ... }
+  
+  // Use:
+  fn get_repo_dir(base_dir: &Path, repo: &str) -> PathBuf {
+      base_dir.join(format!("mcp_repo_{}", repo))
+  }
+  ```
+- **Benefits:** Type safety, better path manipulation, clearer semantics
+
+### Enum String Conversion
+
+- **Pattern:** Add methods for consistent enum-to-string conversions
+- **Example:** `to_str()` methods on enumeration types
+- **Implementation:**
+  ```rust
+  pub enum SortOption {
+      Relevance,
+      Stars,
+      Forks,
+      Updated,
+  }
+  
+  impl SortOption {
+      pub fn to_str(&self) -> &str {
+          match self {
+              SortOption::Relevance => "",
+              SortOption::Stars => "stars",
+              SortOption::Forks => "forks",
+              SortOption::Updated => "updated",
+          }
+      }
+  }
+  ```
+- **Benefits:** Centralized conversion logic, consistent string representations
+
+## Implementation Notes
+
+### Native Git Integration with Two-Phase Clone
+
+- Migrated from direct git command execution to the native Rust `gix` library
+- `gix` is a pure Rust implementation of Git with no C dependencies
+- Implemented a two-phase clone process (fetch followed by checkout) for more precise control
+- Repository operations (clone, fetch, checkout) are handled by `gix` APIs
+
+```rust
+// Repository cloning using gix instead of command execution
+async fn clone_repository(&self, remote_repository: &GitRemoteRepository) -> Result<LocalRepository, String> {
+    use gix::{
+        clone::PrepareFetch,
+        create::{Kind, Options as CreateOptions},
+        open::Options as OpenOptions,
+        progress::Discard,
+    };
+    
+    // Initialize a repo for fetching with the authenticated URL
+    let mut fetch = PrepareFetch::new(
+        auth_url.as_str(),
+        repo_dir,
+        Kind::WithWorktree,
+        CreateOptions::default(),
+        OpenOptions::default(),
+    )?;
+    
+    // Configure shallow clone for better performance
+    let depth = NonZeroU32::new(1).unwrap();
+    fetch = fetch.with_shallow(Shallow::DepthAtRemote(depth));
+    
+    // Execute the clone operation in two phases for better control
+    match fetch.fetch_then_checkout(&mut Discard, &gix::interrupt::IS_INTERRUPTED) {
+        Ok((mut checkout, _fetch_outcome)) => {
+            // Complete the checkout process
+            match checkout.main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED) {
+                Ok((_repo, _outcome)) => {
+                    tracing::info!("Successfully cloned repository to {}", repo_dir.display());
+                    Ok(local_repo)
+                }
+                Err(e) => {
+                    // Clean up failed checkout attempt
+                    if repo_dir.exists() {
+                        let _ = std::fs::remove_dir_all(repo_dir);
+                    }
+                    Err(format!("Failed to checkout repository: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            // Clean up failed clone attempt
+            if repo_dir.exists() {
+                let _ = std::fs::remove_dir_all(repo_dir);
+            }
+            Err(format!("Failed to clone repository: {}", e))
+        }
+    }
+}
+```
+
+### Repository Caching Strategy
+
+- Repositories are cloned to local cache directories using shallow clones
+- Cache directories follow a deterministic naming pattern based on repository owner and name
+- Cache strategy includes:
+  - Hash-based directory naming for consistency
+  - Process-specific identifiers in directory names to avoid conflicts
+  - Automatic reuse of existing repositories
+  - Validation of repository integrity before reuse
+  - Cleanup of invalid repositories
+- Custom cache directory configuration is supported via initialization parameters
+
+### Refactoring: Process Isolation and Global Singleton
+
+The codebase has been extensively refactored to implement two key patterns that work together:
+
+#### Process-Specific Identifiers Pattern
+
+- **Pattern:** Add unique process identifiers to shared resources
+- **Example:** `RepositoryManager` includes a `process_id` field used in clone paths
+- **Implementation:**
+  ```rust
+  // In RepositoryManager
+  fn generate_process_id() -> String {
+      use std::process;
+      use uuid::Uuid;
+      
+      let pid = process::id();
+      let uuid = Uuid::new_v4();
+      
+      format!("{}_{}", pid, uuid.simple())
+  }
+  
+  // In LocalRepository
+  pub fn new_local_repository_to_clone(
+      remote_repository_info: GitRemoteRepositoryInfo, 
+      process_id: Option<&str>
+  ) -> Self {
+      // Include process_id in directory name if provided
+      let dir_name = if let Some(pid) = process_id {
+          format!("mcp_gitcodes_{}_{}_{}_pid{}", 
+                 remote_repository_info.user, 
+                 remote_repository_info.repo, 
+                 hash_value, pid)
+      } else { /* ... */ }
+      
+      // Rest of the implementation
+  }
+  ```
+- **Benefits:** Prevents resource conflicts when multiple processes use the same codebase
+- **When to apply:** For file system operations, shared resource access, parallel processing
+
+#### Global Singleton Pattern for Per-Process Resources
+
+- **Pattern:** Use a global static instance with lazy initialization for per-process resources
+- **Example:** Process-wide `RepositoryManager` singleton using `once_cell`
+- **Implementation:**
+  ```rust
+  // Global singleton definition in repository_manager/instance.rs
+  static GLOBAL_REPOSITORY_MANAGER: OnceCell<RepositoryManager> = OnceCell::new();
+  
+  // Initialization function (called once at process startup)
+  pub fn init_repository_manager(
+      github_token: Option<String>,
+      repository_cache_dir: Option<PathBuf>,
+  ) -> &'static RepositoryManager {
+      GLOBAL_REPOSITORY_MANAGER.get_or_init(move || {
+          RepositoryManager::new(github_token, repository_cache_dir)
+              .expect("Failed to initialize global repository manager")
+      })
+  }
+  
+  // Access function (safely returns the singleton instance)
+  pub fn get_repository_manager() -> &'static RepositoryManager {
+      GLOBAL_REPOSITORY_MANAGER
+          .get_or_init(|| RepositoryManager::with_default_cache_dir())
+  }
+  ```
+  
+  ```rust
+  // Server startup code in transport modules
+  async fn run_stdio_server(
+      debug: bool, 
+      github_token: Option<String>,
+      repository_cache_dir: Option<std::path::PathBuf>
+  ) -> Result<()> {
+      // Initialize the global repository manager at startup
+      // This ensures a single process_id is used throughout the application lifetime
+      let _ = gitcodes_mcp::gitcodes::repository_manager::instance::init_repository_manager(
+          github_token.clone(), 
+          repository_cache_dir.clone()
+      );
+      
+      // ... rest of the function ...
+  }
+  ```
+  
+  ```rust
+  // Tool code updated to use global instance
+  pub fn new(github_token: Option<String>, repository_cache_dir: Option<PathBuf>) -> Self {
+      // Initialize the global repository manager with these parameters
+      let manager = repository_manager::instance::init_repository_manager(github_token, repository_cache_dir);
+      
+      Self {
+          manager: manager.clone(),
+      }
+  }
+  
+  pub fn with_service(_manager: RepositoryManager) -> Self {
+      // Get the global repository manager instead of using the provided one
+      let manager = repository_manager::instance::get_repository_manager();
+      Self { manager: manager.clone() }
+  }
+  ```
+- **Benefits:** 
+  - Ensures consistency across the entire process
+  - Preserves unique process identifiers throughout the application lifetime
+  - Prevents duplicate resource initialization
+  - Simplifies API by hiding process ID management from callers
+- **When to apply:** 
+  - For resources that should be unique per process
+  - When resources have process-specific identifiers
+  - To avoid unnecessary duplication of heavyweight resources
+  - When configuration should be applied process-wide
+
+### Authentication Methods
+
+- GitHub API authentication supports multiple methods:
+  - Command-line parameter: `--github-token <token>`
+  - Environment variable: `GITCODE_MCP_GITHUB_TOKEN`
+  - Programmatic API parameter: `GitHubService::new(Some(token))`
+- Authentication is applied at the transport level for Git operations
+- Tokens are stored in memory and not referenced from environment after startup
+- Unauthenticated requests are supported with rate limits (60 requests/hour vs 5,000/hour)
